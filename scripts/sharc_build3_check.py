@@ -12,14 +12,16 @@ left. Checks:
 - every built entry's bytes are `table3`'s layout of the model's levels
   (`geometry.table_levels`, rint, clipped to int16): the header exactly, every row
   within 1 LSB (a float32 transform puts a value on the other side of .5 now and then);
-- BUILT[j] is the entry's levels | 1 for a playable geometry, 0 for an empty entry or
-  one outside 1..64 frames of 64..4096 points;
+- BUILT[j] is a levels region | 1 for a playable geometry (one of the 129 regions, each
+  held by one entry), 0 for an empty entry or one outside 1..64 frames of 64..4096 points;
 - each call leaves every R, I, M, L and B register and MODE1 as it found them (the idle
   loop's; the audio interrupt's constants among them);
 - no word of DDR is read on the other bus than the one that last wrote it
   (sharc_bus_check: the DM and PM caches are not coherent on the silicon);
-- with the magic cleared nothing is built; a new generation rebuilds, and an entry
-  being rebuilt reads 0 until its last pair.
+- with the magic cleared nothing is built; a new generation rebuilds into the spare region
+  while BUILT[j] keeps naming the old table, which is not touched; the swap is one word and
+  the region it frees is not written for 160 blocks (a voice may fade out of it for DCLK's
+  longest time), then the build goes on.
 
 Prints the calls, the cycle model's cycles per pair and per table.
 """
@@ -92,6 +94,16 @@ def directory(st, entries, generation: int, magic: bool = True) -> None:
     poke_bytes(st, dsp.POOL_DIR + 4, struct.pack("<II", dsp.POOL_SLOTS, generation))
     poke_bytes(st, dsp.POOL_GEOMETRY, struct.pack(f"<{dsp.POOL_SLOTS}I", *words))
     m5.m2.poke(st, dsp.POOL_DIR, dsp.POOL_MAGIC if magic else 0)
+
+
+def advance_blocks(st, n: int) -> None:
+    """The block counter (block_count.asm) moves on: no render block runs in this check."""
+    m5.m2.poke(st, dsp.BLOCKS_DM, ((m5.m2.word(st, dsp.BLOCKS_DM) or 0) + n) & 0xFFFFFFFF)
+
+
+def region_ok(ptr: int) -> bool:
+    a = ptr & ~1
+    return bool(ptr & 1) and dsp.LEVELS_AT <= a < dsp.LEVELS_REGIONS_END         and (a - dsp.LEVELS_AT) % dsp.LEVELS_SLOT == 0
 
 
 def built(st) -> list[int]:
@@ -169,6 +181,7 @@ def main(argv=None) -> int:
             j = (m5.m2.word(r.state, dsp.BUILD_STATE_DM + 4) or 0)
             if j >= dsp.POOL_SLOTS:
                 break
+            advance_blocks(r.state, dsp.SPARE_HOLD_BLOCKS + 10)
             r, changed, cycles = call(r, f"call {calls + 1}")
             calls += 1
             kept &= not changed
@@ -183,13 +196,16 @@ def main(argv=None) -> int:
               f"an entry under way reads 0: {'PASS' if zero_while else 'FAIL'}")
         ok &= kept and zero_while and calls < a.calls
         b = built(r.state)
+        regions = [x & ~1 for x in b if x]
+        distinct = len(regions) == len(set(regions))
+        print(f"  every named table in its own region of the 129: {'PASS' if distinct else 'FAIL'}")
+        ok &= distinct
         for j, g in enumerate(entries):
-            slot = dsp.LEVELS_AT + j * dsp.LEVELS_SLOT
             playable = g is not None and T3.playable(*g)
-            want_ptr = slot | 1 if playable else 0
+            slot = b[j] & ~1
             line = f"    entry {j} {('%d x %d' % g) if g else 'empty':>10s}: BUILT {b[j]:#010x}"
-            good = b[j] == want_ptr
-            if playable:
+            good = region_ok(b[j]) if playable else b[j] == 0
+            if playable and good:
                 want = model(tabs[j])
                 got = read_bytes(r.state, slot, len(want))
                 head_ok = got[:T3.HEADER_BYTES] == want[:T3.HEADER_BYTES]
@@ -215,19 +231,62 @@ def main(argv=None) -> int:
         b1 = b
         job.advance()
 
-        # 4. generation 2: everything again, entry 0 cleared while it is rebuilt
+        # 4. generation 2: everything again. Entry 0 keeps naming its old table while the new
+        # one is built into the spare; the swap is one word; the region it frees is not
+        # written for SPARE_HOLD_BLOCKS blocks, then the build goes on.
         job.update(step="generation 2")
+        playable = [j for j, g in enumerate(entries) if g and T3.playable(*g)]
+        j0 = playable[0]
+        old_ptr = b1[j0]
+        old_bytes = read_bytes(r.state, old_ptr & ~1, len(model(tabs[j0])))
         directory(r.state, entries, 2)
-        first = entries[0] and T3.playable(*entries[0]) and entries[0][0] > 2
+        advance_blocks(r.state, dsp.SPARE_HOLD_BLOCKS + 10)
         r, changed, _ = call(r, "generation 2, first call")
-        cleared = (built(r.state)[0] == 0) if first else True
-        n = 1
-        while (m5.m2.word(r.state, dsp.BUILD_STATE_DM + 4) or 0) < dsp.POOL_SLOTS and n < a.calls:
+        named = built(r.state)[j0] == old_ptr            # still the old table, mid-build
+        n, swapped_at = 1, None
+        while n < a.calls:
+            if built(r.state)[j0] != old_ptr:
+                swapped_at = n
+                break
             r, changed, _ = call(r, f"generation 2, call {n + 1}")
             n += 1
-        again = built(r.state) == b1 and cleared
-        print(f"  generation 2: {n} calls; entry 0 read 0 while rebuilt, then all as before: {'PASS' if again else 'FAIL'}")
-        ok &= again
+        swapped = swapped_at is not None and region_ok(built(r.state)[j0])             and built(r.state)[j0] != old_ptr
+        intact = read_bytes(r.state, old_ptr & ~1, len(old_bytes)) == old_bytes
+        # the next playable entry must wait: time has not passed since the swap
+        later = [j for j in playable if j > j0]
+        held = True
+        if later:
+            for _ in range(4):
+                r, changed, _ = call(r, "held")
+            j_now = m5.m2.word(r.state, dsp.BUILD_STATE_DM + 4) or 0
+            f_now = m5.m2.word(r.state, dsp.BUILD_STATE_DM + 8) or 0
+            held = j_now == later[0] and f_now == 0 and                 read_bytes(r.state, old_ptr & ~1, len(old_bytes)) == old_bytes
+        print(f"  generation 2: entry {j0} named its old table until the swap ({'PASS' if named else 'FAIL'}), "
+              f"swapped to another region after {swapped_at} calls ({'PASS' if swapped else 'FAIL'}); "
+              f"the region it freed untouched ({'PASS' if intact else 'FAIL'}); "
+              f"the next entry waits for the hold-off ({'PASS' if held else 'FAIL'})")
+        ok &= named and swapped and intact and held
+        # time passes: the build goes on, and finishes with every table right
+        while (m5.m2.word(r.state, dsp.BUILD_STATE_DM + 4) or 0) < dsp.POOL_SLOTS and n < a.calls:
+            advance_blocks(r.state, dsp.SPARE_HOLD_BLOCKS + 10)
+            r, changed, _ = call(r, f"generation 2, call {n + 1}")
+            n += 1
+        b2 = built(r.state)
+        regions2 = [x & ~1 for x in b2 if x]
+        right = len(regions2) == len(set(regions2)) and n < a.calls
+        for j, g in enumerate(entries):
+            if j in playable:
+                want = model(tabs[j])
+                got = read_bytes(r.state, b2[j] & ~1, len(want))
+                gw = np.frombuffer(got[T3.HEADER_BYTES:], "<i2").astype(int)
+                ww = np.frombuffer(want[T3.HEADER_BYTES:], "<i2").astype(int)
+                right &= region_ok(b2[j]) and got[:T3.HEADER_BYTES] == want[:T3.HEADER_BYTES]                     and int(np.max(np.abs(gw - ww))) <= 1
+            else:
+                right &= b2[j] == 0
+        moved = b2[j0] != old_ptr
+        print(f"  generation 2: {n} calls; every table right in its own region, entry {j0} moved: "
+              f"{'PASS' if right and moved else 'FAIL'}")
+        ok &= right and moved
         job.advance()
     print("  PASS" if ok else "  FAIL")
     return 0 if ok else 1

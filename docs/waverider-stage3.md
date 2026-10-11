@@ -150,9 +150,27 @@ real compromise (the owner); points only matter for low notes.
      then the directory body (count, generation, each entry's `frames | points << 16`),
      its magic `'WRP3'` last. The DSP builds nothing while the magic is clear, starts
      again at entry 0 on a new generation, and names an entry for `pool.asm` (its L1
-     directory `BUILT[j]`, `0x2e4100`) only once every pair of frames is done: an entry
-     being rebuilt plays Prim., never half a table. A refill no longer leaves a voice on a
-     table being rewritten.
+     directory `BUILT[j]`, `0x2e4100`) only once every pair of frames is done.
+   - **A reload builds into a spare region and swaps** (2026-10-12). Until then a voice
+     kept playing Prim. while an entry was rebuilt (`BUILT[j]` was 0), and DCLK, the
+     crossfade at a jump, faded out of the old table, which is the entry's own levels, as
+     build3 rewrote them: a half-scale step in the changed-table reload (bisected to
+     `0x8490a49d..0x8490a6a0` of entry 0's levels; the trace shows `dclk.asm`'s second
+     reader call, pointer `0x84900001`; with DCLK off the step is gone). Now there are 129
+     regions of `0x201000` bytes from `0x84900000`; `REGION[j]` (DDR `0x84860000`) is the
+     one entry j holds and the spare is the one left (`0x2e4390`). build3 builds into the
+     spare, publishes with one word (`BUILT[j]` = it | 1) and the region j gave up
+     becomes the spare, not written for 160 blocks (DCLK's longest fade is 150). The old
+     table plays on until the swap and DCLK crossfades old to new with both intact. An
+     entry with no table, or a geometry outside the limits, is 0 as before. Cost: 2 MB
+     of DDR (`0x94980000..0x94b81000`), 2 words of L1 and a few dozen instructions; the
+     cycles per pair are unchanged (16 x 512: 3.36 M in 8 calls, 2 x 4096: 6.34 M in one).
+     Checked: `sharc_build3_check.py` (the old table named until the swap, the freed
+     region untouched, the next entry waits, then every table right) and the pool gate
+     13/13. The reload harness (`sharc_waverider_reload.py`, a held sine A replaced by its
+     3rd harmonic, DCLK at the default, 32-sample blocks): second difference as a fraction
+     of the sine's amplitude, steps of 0.50 and 0.38 at blocks 41 and 42 before, 0.002
+     after (the steady sine's own is 0.0013).
    - **One idle call, one pair of frames.** fft3, spec3 and mipb3 moved to free L1 above the
      reader (`0x2e3800..0x2e4b00`, their jumps PC-relative); build3 at `0x2e4b00`. The idle
      loop's back edge goes to build3, which goes on to idle_load.asm; a call that builds

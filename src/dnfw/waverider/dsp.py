@@ -142,6 +142,14 @@ BUILD_STRIDE = 0x8000
 LEVELS_AT = 0x84900000                       # entry j's levels (table3's layout) at LEVELS_AT + j x LEVELS_SLOT
 LEVELS_SLOT = 0x201000                       # >= table3.size_bytes(64, 4096)
 LEVELS_END = LEVELS_AT + POOL_SLOTS * LEVELS_SLOT
+# A reload builds into a spare region and swaps (build3.asm): 129 regions, entry j holds one
+LEVELS_REGIONS = POOL_SLOTS + 1
+LEVELS_REGIONS_END = LEVELS_AT + LEVELS_REGIONS * LEVELS_SLOT    # 0x94b81000, inside the free DDR
+REGION_TABLE = 0x84860000                    # REGION[j] (128 words): the region entry j holds
+SPARE_DM = 0x2E4390                          # the free region (0: the region table is not set up yet)
+SPARE_STAMP_DM = 0x2E4394                    # BLOCKS_DM at the swap that freed it
+BLOCKS_DM = 0x2DE118                         # block_count.asm: blocks, cumulative
+SPARE_HOLD_BLOCKS = 160                      # DCLK's longest fade is 4800 samples = 150 blocks of 32
 DDR_END = 0xA0000000
 # Boot-stream data for build3, in DDR_REGION
 TEMPLATES_AT = 0x80700000                    # table3.templates(), 1 KB per N = 64 .. 4096

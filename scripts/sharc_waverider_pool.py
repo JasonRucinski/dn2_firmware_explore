@@ -191,10 +191,14 @@ def main(argv=None) -> int:
 
         built, calls = build(loaded)
         report["build_calls"] = calls
-        levels_at = [dsp.LEVELS_AT + j * dsp.LEVELS_SLOT for j in range(dsp.POOL_SLOTS)]
         names = [lc.word_at(built, dsp.BUILT_DM + 4 * j) for j in range(dsp.POOL_SLOTS)]
-        checks["build3 names each entry with a table, and no other"] = names == [
-            levels_at[j] | 1 if j in geometry else 0 for j in range(dsp.POOL_SLOTS)]
+        levels_at = [(n or 0) & ~1 for n in names]          # an entry's region is the one it names
+        in_regions = lambda a: (dsp.LEVELS_AT <= a < dsp.LEVELS_REGIONS_END      # noqa: E731
+                                and (a - dsp.LEVELS_AT) % dsp.LEVELS_SLOT == 0)
+        checks["build3 names each entry with a table in a region of its own, and no other"] = (
+            all((names[j] & 1 and in_regions(levels_at[j])) if j in geometry else names[j] == 0
+                for j in range(dsp.POOL_SLOTS))
+            and len({levels_at[j] for j in geometry}) == len(geometry))
         got = {j: T3.Table3.from_dsp(ddr(built, levels_at[j], T3.size_bytes(*geometry[j]))) for j in stored}
         worst = 0
         for j, tab in stored.items():
@@ -230,7 +234,7 @@ def main(argv=None) -> int:
         full, sent4 = send_loads(built, tail)
         full, _ = build(full)
         top = g.run_blocks(full, frames((2 + last) * SLOT), a.blocks)
-        at_last = dsp.LEVELS_AT + last * dsp.LEVELS_SLOT
+        at_last = (lc.word_at(full, dsp.BUILT_DM + 4 * last) or 0) & ~1
         checks[f"the 128th entry: slot {2 + last} (TBL1 {(2 + last) * SLOT:#06x}) plays its levels"] = (
             all(s.get("acked") for s in sent4) and LF.pool_address(last) + dsp.POOL_RAW_BYTES == dsp.LOAD_AREA[1]
             and pointer(top) == at_last | 1)

@@ -11,11 +11,16 @@
 //   0x80800000 + j x 512 KiB  entry j's table
 //
 // A new generation starts again at entry 0. Entry by entry this builds the table's levels
-// at LEVELS + j x 0x201000 in dnfw.waverider.table3's layout (the header from the
-// template for its N, then every level's guarded int16 rows) and only then names it in
-// the directory pool.asm reads (BUILT[j] = its address | 1): while an entry is rebuilt it
-// is 0, so a voice plays Prim. there and never a half-built table. A geometry outside 1..64
-// frames of 64..4096 points (a power of two) stays 0. While the magic is not 'WRP3' (the
+// in dnfw.waverider.table3's layout (the header from the template for its N, then every
+// level's guarded int16 rows) into a spare region and only then names it in the directory
+// pool.asm reads (BUILT[j] = its address | 1). The region it replaces becomes the spare:
+// while an entry is rebuilt BUILT[j] still names the old table, so a voice keeps playing
+// it, never Prim. and never a half-built table; the switch is one word, which DCLK
+// crossfades (a voice fades out of the old table for up to 150 blocks: the spare is not
+// written for 160 blocks after a swap). There are 129 regions of 0x201000 bytes from
+// 0x84900000: REGION[j] (DDR, 0x84860000) is the one entry j holds, the spare the one left.
+// An entry with no table or a geometry outside 1..64
+// frames of 64..4096 points (a power of two) is 0. While the magic is not 'WRP3' (the
 // ColdFire clears it before a fill rewrites the tables) nothing is built.
 //
 // One call does one pair of frames (two frames through one complex FFT, as
@@ -41,6 +46,9 @@
 //     f's table row)  +0x28 S (log2 N + 1)  +0x2c the level  +0x30 row a  +0x34 row b
 //     +0x38 pairs built  +0x3c tables built  +0x40 L  +0x44 log2 L  +0x48 H
 //   0x2e4350  ROWS[0 .. 15]: each level's row for frame F
+//   0x2e4390  SPARE: the free region's address (0: the region table is not set up)
+//   0x2e4394  the block count (0x2de118) at the last swap that freed a region a voice
+//     may fade out of
 //   0x2e43a0  save: R0-R15, I0-I6 (+0x40), I8-I14 (+0x5c), M0-M4 (+0x78), M8-M12 (+0x8c)
 // DDR: the templates at 0x80700000 (1 KB per N, by log2 N - 6: the header with F = 1, a
 // record's word 0 the bytes a frame takes before its level, then a build row per level
@@ -187,14 +195,26 @@ wr_build3_out.:
 // first pair now; R0 = 0: none there (J moves on, F stays 0).
 .GLOBAL wr_build3_start.;
 wr_build3_start.:
+      R0 = DM(0x2e4390);
+      R0 = PASS R0;
+      IF NE JUMP wr_build3_ready.;
+      // the region table, once: REGION[j] = entry j's levels, the spare the one after them
+      R1 = 0x84860000;
+      I0 = R1;
+      M0 = 1;
+      R1 = 0x84900000;
+      R2 = 0x201000;
+      LCNTR = 128, DO wr_build3_ireg. UNTIL LCE;
+      DM(I0, M0) = R1;
+.GLOBAL wr_build3_ireg.;
+wr_build3_ireg.:
+      R1 = R2 + R1;
+      DM(0x2e4390) = R1;                // SPARE: LEVELS + 128 x 0x201000
+.GLOBAL wr_build3_ready.;
+wr_build3_ready.:
       R8 = 1;
       R2 = DM(0x2e4304);                // J
       R3 = LSHIFT R2 BY 2;
-      R4 = 0x2e4100;
-      R4 = R3 + R4;
-      I0 = R4;
-      R0 = R0 - R0;
-      DM(0, I0) = R0;                   // BUILT[J] = 0 while it is rebuilt
       R1 = DM(0x807ff004);              // the directory's count
       COMP(R2, R1);
       IF GE JUMP wr_build3_skip.;
@@ -219,6 +239,16 @@ wr_build3_start.:
       R7 = R6 - R8;
       R7 = R6 AND R7;
       IF NE JUMP wr_build3_skip.;       // not a power of two
+      R1 = DM(0x2e4394);                // blocks at the swap that freed the spare (0: none)
+      R1 = PASS R1;
+      IF EQ JUMP wr_build3_go.;
+      R0 = DM(0x2de118);                // blocks now
+      R0 = R0 - R1;
+      R1 = 160;                         // DCLK's longest fade: 4800 samples = 150 blocks
+      COMP(R0, R1);
+      IF LT JUMP wr_build3_wait.;       // a voice may still fade out of the spare
+.GLOBAL wr_build3_go.;
+wr_build3_go.:
       R7 = LEFTZ R6;
       R9 = 31;
       R7 = R9 - R7;                     // log2 N
@@ -233,11 +263,7 @@ wr_build3_start.:
       R9 = 0x80700000;
       R10 = R9 + R10;                   // its template
       DM(0x2e431c) = R10;
-      R11 = LSHIFT R2 BY 21;
-      R12 = LSHIFT R2 BY 12;
-      R11 = R11 + R12;
-      R12 = 0x84900000;
-      R11 = R11 + R12;                  // its levels: LEVELS + J x 0x201000
+      R11 = DM(0x2e4390);               // its levels: the spare region (the old table plays on)
       DM(0x2e4320) = R11;
       R12 = LSHIFT R2 BY 19;
       R13 = 0x80800000;
@@ -293,9 +319,18 @@ wr_build3_rec.:
 .GLOBAL wr_build3_skip.;
 wr_build3_skip.:
       R2 = DM(0x2e4304);
+      R3 = LSHIFT R2 BY 2;
+      R4 = 0x2e4100;
+      R4 = R3 + R4;
+      I0 = R4;
+      R0 = R0 - R0;
+      DM(0, I0) = R0;                   // no table for J now: BUILT[J] = 0
       R2 = R8 + R2;
       DM(0x2e4304) = R2;                // the next entry
-      R0 = R0 - R0;
+      RTS;
+.GLOBAL wr_build3_wait.;
+wr_build3_wait.:
+      R0 = R0 - R0;                     // not yet: J stays, the next call asks again
       RTS;
 
 // -- frames F and F + 1 of entry J: every level's rows
@@ -464,8 +499,21 @@ wr_build3_levels_done.:
       R3 = LSHIFT R2 BY 2;
       R4 = 0x2e4100;
       R4 = R3 + R4;
-      I0 = R4;
-      R0 = DM(0x2e4320);
+      I0 = R4;                          // &BUILT[J]
+      R5 = 0x84860000;
+      R5 = R3 + R5;
+      I1 = R5;                          // &REGION[J]
+      R6 = DM(0, I1);                   // the region J held
+      R0 = DM(0x2e4320);                // the region just built
+      DM(0, I1) = R0;
+      DM(0x2e4390) = R6;                // the spare: what J gave up
+      R7 = DM(0, I0);                   // BUILT[J] before: 0 if no table was playing
+      R7 = PASS R7;
+      IF EQ JUMP wr_build3_nofade.;
+      R7 = DM(0x2de118);
+      DM(0x2e4394) = R7;                // voices may fade out of R6 for DCLK's longest time
+.GLOBAL wr_build3_nofade.;
+wr_build3_nofade.:
       R0 = R8 OR R0;
       DM(0, I0) = R0;                   // BUILT[J] = its levels | 1
       R2 = R8 + R2;
