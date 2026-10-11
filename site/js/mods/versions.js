@@ -5,7 +5,7 @@ export const VERSIONS = {
   bootscreen: "1.0.0",
   fxmod: "1.0.0",
   layermidi: "1.0.0",
-  lfo4: "1.0.0",
+  lfo4: "1.0.1",
   lfolength: "1.0.0",
   lfowaves: "1.0.0",
   midiarp: "1.0.0",
