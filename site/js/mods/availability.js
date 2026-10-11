@@ -7,15 +7,7 @@
  * Delete the entry to put the mod back.
  */
 
-export const UNAVAILABLE = {
-  lfo4: {
-    since: "2026-10-10",
-    title: "LFO4 is unavailable for now",
-    reason: "We are looking into a report of song data being damaged in projects used with LFO4. "
-      + "The download is off until that is resolved. If you have LFO4 installed, back up your "
-      + "projects and work in copies.",
-  },
-};
+export const UNAVAILABLE = {};
 
 /** The entry for `id`, or null when the mod is on offer. */
 export function flagFor(id, table = UNAVAILABLE) {

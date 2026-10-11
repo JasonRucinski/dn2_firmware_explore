@@ -61,7 +61,11 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "bootscreen": PUBLISHED,
     "fxmod": PUBLISHED,
     "layermidi": PUBLISHED,
-    "lfo4": _first("1.0.0", "Unavailable for now: song data can be damaged in projects used with it."),
+    "lfo4": (
+        Release("1.0.1", "2026-10-11", (
+            "Projects you save or load with LFO4 no longer have LFO data written into them.",
+        )),
+    ) + _first("1.0.0", "Unavailable for now: song data can be damaged in projects used with it."),
     "lfolength": PUBLISHED,
     "lfowaves": PUBLISHED,
     "midiarp": PUBLISHED,
