@@ -1,6 +1,6 @@
 """A mod withdrawn from the site (`site/js/mods/availability.js`): its page shows the
 notice and builds nothing, the mod list marks it, other mods are untouched, and
-removing the entry puts it back. `scripts/js_unavailable_check.mjs` runs it under node."""
+the shipped table is empty, so every mod is on offer. `scripts/js_unavailable_check.mjs` runs it under node."""
 
 import pathlib
 import shutil

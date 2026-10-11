@@ -1,6 +1,7 @@
-// A withdrawn mod (site/js/mods/availability.js) under node: LFO4 is not read or built and
-// its page shows the notice where the file chooser was; a mod that is not withdrawn builds
-// as before; with the entry removed LFO4 is on offer again. Run by test/test_js_unavailable.py.
+// A withdrawn mod (site/js/mods/availability.js) under node, using a fixture entry for LFO4
+// (the shipped table is empty): it is not read or built and its page shows the notice where
+// the file chooser was; a mod that is not withdrawn builds as before; the shipped table
+// withdraws nothing. Run by test/test_js_unavailable.py.
 import { flagFor } from "../site/js/mods/availability.js";
 import { markCard, withdrawPage } from "../site/js/app/unavailable.js";
 
@@ -33,9 +34,10 @@ const { buildAndOffer, openFirmware } = await import("../site/js/app/shell.js");
 const text = (el) => el.textContent + el.children.map((c) => text(c)).join("");
 const ok = (name, pass) => { console.log(`${pass ? "OK  " : "FAIL"} ${name}`); if (!pass) process.exitCode = 1; };
 
-const flag = flagFor("lfo4");
-ok("LFO4 carries an entry with the date it was withdrawn", flag?.since === "2026-10-10");
-ok("the notice has the agreed title and body", flag.title === TITLE && flag.reason === BODY);
+const FIXTURE = { lfo4: { since: "2026-10-10", title: TITLE, reason: BODY } };
+const flag = flagFor("lfo4", FIXTURE);
+ok("a table entry is returned with the date it was withdrawn", flag?.since === "2026-10-10");
+ok("the notice has the title and body the entry gives", flag.title === TITLE && flag.reason === BODY);
 
 // (a) cannot be selected or downloaded
 let read = 0;
@@ -67,5 +69,5 @@ await buildAndOffer({}, new Map(), { filename: "dn2.syx", suffix: "x", into, but
 ok("a build for a mod that is on offer goes ahead (a stub image fails its own checks)",
    into.children.length > 0);
 
-// (d) removing the entry restores LFO4
-ok("with the entry removed LFO4 is on offer", flagFor("lfo4", {}) === null);
+// (d) the shipped table withdraws nothing
+ok("LFO4 and FX modulation are on offer", flagFor("lfo4") === null && flagFor("fxmod") === null);
