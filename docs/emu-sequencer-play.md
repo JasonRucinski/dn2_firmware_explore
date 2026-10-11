@@ -37,9 +37,35 @@ sixteenth), the voice number going up by one each note. Step period 16.50 M inst
 = 120.0 BPM at 132 MHz, worst gap off by 0.00%. The unit's panel PLAY moved the step word about
 8 times a second on the same clock (`emulator-sequencer-not-ticking` in memory).
 
+## Tracks and notes
+
+- `--track N:STEPS` adds a track: TRK (16) held, trig key N, then RECORD and the trig keys.
+  Trigs on tracks 1 and 2 at 1, 9 and 1, 5: the shared step 1 is one frame with voices
+  `[0, 1]`, the others one voice each; spacing keeps to the union of the steps.
+- The note is the u16 at byte `2 + 2 * voice` of the frame, `note << 8 | fine`
+  (`dnfw.waverider.frame.NOTE`). It is written in the note-on's frame and stays after it, so
+  the decoder reads it at the note-on. Every trig of a fresh pattern reads 60.0 (C4).
+- **Not yet: a trig's note cannot be changed from the panel in the emulator.** Measured
+  (2026-10-11), cause not found:
+  - Holding a trig key plays a preview note, which is an extra note-on in the frames. With
+    the preview counted out the pattern's spacing is unchanged: trigs on 1, 5, 9, 13 stay 4.0
+    steps apart whether or not a trig key was held first.
+  - With no key held, a plain turn changes only the readout in the top rows (0 to 9) of the
+    screen; push-and-turn changes nothing on the screen at all; with a trig key held, nothing
+    changes whether the turn is plain or pushed. The body of the page never moves, and every
+    trig still plays 60.0.
+  So the encoder edit is not reaching a value in this setup. Why is open (the push code, the
+  turn packet and the page are the candidates; none is tested). Different notes need the
+  pattern's trig data written directly.
+
+## Mod regression sweep
+
+`scripts/emu_seqplay_sweep.py BUILD.syx ...` plays the same two-track pattern on stock and on
+each build and compares what reached the DSP event by event (time since the first note-on,
+kind, voices, notes). A mod that leaves the sequencer alone must match to the instruction.
+
 ## Limits
 
 - Boot from reset each run (about 35 s); a state saved without `--ssi-hz` is refused.
-- The decoder reads voice masks, not notes. Which note or machine a voice got is in the rest of
-  the frame.
-- Track 1 only so far; trigs on other tracks use the same keys after TRK (16).
+- The decoder reads voice masks and notes, not which track a voice belongs to (the allocator
+  hands each note the next voice).
