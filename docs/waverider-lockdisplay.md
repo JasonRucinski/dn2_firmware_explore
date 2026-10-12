@@ -21,6 +21,11 @@ drawn, if the getter's flag is set the cell's box is inverted with the firmware'
 top on the upper row and from the label to the bar on the lower row. The three drawing paths
 (TBL's counter, TUNE and DETN's semitones, every other control) all do it.
 
+## Confirmed on the instrument
+
+2026-10-12, `waverider-lockdisp1-usbprobe`, owner: the locks are shown inverted while the trig is
+held. The getter's flag fires for a real lock, which the emulator could not show.
+
 ## How it is tested
 
 The emulator cannot make a lock (`Lock mem FULL!` on the grid record), so the lock itself is

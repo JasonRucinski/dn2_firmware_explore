@@ -88,14 +88,12 @@ features that come next and **do not change the sound yet**. You can set and p-l
 ## P-locks, LFOs and saving
 
 - **P-locks:** every control on pages 1 to 5 can be p-locked, and the locks stay through a
-  reboot and through SAVE and reload.
+  reboot and through SAVE and reload. A locked value is shown inverted while you hold its trig.
 - **LFO destinations:** every control except Shape's TYPE, AMT and P1 appears in the LFO's
   DEST list, in two groups both headed SYN.
 
 ## Known limits in this alpha
 
-- A p-locked value does not show inverted while its trig is held, as it does on the stock
-  machines. The lock plays correctly.
 - Page 5 is inert.
 - A sound made before page 5 existed shows FOLD, WARP, FM and NPOS at 64.
 - The wavetable page in DNX may call a 64x2048 table unplayable. It plays.
