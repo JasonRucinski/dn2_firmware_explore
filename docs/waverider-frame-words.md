@@ -43,7 +43,7 @@ buffers).
 | word written | machine on track 1 | track buffers | reply | memory words that differ |
 |---|---|---|---|---|
 | 0xa54..0xa57 (3 patterns) | WaveTone | identical | identical | **0** |
-| 0xa54..0xa57 | FM Tone | identical | identical | **0** |
+| 0xa54..0xa57 | machine type 0 | identical | identical | **0** |
 | 0xa54..0xa57 | machine type 3 | identical | identical | **0** |
 | 0x74..0x77, the track levels (control) | WaveTone | identical | identical | **11** |
 
