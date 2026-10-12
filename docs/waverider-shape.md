@@ -64,3 +64,18 @@ to 61 the ids 208 to 211 and 62 to 64 the ids 235 to 237 (read in the emulator, 
   (the pages assembly is 3,484 B).
 - `csrc/waverider/page.c`: `SHAPE_PAGE` draws the scope.
 - Generated: `src/dnfw/mods/waverider_code.json` (`scripts/gen_waverider_code.py`).
+
+## LFO destinations (measured 2026-10-12, emulator, the LFO's DEST list on a Waverider track)
+
+The list opens with a tap on DEST and shows two groups both headed SYN: first FM Tone's
+records (Wave Fold, Phase Warp, FM Depth, Noise to Pos, Sub Level, Sub Octave, Sub Wave, Sub
+Source, Noise Level, Noise Type, Noise Colour, Noise Decay), then WaveTone's (Osc1 Tune, Osc1
+Position, ... Osc2 M.Sync, Shaper P2, Level Trim). The order inside a group is the record id,
+not the page.
+
+**Shaper Type, Shaper Amount and Shaper P1 (records 235, 236, 237) are not in the list.**
+Records 235 to 237 hold zero in the 60-byte record's word at +36 (all of ours that do appear
+hold 0x1e00; FM Tone's 226, which is not a destination either, holds zero too). So TYPE, AMT
+and P1 cannot be LFO destinations as the records stand; P2 (261, MAST) and the four live knobs
+can. Whether they can be p-locked is what the instrument says (owner's test, 2026-10-12).
+Changing the field would change FM Tone's own parameters 235 to 237 as well, so it is not done.
