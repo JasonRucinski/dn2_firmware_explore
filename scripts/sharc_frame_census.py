@@ -31,6 +31,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 FRAME_COPY = 0x25C48C
 PAYLOAD = 0xA80                     # the frame's payload bytes (the copy is 672 32-bit words)
+FRAME_LEN = 0xABC                   # what the SPI carries each way: the payload and a 30-word tail
+# regions of the frame, as naturarum/dn2-cfw notes/T3.3 lays it out (byte offsets)
+HEADER_FLAGS = (0x22, 0x34)         # handler locals and settings words
+VOICE_SLOTS = (0xDA, 0x9FA)         # 16 per-voice slots of 0x92 bytes
+FX_BLOCK = (0x9FA, 0xA54)           # the global FX block
+OWNERS = (0xA5A, 0xA7A)             # owner track of each row
 COPY_LOOPS = {0x1C287D, 0x1C3030}   # the two unpack copy loops (naturarum T6.0 1.2)
 RANDOM_FROM = 0x34                  # words below carry the structural header
 ALIAS = 0x28000000                  # the memory layer's alias of DM (sharcldr.SW_ALIAS_BASE)
@@ -242,6 +248,89 @@ def run_flip(a) -> int:
     return 0
 
 
+def run_replay(a) -> int:
+    """Real frames: each file is a frame as the ColdFire holds it (big-endian 16-bit words,
+    2,688 bytes, tools/dn2probe_frame.py). Every file is replayed --blocks times in a row from
+    a fresh DSP state, with the same read watchpoints as `run`."""
+    import sharc_waverider_m5 as g
+    from dnfw import sharcemu
+    sys.path.insert(0, str(sharcemu.path()))
+    from tools import sharc_run as SR
+
+    dk = g.m1.Digikit(sharcemu.path())
+    g.fx.bind(str(sharcemu.path() / "tools"))
+    image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+    g.m4.IMAGE = image
+    stock = g.m1.dn2_section7(image)
+    stock_image = g.Image(dk, stock)
+    reads = collections.defaultdict(collections.Counter)
+    forms = {}
+    blocks_run = 0
+    files = sorted(pathlib.Path(x) for pat in a.frames for x in __import__("glob").glob(pat))
+    k, n = [int(x) for x in a.shard.split("/")]
+    files = files[k::n]
+    rng = random.Random(a.seed)
+    if a.limit and len(files) > a.limit:                         # an even spread
+        files = [files[i * len(files) // a.limit] for i in range(a.limit)]
+
+    def variants(raw):
+        """(label, bytes) for the frame as sent and its augmentations."""
+        out = [("as-sent", bytes(raw))]
+        for v in range(a.variants):
+            r = bytearray(raw)
+            if a.augment in ("fx", "both"):
+                for lo, hi in (HEADER_FLAGS, FX_BLOCK):
+                    for off in range(lo, hi, 2):
+                        r[off:off + 2] = rng.getrandbits(16).to_bytes(2, "little")
+                out.append((f"fx{v}", bytes(r)))
+            if a.augment in ("voices", "both"):
+                r = bytearray(raw)
+                for lo, hi in (VOICE_SLOTS, OWNERS):
+                    for off in range(lo, hi, 2):
+                        r[off:off + 2] = rng.getrandbits(16).to_bytes(2, "little")
+                r += bytes(rng.getrandbits(8) for _ in range(FRAME_LEN - len(r)))     # the tail
+                out.append((f"voices{v}", bytes(r)))
+        return out if a.augment != "none" or a.variants == 0 else out[:1]
+    watch_to = FRAME_LEN
+    with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
+        snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
+        for fpath in files:
+            be = fpath.read_bytes()
+            raw = bytearray(be)
+            raw[0::2], raw[1::2] = be[1::2], be[0::2]            # DSP memory order
+            for label, framebytes in variants(raw):
+                state = g.init_on(snap, m2mach, stock_image)
+                for b in range(a.blocks):
+                    r = g.m4.unpack_call(state, framebytes)
+                    idx = g.m2.word(r.state, g.m4.RX_INDEX) or 0
+                    rx = g.m4.RX_BASE + (idx << 8)
+                    r.attach_watchpoints([
+                        SR.Watchpoint(rx, rx + watch_to, on_read=True, on_write=False, stop=False, label="rx"),
+                        SR.Watchpoint(FRAME_COPY, FRAME_COPY + PAYLOAD, on_read=True, on_write=False,
+                                      stop=False, label="copy"),
+                    ])
+                    res = g.fx.run(r, 8_000_000, g.fixups({}))
+                    if not (res[0] == "halt" and res[1].pc_sw == g.m4.UNPACK_RETURN):
+                        print(f"{fpath.name} {label} block {b}: no clean return {res[:2]}", flush=True)
+                        break
+                    base = {"rx": rx, "copy": FRAME_COPY}
+                    for ev in r.watch_log:
+                        forms.setdefault(ev.pc_sw, (ev.form, ev.width))
+                        begin = ev.address - ALIAS if ev.address >= ALIAS else ev.address
+                        for byte in range(begin, begin + max(ev.width, 1)):
+                            reads[(ev.label, (byte - base[ev.label]) // 2)][ev.pc_sw] += 1
+                    blocks_run += 1
+                    state = r
+            print(f"{fpath.name}: {a.blocks} blocks x {len(variants(raw))} variants", flush=True)
+    out = {"machine": -1, "filters": [], "blocks": blocks_run, "seed": 0, "real": [f.name for f in files],
+           "forms": {str(pc): list(v) for pc, v in forms.items()},
+           "reads": {f"{lab}:{w}": dict(c) for (lab, w), c in reads.items()}}
+    pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+    pathlib.Path(a.out).write_text(json.dumps(out))
+    print(f"wrote {a.out}: {blocks_run} blocks from {len(files)} real frames", flush=True)
+    return 0
+
+
 def run_all(a) -> int:
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -252,13 +341,13 @@ def run_all(a) -> int:
     procs, running = [], []
     for k, (m, flt) in enumerate(jobs):
         cmd = [sys.executable, str(pathlib.Path(__file__)), "run", "--machine", str(m), "--filters", str(flt),
-               "--blocks", str(a.blocks), "--seed", str(a.seed + k), "--out", str(out / f"m{m}f{flt}.json")]
+               "--blocks", str(a.blocks), "--seed", str(a.seed + k), "--out", str(out / f"m{m}f{flt}_s{a.seed}.json")]
         while len(running) >= a.jobs:
             running = [p for p in running if p.poll() is None]
             if len(running) >= a.jobs:
                 import time
                 time.sleep(2)
-        log = open(out / f"m{m}f{flt}.log", "w")
+        log = open(out / f"m{m}f{flt}_s{a.seed}.log", "w")
         running.append(subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT))
         procs.append(running[-1])
     for p in procs:
@@ -278,7 +367,7 @@ def report(a) -> int:
             for pc, n in c.items():
                 merged[key][int(pc)] += n
     print(f"{blocks} blocks merged from {d}")
-    words = range(PAYLOAD // 2)
+    words = range(FRAME_LEN // 2)
     never, copy_only, consumed = [], [], []
     for w in words:
         pcs = set()
@@ -343,6 +432,17 @@ def main() -> int:
     df.add_argument("--blocks", type=int, default=4)
     df.add_argument("--seed", type=int, default=1)
     df.add_argument("--words", default="0x2a,0xa18", help="frame byte offsets to flip")
+    rpl = sub.add_parser("replay")
+    rpl.add_argument("--frames", nargs="+", required=True, help="glob(s) of big-endian frame files")
+    rpl.add_argument("--blocks", type=int, default=3)
+    rpl.add_argument("--augment", choices=("none", "fx", "voices", "both"), default="none",
+                     help="fx: randomise the global FX block and header flags; voices: random slots, "
+                          "owners and tail (naturarum T6.0 scenarios 2 and 3)")
+    rpl.add_argument("--variants", type=int, default=1, help="random variants per frame and kind")
+    rpl.add_argument("--shard", default="0/1", help="K/N: every Nth file from K")
+    rpl.add_argument("--limit", type=int, default=0, help="most frames used (an even spread)")
+    rpl.add_argument("--seed", type=int, default=1)
+    rpl.add_argument("--out", required=True)
     fl = sub.add_parser("flip")
     fl.add_argument("--machine", type=int, default=1)
     fl.add_argument("--filter", type=int, default=0)
@@ -354,7 +454,7 @@ def main() -> int:
     rp.add_argument("dir")
     rp.add_argument("--word", action="append", default=[])
     a = ap.parse_args()
-    return {"run": run_group, "all": run_all, "report": report, "diff": run_diff, "flip": run_flip}[a.cmd](a)
+    return {"run": run_group, "all": run_all, "report": report, "diff": run_diff, "flip": run_flip, "replay": run_replay}[a.cmd](a)
 
 
 if __name__ == "__main__":
