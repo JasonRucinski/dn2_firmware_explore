@@ -229,8 +229,8 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               # tempo, as the DSP's frame copy holds them
                               "sync": (frame_word(r.state, FR.slot_offset(t, SYNC1)),
                                        frame_word(r.state, FR.slot_offset(t, SYNC2))),
-                              "song": frame_word(r.state, live.SYNC_POSITION)
-                                      | frame_word(r.state, live.SYNC_POSITION + 2) << 16,
+                              "song": frame_word(r.state, live.SYNC_POSITION_LO)
+                                      | frame_word(r.state, live.SYNC_POSITION_HI) << 16,
                               "tempo": frame_word(r.state, live.SYNC_TEMPO),
                               "smth": (frame_word(r.state, FR.slot_offset(t, SMTH1)),
                                        frame_word(r.state, FR.slot_offset(t, SMTH2))),
@@ -669,8 +669,8 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
                 f.param(0, WAV1, jump)
             if song is not None:                # M10b-2: what the ColdFire's sync.c writes
                 p = song(b)
-                f.put(live.SYNC_POSITION, p & 0xFFFF)
-                f.put(live.SYNC_POSITION + 2, p >> 16)
+                f.put(live.SYNC_POSITION_LO, p & 0xFFFF)
+                f.put(live.SYNC_POSITION_HI, p >> 16)
                 f.put(live.SYNC_TEMPO, SYNC_TEMPO)
             return f.to_bytes()
         return fb
@@ -960,7 +960,7 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)
             and rb2["tune_both"][2] == rb["tune_both"][2] and abs(rb["tune_both"][2] / inc60 - 2.0) < 1e-6,
-        "the DSP's frame copy carries the tail's song position (2644) and the tempo (0xd8), "
+        "the DSP's frame copy carries the song position (words 0xa18 and 0x2a) and the tempo (0xd8), "
         "as the frames put them (M10b-2)":
             all(frame_carries(k) for k in ("sync_free", "sync_retrig", "sync_osc2", "sync_off")),
         "SYNC Free: osc 1's MOVE phase is the song position x 1152 (RATE 100, 1/32 T) mod 2^32 "

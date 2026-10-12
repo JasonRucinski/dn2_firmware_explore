@@ -72,7 +72,8 @@ def test_sync_c_has_the_model_s_constants():
     assert re.search(r"#define SIXTEENTH\s+2700000u", src)
     assert re.search(r"#define SYNC_LOOP\s+384u", src)
     assert re.search(rf"#define STOP_FRAMES\s+{songpos.STOP_FRAMES}\b", src)
-    assert re.search(rf"#define POSITION\s+{live.SYNC_POSITION}\b", src)
+    assert re.search(rf"#define POSITION_LO\s+{live.SYNC_POSITION_LO:#x}\b", src, re.I)
+    assert re.search(rf"#define POSITION_HI\s+{live.SYNC_POSITION_HI:#x}\b", src, re.I)
     assert "1024u / 42188u" in src and "170u * x + 2u * x / 3u" in src
 
 

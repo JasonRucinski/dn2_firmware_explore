@@ -12,8 +12,9 @@
 // k | s << 8: the length's multiplier is 1 << k for s = 0, else (1 + (1 << s)) << k,
 // dnfw.waverider.live.sync_table), and the step goes back to wr_mod_inc in R0:
 //
-//   TRIG Free:   the phase becomes the frame's song position (offset 2644, a u32 in
-//                which 2^32 is 384 sixteenths, written by the ColdFire's sync.c) times
+//   TRIG Free:   the phase becomes the frame's song position (a u32 in which 2^32 is 384
+//                sixteenths, written by the ColdFire's sync.c as the 16-bit words at
+//                frame offsets 0x2a (high) and 0xa18 (low)) times
 //                the multiplier, mod 2^32: the cycle starts on step 1. R0 is the step
 //                that takes the phase there.
 //   TRIG Retrig: the phase steps by tempo x multiplier x 2^32 / (384 x 2,700,000) a
@@ -73,10 +74,17 @@ wr_sync_low.:
       R0 = DM(0x2de7d0);
       R0 = LSHIFT R0 BY -8;
       R0 = PASS R0;
-      IF EQ JUMP 0x170065;              // -> wr_sync_retrig.
-      R1 = DM(0x25cee0);                // the position: frame offset 2644 (0x25c48c + 0xa54)
+      IF EQ JUMP 0x170073;              // -> wr_sync_retrig.
+      R1 = DM(0x25c4b4);                // frame offset 0x28 (0x25c48c + 0x28): word 0x2a is its high half
+      R12 = -0x10000;                   // 0xffff0000
+      R1 = R1 AND R12;                  // the position's high 16 bits
+      R2 = DM(0x25cea4);                // frame offset 0xa18 (0x25c48c + 0xa18): word 0xa18 is its low half
+      R12 = 0xffff;
+      R2 = R2 AND R12;
+      R12 = PASS R2;
+      R1 = R12 + R1;                    // the song position
       R7 = PASS R7;
-      IF EQ JUMP 0x17005e;              // -> wr_sync_shift.
+      IF EQ JUMP 0x17006c;              // -> wr_sync_shift.
       R2 = LSHIFT R1 BY R7;
       R12 = PASS R2;
       R1 = R12 + R1;                    // position x (1 + 2^s), mod 2^32
@@ -90,7 +98,7 @@ wr_sync_shift.:
 wr_sync_retrig.:
       R1 = 1;
       R7 = PASS R7;
-      IF EQ JUMP 0x170070;              // -> wr_sync_mult.
+      IF EQ JUMP 0x17007e;              // -> wr_sync_mult.
       R2 = LSHIFT R1 BY R7;
       R12 = PASS R2;
       R1 = R12 + R1;                    // 1 + 2^s

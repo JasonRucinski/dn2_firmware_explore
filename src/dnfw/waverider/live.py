@@ -148,7 +148,11 @@ SYNC_NOTES = (("4 bars D", 1, 2), ("4 bars", 3, 1), ("2 bars D", 1, 3), ("4 bars
               ("1/2 T", 9, 3), ("1/4", 3, 5), ("1/8 D", 1, 7), ("1/4 T", 9, 4),
               ("1/8", 3, 6), ("1/16 D", 1, 8), ("1/8 T", 9, 5), ("1/16", 3, 7),
               ("1/32 D", 1, 9), ("1/16 T", 9, 6), ("1/32", 3, 8), ("1/32 T", 9, 7))
-SYNC_POSITION = 2644               # frame bytes 2644..2647: the song position (sync.c)
+# The song position (sync.c) is a u32 split over two frame words that stock neither reads
+# nor depends on (docs/waverider-frame-words.md): the low half at 0xa18 (a copied parameter
+# the DSP never reads), the high half at 0x2a (a word nothing writes or reads).
+SYNC_POSITION_LO = 0xA18          # frame bytes 0xa18..0xa19
+SYNC_POSITION_HI = 0x2A           # frame bytes 0x2a..0x2b
 SYNC_TEMPO = 0xD8                  # frame bytes: BPM x 120
 # a block's phase step per unit of tempo x multiplier: 2^32 / (SYNC_LOOP x 2,700,000),
 # where a sixteenth is 2,700,000 / tempo blocks (1500 a second)

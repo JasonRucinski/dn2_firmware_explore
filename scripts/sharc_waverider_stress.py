@@ -59,8 +59,8 @@ def all_tracks(sound, machines, machine, per_track=None, song=False, jumping=Fal
                 f.param(t, g.WAV2, 0 if b % 2 else 0x7800)
         if song:
             p = (b * live.trunc(g.SYNC_TEMPO * live.SYNC_K)) & 0xFFFFFFFF
-            f.put(live.SYNC_POSITION, p & 0xFFFF)
-            f.put(live.SYNC_POSITION + 2, p >> 16)
+            f.put(live.SYNC_POSITION_LO, p & 0xFFFF)
+            f.put(live.SYNC_POSITION_HI, p >> 16)
             f.put(live.SYNC_TEMPO, g.SYNC_TEMPO)
         return f.to_bytes()
     return fb
