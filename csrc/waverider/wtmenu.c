@@ -46,19 +46,33 @@
 #define KEY_NO      12
 #define KEY_DOWN    14
 #define GAP         12                                   /* ticks without an LED call: closed */
+#define SHORT       120                                  /* ticks (1 s): a stall, not a reopen */
 #define ITEMS       3
 
-struct wr_wtmenu { u32 magic, page, cursor, opened, seen, drive_tables, in_pool, free; };
+/* resets: times the page went back to 1 for want of an LED call (while a page was showing);
+ * short: of those, the ones after under SHORT ticks, which a reopened menu does not make
+ * (a stall of the UI does); last_gap: the ticks of the latest. Read through the probe after
+ * the page popped out to see whether it was a stall (owner, 2026-10-12: FUNC+DOWN in a list). */
+struct wr_wtmenu { u32 magic, page, cursor, opened, seen, drive_tables, in_pool, free,
+                   resets, short_resets, last_gap; };
 volatile struct wr_wtmenu wr_wtmenu __attribute__((section(".data"))) =
-    { 0x57524d4eu, 0, 0, 0, 0, 0, 0, 0 };
+    { 0x57524d4eu, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 void wr_wt_led_hook(void);
 
 /* the menu was closed since the last frame: it opens on page 1 */
 static void freshen(void)
 {
-    if (TICKS - wr_wtmenu.seen > GAP)
+    u32 gap = TICKS - wr_wtmenu.seen;
+    if (gap > GAP) {
+        if (wr_wtmenu.page) {
+            wr_wtmenu.resets++;
+            wr_wtmenu.last_gap = gap;
+            if (gap < SHORT)
+                wr_wtmenu.short_resets++;
+        }
         wr_wtmenu.page = 0;
+    }
 }
 
 /* what the right column shows, read when page 2 opens and when a list closes: the
