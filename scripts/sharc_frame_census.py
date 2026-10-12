@@ -160,6 +160,88 @@ def run_diff(a) -> int:
     return 0
 
 
+def run_flip(a) -> int:
+    """A dependence map: flip each frame word of a realistic frame in turn (the instrument's
+    sound defaults, a note on at block 0) and compare all DSP memory outside the receive pages
+    with the unflipped run, after each of --blocks blocks. A word with no difference matters to
+    nothing in these blocks. Words are split across processes with --part K/N."""
+    import sharc_waverider_m5 as g
+    from dnfw import sharcemu
+    from dnfw.waverider import frame as FR
+
+    dk = g.m1.Digikit(sharcemu.path())
+    g.fx.bind(str(sharcemu.path() / "tools"))
+    image = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
+    g.m4.IMAGE = image
+    stock = g.m1.dn2_section7(image)
+    sound, machines = g.m4.init_sound(image)
+    stock_image = g.Image(dk, stock)
+    skip = [(FRAME_COPY, FRAME_COPY + PAYLOAD), (0x2C29D0, 0x2C29D0 + 0x1000), (0x2C39D0, 0x2C39D0 + 0x1000),
+            (0x2C0478, 0x2C0478 + 0x100 + 0xAC0)]
+    k, n = [int(x) for x in a.part.split("/")]
+    todo = [w for w in range(0, PAYLOAD, 2) if (w // 2) % n == k]
+    if a.only:
+        todo = [int(x, 0) for x in a.only.split(",")]
+
+    def snapshot(r):
+        mem = {}
+        for addr in range(0x200000, 0x300000, 4):
+            if any(lo <= addr < hi for lo, hi in skip):
+                continue
+            v = g.m2.word(r.state, addr)
+            if v is not None:
+                mem[addr] = v
+        return mem
+
+    out = {"machine": a.machine, "filter": a.filter, "blocks": a.blocks, "words": {}}
+    with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
+        snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
+
+        def frames(flip):
+            fs = []
+            for b in range(a.blocks):
+                f = g.base_frame(sound, machines, t0=a.machine, trigger=(b == 0))
+                raw = bytearray(f.to_bytes())
+                for t in range(FR.TRACKS):
+                    for arr, val in ((FR.MACHINE, a.machine), (FR.FILTER, a.filter)):
+                        o = FR.header_offset(arr, t)
+                        raw[o:o + 2] = int(val).to_bytes(2, "little")
+                if flip is not None:
+                    v = int.from_bytes(raw[flip:flip + 2], "little") ^ 0xFFFF
+                    raw[flip:flip + 2] = v.to_bytes(2, "little")
+                fs.append(bytes(raw))
+            return fs
+
+        def run(flip):
+            state = g.init_on(snap, m2mach, stock_image)
+            mems = []
+            for fr in frames(flip):
+                r = g.m4.unpack_call(state, fr)
+                res = g.fx.run(r, 8_000_000, g.fixups({}))
+                if not (res[0] == "halt" and res[1].pc_sw == g.m4.UNPACK_RETURN):
+                    return None
+                state = r
+                mems.append(snapshot(r))
+            return mems
+
+        base = run(None)
+        if base is None:
+            print("baseline did not run cleanly", flush=True)
+            return 1
+        for w in todo:
+            m = run(w)
+            if m is None:
+                out["words"][str(w)] = "halt"
+                print(f"word {w:#x}: halt", flush=True)
+                continue
+            d = [sum(1 for x in base[b] if base[b][x] != m[b].get(x)) for b in range(a.blocks)]
+            out["words"][str(w)] = d
+            print(f"word {w:#x}: {d}", flush=True)
+            pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+            pathlib.Path(a.out).write_text(json.dumps(out))
+    return 0
+
+
 def run_all(a) -> int:
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -261,11 +343,18 @@ def main() -> int:
     df.add_argument("--blocks", type=int, default=4)
     df.add_argument("--seed", type=int, default=1)
     df.add_argument("--words", default="0x2a,0xa18", help="frame byte offsets to flip")
+    fl = sub.add_parser("flip")
+    fl.add_argument("--machine", type=int, default=1)
+    fl.add_argument("--filter", type=int, default=0)
+    fl.add_argument("--blocks", type=int, default=2)
+    fl.add_argument("--part", default="0/1", help="K/N: words whose index mod N is K")
+    fl.add_argument("--only", default="", help="comma-separated byte offsets instead of all")
+    fl.add_argument("--out", required=True)
     rp = sub.add_parser("report")
     rp.add_argument("dir")
     rp.add_argument("--word", action="append", default=[])
     a = ap.parse_args()
-    return {"run": run_group, "all": run_all, "report": report, "diff": run_diff}[a.cmd](a)
+    return {"run": run_group, "all": run_all, "report": report, "diff": run_diff, "flip": run_flip}[a.cmd](a)
 
 
 if __name__ == "__main__":
