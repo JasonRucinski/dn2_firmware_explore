@@ -19,8 +19,9 @@
  * - **The position** is a u32 in which 2^32 is SYNC_LOOP sixteenths, 24 bars: the
  *   least common multiple of every SYNC length, the triplets and the dotted ones
  *   included, so each length's phase is the position times a whole number and stays
- *   continuous where the position wraps. It goes in frame bytes 2644..2647, unused
- *   in the tail (out/tail_sweep.json), the low half first, as the DSP reads a word.
+ *   continuous where the position wraps. It goes in frame bytes 2644..2647, the low half
+ *   first, as the DSP reads a word. Stock fills them (a local and a byte global) and the
+ *   block handler reads the word, but nothing depends on it: docs/waverider-frame-words.md.
  *
  * A chunk the loader sends in place of a frame carries no position: the DSP keeps the
  * last one for that block, so a synced MOVE stands still for 0.7 ms. */

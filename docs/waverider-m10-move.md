@@ -375,7 +375,8 @@ SYNC off it shows the stock number.
 ## How it works
 
 **The ColdFire** (`csrc/waverider/sync.c`, in the +Drive chunk; model `dnfw.waverider.songpos`)
-writes the song position into every frame, at frame bytes 2644..2647 (unused in the tail):
+writes the song position into every frame, at frame bytes 2644..2647 (stock fills them, and
+nothing depends on them: `docs/waverider-frame-words.md`):
 - **The steps:** track 1's current and next step (`docs/sequencer-playhead.md`). Both 0 for 8
   frames in a row is STOP, which resets the position to step 1 and holds it there. A torn read
   shows them equal for one frame at most.
