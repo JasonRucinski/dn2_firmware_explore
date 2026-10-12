@@ -183,6 +183,10 @@ _COUNT = re.compile(r"\b(\d+)\s*/\s*(\d+)\b")
 def run_command(name: str, argv: list[str], total: int | None = None) -> int:
     """Run ARGV as job NAME: its output passes through; the last line becomes the detail,
     and a 'k/n' in it (when TOTAL is not given) the progress."""
+    try:                                # a child's output may hold what the console's code page can't print
+        sys.stdout.reconfigure(errors="replace")
+    except (AttributeError, ValueError):
+        pass
     with Job(name, total=total, step=" ".join(argv)[:80]) as job:
         p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                              encoding="utf-8", errors="replace", bufsize=1)
