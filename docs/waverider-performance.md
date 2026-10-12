@@ -6,29 +6,31 @@ busy period of a frame as a share of a frame (a frame is 1/1500 s). Overruns cou
 longer than a whole frame. The test plan has every run's steps; the entry names are in the
 last column.
 
-## Against the factory machines
+## Waverider on its own (2026-10-12)
 
-The same 16-note chord on 16 voices, the same saved project, osc 2, sub and noise on for Waverider.
+The same project throughout (16 voices render every frame), one-second readings, osc 2 on, sub
+and noise as in the saved test project.
 
-| Machine | Load (median) | Longest stretch | Overruns | Entry |
+| State | Load (median) | Range | Longest stretch | Overruns |
 |---|---|---|---|---|
-| WaveTone | 58.0 % | 61.2 % | 0 | mip2h table, 2026-10-09 |
-| FM Tone | 62.9 % | 66.2 % | 0 | mip2h table, 2026-10-09 |
-| FM Tone, heavy patch | 63.1 % | 69.2 % (worst) | 0 | mip2h table, 2026-10-09 |
-| Waverider, Prim. (mip2h) | 64.6 % | | 0 | waverider-mip2h2-usbprobe |
-| Waverider, Prim. (stage 3) | 64.8 % | 68.0 % (max 68.3) | 0 | waverider-stage3d-usbprobe |
-| Waverider, 64x2048 table on both | 66.2 % | 69.5 % (max 69.9) | 0 | waverider-stage3d-usbprobe |
+| Nothing playing | 63.4 % | 63.3 to 63.5 | | |
+| 16-note chord, both oscillators on Prim. | 64.8 % | 64.7 to 64.9 | | |
+| 16-note chord, both oscillators on a 64x2048 pool table, 60 readings | 65.0 % | 64.9 to 65.1 | | |
+| The same, 10 minutes (600 readings) | 65.0 % | 64.9 to 65.2 | median 68.3 %, max 69.6 % | 0 in 600 s |
+| Default Waverider on track 1 and default WaveTone on track 2, alternating at 120 BPM (the alpha build) | 56.4 % | 56.3 to 56.5 | median 59.4 %, max 59.6 % | 0 in 60 s |
 
-With a table of 64 frames of 2048 points the worst stretch leaves about 30 % of a frame free.
+Playing adds about 1.4 points over an idle project, and a pool table costs 0.2 points over Prim.
+The 10-minute run is flat from the first two minutes to the last two.
 
-## Held over time
+## The factory machines, for comparison
 
-| Run | Result |
-|---|---|
-| 10 minutes, the chord looping on a 64x2048 table, both oscillators | 65.0 % median (64.9 to 65.2), flat across the run; 0 overruns in 600 s; longest stretch median 68.3 %, max 69.6 % |
-| Nothing playing, the same project | 63.4 % (63.3 to 63.5) |
+The 16-note chord on 16 voices, measured 2026-10-09 in an earlier project.
 
-The 16 voices render every frame whether a note plays or not, so playing adds under a point.
+| Machine | Load (median) | Longest stretch | Overruns |
+|---|---|---|---|
+| WaveTone | 58.0 % | 61.2 % | 0 |
+| FM Tone | 62.9 % | 66.2 % | 0 |
+| FM Tone, heavy patch | 63.1 % | 69.2 % (worst) | 0 |
 
 ## What costs what
 
@@ -42,9 +44,8 @@ Per voice and block, measured in the SHARC runner (`scripts/sharc_waverider_p3_c
 | Sub and noise together | +2,764 (about 6.6 % of a frame on 16 voices) |
 | FM Tone's whole voice, for comparison | +11,113 |
 
-A 64x2048 table cost about 1.4 points more than Prim. on 2026-10-10 with both oscillators on it.
-A later read of a table at pool position 4 cost 0.2 points; whether that table was playing is
-being checked.
+A table in the pool costs nothing per frame unless a voice plays it; what it costs is
+its memory and one build when the pool loads.
 
 ## Building a table
 
@@ -55,6 +56,7 @@ builds, its slot plays Prim.; on a reload the old table plays on and the new one
 ## What has not been measured yet
 
 - 4096-point tables on the instrument.
-- A soak of 10 minutes or more with Waverider on every voice and an FM Tone track beside it.
+- A soak with Waverider on every voice and an FM Tone track beside it.
+- The cost of the larger tables (4096 points) against Prim.
 - The reload click on the instrument (the runner shows a step of 0.002 of the sine's amplitude,
   from 0.5 before the spare region).
