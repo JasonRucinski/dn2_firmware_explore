@@ -77,7 +77,18 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
 # them did, once the page code before them grew. They are data by construction, so
 # every word place inside them is declared not to hold an address; the code around
 # them is still checked.
-NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2))
+#
+# Three more places in the code, each disassembled in the applied chunk (2026-10-11); the
+# places move whenever the code before them does, so a change to a chunk needs them
+# checked again:
+#  - two instructions read as one word: `notl %d3 ; andl %d3,%d2` (46 83 c4 83), and
+#    `notl %d0 ; tstw %d0` (46 80 4a 40);
+#  - `addil #0x469fe800,%d0` (06 80 46 9f e8 00): the pool's display spans at 0x46a00000
+#    less WR_TABLES (4) tables of 1,536 bytes. `WR_POOL_SPANS[tbl - WR_TABLES]` folds the
+#    subtraction into the base, so the value is an address, biased 0x1800 below the
+#    declared range and past the checker's 64-byte slack. Nothing is read at it.
+NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2)) + (
+    0x4670C8E2, 0x4670CBCE, 0x467F3180)
 
 
 def ram() -> list[Extent]:
