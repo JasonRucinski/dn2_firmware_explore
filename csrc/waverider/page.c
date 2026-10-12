@@ -40,6 +40,7 @@ typedef unsigned short u16;
 #define IS_DIRTY   ((int (*)(void *))0x4011D2F4u)               /* screen: a redraw due? */
 #define FONT       0x44507ED8u                                  /* the grid's label font */
 #define CENTRED    2                                            /* TEXT flag: x is the centre */
+#define FILL       ((void (*)(void *, int, int, int, int, int))0x40114954u)   /* (canvas, x0, y0, x1, y1, mode): -1 inverts */
 
 /* a parameter record: +8 min, +12 max, +16 default (TUN1: 0x400, 0x7c00, 0x4000) */
 #define RECORD(id) ((const int *)(0x401F7F94u + 60u * (id)))
@@ -246,6 +247,31 @@ static const int *limits(u32 id)
 #define BOT_BAR_Y   9
 #define BOT_LABEL_Y 1
 #define BAR_HALF    10
+
+/* A value that is p-locked on the trig being held: the value getter's flag says so (the stock
+ * grid hands the same flag to its cells as `locked`, and draws them held). The stock machines
+ * show such a value inverted; a cell here is its label and its bar, so that box is inverted
+ * once everything in it is drawn (docs/waverider-lockdisplay.md). */
+#ifdef WR_TEST_LOCKED
+static const u32 test_locked[] = { WR_TEST_LOCKED };      /* test builds: these ids read as locked */
+#endif
+static int is_locked(u32 id, u8 flag)
+{
+#ifdef WR_TEST_LOCKED
+    for (u32 k = 0; k < sizeof test_locked / sizeof test_locked[0]; k++)
+        if (test_locked[k] == id)
+            return 1;
+#else
+    (void)id;
+#endif
+    return flag != 0;
+}
+
+static void locked_cell(void *canvas, int cx, int top)
+{
+    FILL(canvas, cx - COLW / 2 + 1, top ? TOP_BAR_Y - 1 : BOT_LABEL_Y - 1,
+         cx + COLW / 2 - 1, top ? TOP_LABEL_Y + 7 : BOT_BAR_Y + 2, -1);   /* a pixel in from the cell's edges: two locked neighbours stay two boxes */
+}
 
 /* the wave, and the position bar under it */
 #define WAVE_X  24
@@ -1060,7 +1086,7 @@ void wr_page_draw(void *view, void *canvas)
             /* TBL is a counter: the table loaded, by its number, on the label row, and its
              * modulation on the bar row (the owner's option A, 2026-10-06). The built-ins by
              * name, a pool table by its shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
-            u8 flag;
+            u8 flag = 0;
             int set = GET_VALUE(view, id, &flag) & 0xFFFF, c = set >> 8;   /* the getter sign-extends: 0x8000 and up read negative */
             int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
             if (c < WR_TABLES)
@@ -1071,24 +1097,28 @@ void wr_page_draw(void *view, void *canvas)
             /* the modulation on the bar row, in line with the other controls' bars */
             modulation(canvas, cx, top ? TOP_BAR_Y : BOT_BAR_Y + 1, y, id, set, now);
 #endif
+            if (is_locked(id, flag))
+                locked_cell(canvas, cx, top);
             continue;
         }
         if (id == TUNE_ID || id == DETN_ID) {
             /* TUNE and DETN as semitones, one decimal, on the label row (option A): the value
              * is (semitones + 64) x 256. Their modulation band comes with the preview for
              * every control (queued) */
-            u8 flag;
+            u8 flag = 0;
             int tenths = ((GET_VALUE(view, id, &flag) - 0x4000) * 10 + (1 << 7)) >> 8;
             int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
             int m = tenths < 0 ? -tenths : tenths;
             TEXT(canvas, FONT, cx, y, CENTRED, "%s%d.%d", tenths < 0 ? "-" : tenths ? "+" : "",
                  m / 10, m % 10);
+            if (is_locked(id, flag))
+                locked_cell(canvas, cx, top);
             continue;
         }
         TEXT(canvas, FONT, cx, label_y, CENTRED, "%.5s", wr_labels[page][i]);
         if (!id)
             continue;
-        u8 flag;
+        u8 flag = 0;
         int set = GET_VALUE(view, id, &flag);
         indicator(canvas, cx, bar_y, id, set);
 #if WR_MARKERS
@@ -1100,6 +1130,8 @@ void wr_page_draw(void *view, void *canvas)
         tm += DTCN0 - m0;
 #endif
 #endif
+        if (is_locked(id, flag))
+            locked_cell(canvas, cx, top);
     }
 
     /* the stock grid's own tail: the level meter, then the page dots */

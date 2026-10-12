@@ -10,6 +10,7 @@ m68k GCC it drives; applying the mod reads the committed bytes.
 
 from __future__ import annotations
 
+import os
 import pathlib
 import tempfile
 
@@ -32,5 +33,9 @@ def compile_page(header: str, *, base: int) -> tuple[bytes, dict[str, int], int]
     """-> (image, symbols, bss) of page.c and its MODULES linked at BASE, with HEADER as wr_gen.h."""
     with tempfile.TemporaryDirectory(prefix="wr_gen_", dir=SOURCE.parent) as tmp:
         (pathlib.Path(tmp) / "wr_gen.h").write_bytes(header.encode())
-        linked = cbuild.build([SOURCE, *MODULES], base=base, entries=[ENTRY, POLL], include=[pathlib.Path(tmp)])
+        # test builds only: DNFW_WAVERIDER_CDEFS="NAME=VALUE;NAME=VALUE" becomes -D flags (page.c's
+        # WR_TEST_LOCKED draws the listed ids as p-locked, since the emulator's lock memory is full)
+        defs = dict(kv.split("=", 1) for kv in os.environ.get("DNFW_WAVERIDER_CDEFS", "").split(";") if kv)
+        linked = cbuild.build([SOURCE, *MODULES], base=base, entries=[ENTRY, POLL], include=[pathlib.Path(tmp)],
+                              defines=defs or None)
     return linked.image, linked.symbols, linked.bss
