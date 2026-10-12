@@ -60,12 +60,39 @@ would not have shown it; the memory diff is the measure.
 - What the two stock values mean. The local at `%fp@(-118)` and the byte at `0x42431aad` are
   not identified.
 
-## If it ever matters
+## Where the position lives now
 
-- **Read the stock values on the unit** (probe PEEK of `0x800068b4` and `0x42431aad` on a
-  stock build) to see whether they are ever non-zero.
-- **Move the position** to words the stock ColdFire never writes and the DSP never reads. The
-  1.12 notes name 0x2a and 0xa18 (16 bits each, so the position would be split in two) and
-  the 30-word tail 0xa80..0xabb (outside the DSP's frame copy, so the DSP would read the
-  receive buffer). Run `sharc_frame_word_check.py --offset N` on a candidate first. These are
-  the words naturarum's second FX page wants, so agree who takes which before using them.
+The position (a u32) is split over two words that no stock DSP code reads:
+
+| word | frame byte | stock ColdFire | stock DSP |
+|---|---|---|---|
+| low 16 bits | `0xa18` | copies a parameter there (FX setup k 40, the delay routing) | never reads it |
+| high 16 bits | `0x2a` | writes nothing | never reads it |
+
+`scripts/sharc_frame_word_readers.py` names every instruction that reads a frame word, once in
+the receive buffer and once in the DSP's frame copy (read watchpoints in the runner, stock
+section 7, WaveTone on track 1, two blocks). Control first:
+
+| frame bytes | readers found |
+|---|---|
+| `0xa54..0xa57` (control) | the two unpack copy loops, and sw `0x1c3084` (the known consumer) |
+| `0xa18..0xa19` | the two unpack copy loops only |
+| `0x2a..0x2b` | the two unpack copy loops only |
+
+Nothing reads either word from the frame copy. `sharc_frame_word_check.py` agrees for
+`0xa18` (0 differing memory words, 2-byte write). For `0x2a` its first run reported one word
+at `0x2c04a0`; that is the runner's own input page (`0x2c0478`, the frame it pokes), not a DSP
+result, and the script now skips it. A 4-byte write at 42 or 2584 also hits `0x2c` and `0xa1a`,
+which stock does use, so single words are checked with `--width 2`.
+
+The ColdFire writes the low half at `0xa18` after the builder has copied the FX block, and the
+high half at `0x2a`. The DSP reads them from its frame copy as two 16-bit halves
+(`csrc/waverider/sharc/sync.asm`).
+
+## Limits that remain
+
+- The same limits as above: default FX settings, one note, a few blocks, the emulator.
+- `0xa18` is a copied parameter. If a future OS version made the DSP read FX k 40, the position
+  would feed it. `0x2a` has no such history in 1.11 and 1.12.
+- The 30-word tail (`0xa80..0xabb`) is the other clean place, and the one the OS 1.12 notes
+  keep for a second FX page.

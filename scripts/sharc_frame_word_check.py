@@ -6,7 +6,7 @@ the handler's frame-word read sites ran, and it diffs every track buffer, the re
 DSP data memory (0x200000..0x300000, outside the frame copy and the two receive buffers)
 against the all-zero pattern. A word nothing depends on gives 0 differing memory words.
 
-    python scripts/sharc_frame_word_check.py [--offset 2644] [--machine 1] [--blocks 3]
+    python scripts/sharc_frame_word_check.py [--offset 2644] [--width 4] [--machine 1] [--blocks 3]
 
 The default offset is the Waverider song position (csrc/waverider/sync.c). Findings for it:
 docs/waverider-frame-words.md.
@@ -25,7 +25,9 @@ from dnfw import sharcemu  # noqa: E402
 
 FRAME_COPY = 0x25C48C
 FRAME_COPY_BYTES = 0xA80            # the 672-word copy the block handler makes of the frame
-RX_BUFFERS = ((0x2C29D0, 0x1000), (0x2C39D0, 0x1000))
+# the two receive buffers, and the runner's own input page (m4.RX_BASE = 0x2c0478, 0x100 apart,
+# where it pokes each frame: a word that differs there is the frame itself)
+RX_BUFFERS = ((0x2C29D0, 0x1000), (0x2C39D0, 0x1000), (0x2C0478, 0x100 + 0xAC0))
 # sites that read the receive buffer directly (naturarum/dn2-cfw notes/T6.0 section 1.2)
 SITES = {0x1C3084: "0xa54 (r2=dm(-0xa,i5))", 0x1C3052: "0xa7a", 0x1C3069: "0xa7c",
          0x1C309C: "0xa7e", 0x1C2CD6: "0x22"}
@@ -34,7 +36,9 @@ PATTERNS = {"zero": bytes(4), "pattern": bytes.fromhex("11223344"), "ones": byte
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--offset", type=int, default=2644, help="frame byte offset (4 bytes are written)")
+    ap.add_argument("--offset", type=int, default=2644, help="frame byte offset")
+    ap.add_argument("--width", type=int, default=4, choices=(2, 4),
+                    help="bytes written: 2 for one 16-bit word (4 also overwrites the next word)")
     ap.add_argument("--machine", type=int, default=1, help="track 1's machine type (0 FM, 1 WaveTone, ...)")
     ap.add_argument("--blocks", type=int, default=3)
     a = ap.parse_args()
@@ -61,7 +65,7 @@ def main() -> int:
 
             def frames(b, pat=pat):
                 f = bytearray(g.base_frame(sound, machines, t0=a.machine, trigger=(b == 1)).to_bytes())
-                f[a.offset:a.offset + 4] = pat
+                f[a.offset:a.offset + a.width] = pat[:a.width]
                 return bytes(f)
 
             state = g.init_on(snap, m2mach, stock_image)
@@ -79,7 +83,7 @@ def main() -> int:
                   + " ".join(f"{SITES[s]}={h}" for s, h in hits.items()), flush=True)
 
     base = results["zero"]
-    print(f"compared with the zero pattern (offset {a.offset}, machine {a.machine}):")
+    print(f"compared with the zero pattern (offset {a.offset}, {a.width} bytes, machine {a.machine}):")
     for name, r in results.items():
         if name == "zero":
             continue
@@ -87,7 +91,8 @@ def main() -> int:
         print(f"  {name:8s} buffers {'IDENTICAL' if r['bits'] == base['bits'] else 'DIFFERENT'}"
               f", reply {'IDENTICAL' if r['reply'] == base['reply'] else 'DIFFERENT'}"
               f", memory words that differ: {len(diff)}"
-              + (" first " + ", ".join(f"{x:#x}" for x in diff[:12]) if diff else ""), flush=True)
+              + (" first " + ", ".join(f"{x:#x} {base['mem'][x]:#010x}->{r['mem'].get(x, 0):#010x}"
+                                       for x in diff[:12]) if diff else ""), flush=True)
     return 0
 
 
