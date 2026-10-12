@@ -92,6 +92,7 @@ SHAPE = (208, 209, 210, 211, 235, 236, 237, 261)     # FOLD WARP FM NPOS / TYPE 
 SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1", "P2")))
 SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
 SHAPE_TYPE = 235
+TRIM_ID = 262                      # WaveTone's FINE (slot 49): the level trim, page 4 place D (docs/waverider-trim.md)
 SHAPE_TYPES = ("Off", "Ring", "AM", "Formant", "Comb")     # more later: the list grows, no slot
 SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
 
@@ -114,7 +115,8 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # WaveTone-type sound doesn't have (prototype: the screen only, no sound yet)
           **SUBNOISE_LABELS,
           # page 5: the shape (reserved)
-          **SHAPE_LABELS}
+          **SHAPE_LABELS,
+          TRIM_ID: "TRIM"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -128,15 +130,16 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
               231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay",
               208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "Noise to Pos",
-              235: "Shaper Type", 236: "Shaper Amount", 237: "Shaper P1", 261: "Shaper P2"}
+              235: "Shaper Type", 236: "Shaper Amount", 237: "Shaper P1", 261: "Shaper P2",
+              TRIM_ID: "Level Trim"}
 
 # the pages, encoders A..H; 0 is an empty place
 PAGES = (
     (238, 241, 239, 247, 240, 252, 246, 253),   # OSC 1: TUNE LEV POS TBL RATE MLEV MPOS MOVE
     (242, 245, 243, 251, 244, 256, 250, 257),   # OSC 2: DETN LEV POS TBL RATE MLEV MPOS MOVE
     SUBNOISE,                                   # page 3: SUB OCT WAVE SRC / NOIS TYPE COLR DEC
-    (249, 259, 254, 0, 248, 260, 255, 258),     # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
-                                                # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)
+    (249, 259, 254, TRIM_ID, 248, 260, 255, 258),   # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
+                                                # DCLK, TRIM (FINE, 2026-10-12); SYN1, SYN2, SMT1, SMT2 (M10b-2)
     SHAPE,                                      # page 5: FOLD WARP FM NPOS / TYPE AMT P1 P2 (reserved, 2026-10-12)
 )
 
@@ -155,6 +158,7 @@ RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)
 # page 3's levels (prototype defaults: the sub and the noise off, COLR centred, DEC Inf)
 RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000), 234: (0, 0x7F00, 0x7F00)})   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
 RANGES.update({rid: (0, 0x7F00, 0) for rid in SHAPE_PLAIN})   # the shape's knobs: 0..127, off at 0
+RANGES[TRIM_ID] = (0, 0x7F00, 0x4000)   # TRIM: -15..0 dB, -11 dB at the stock default (live.trim_table)
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
@@ -280,7 +284,8 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
                           + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"]
                           + [f"    .long {60 * rid}, {rate_fmt + 32:#010x}" for rid in SUBNOISE_PLAIN + SHAPE_PLAIN]
                           + [f"    .long {60 * SUBNOISE_COLR}, {rate_fmt + 40:#010x}"]
-                          + [f"    .long {60 * SUBNOISE_DEC}, {rate_fmt + 48:#010x}"])
+                          + [f"    .long {60 * SUBNOISE_DEC}, {rate_fmt + 48:#010x}"]
+                          + [f"    .long {60 * TRIM_ID}, {rate_fmt + 56:#010x}"])
     fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
                            for rid, names in VALUE_NAMES.items())

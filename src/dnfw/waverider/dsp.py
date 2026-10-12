@@ -158,6 +158,10 @@ TWR_AT, TWI_AT = 0x80702000, 0x80706000      # fft3's twiddles at N = 4096 (they
 STAGE3_DATA_END = 0x8070A000
 SYNC_DM = 0x2E0000                           # sync.asm (M10b-2): MOVE locked to the tempo and the song position
 SYNC_SW = SYNC_DM // 2                       # 0x170000
+TRIM_DM = 0x2E0200                          # trim.asm (the level trim): one gain factor per voice, from FINE (record 262)
+TRIM_SW = TRIM_DM // 2                       # 0x170100
+TRIM_TABLE_DM = 0x2E0300                     # its factors, 64 float32 (live.trim_table)
+TRIM_FACTOR_DM = 0x2DE6C8                    # the factor for the voice in hand: loop, sub.asm and noise.asm read it
 SYNC_TABLE_DM = 0x2E0400                     # its table: a word per RATE 0..100 (live.sync_table)
 SMOOTH_DM = 0x2E0600                         # smooth.asm (M10b-2): SMTH, the glide on POS
 SMOOTH_SW = SMOOTH_DM // 2                   # 0x170300
@@ -272,7 +276,7 @@ def objects() -> dict[str, bytes]:
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
-                         "smooth", "dclk", "sub", "noise", "reader_mip", "reader_miph", "reader_miph2")}
+                         "smooth", "dclk", "sub", "noise", "trim", "reader_mip", "reader_miph", "reader_miph2")}
 
 
 def noise_state() -> bytes:
@@ -328,6 +332,8 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
         ("pool.asm (wr_pool)", POOL_DM, obj["pool"]),
         ("sync.asm (wr_sync)", SYNC_DM, obj["sync"]),
+        ("trim.asm (wr_trim)", TRIM_DM, obj["trim"]),
+        ("the trim's gain factors, 64 float32", TRIM_TABLE_DM, struct.pack("<64f", *live.trim_table())),
         ("SYNC's note table, a word per RATE", SYNC_TABLE_DM, struct.pack("<101I", *live.sync_table())),
         ("smooth.asm (wr_smooth)", SMOOTH_DM, obj["smooth"]),
         ("dclk.asm (wr_dclk_pre)", DCLK_DM, obj["dclk"]),

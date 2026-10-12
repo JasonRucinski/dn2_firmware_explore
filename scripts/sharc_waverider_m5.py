@@ -77,7 +77,7 @@ LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chai
 
 
 SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
-                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"),
+                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"), ("trim", "TRIM_SW"),
                 ({"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip"), "MIP_SW"))
 # (reader_mip and reader_miph load at the same address; the image carries the one
 # dnfw.waverider.mip.INTERP picks, so that one is the one decoded)

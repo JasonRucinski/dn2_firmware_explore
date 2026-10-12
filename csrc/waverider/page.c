@@ -189,10 +189,21 @@ static void decay_text(char *buf, int value)
         SPRINTF(buf, "%d", v);
 }
 
-const void *wr_rate_fmt[7][2] __attribute__((section(".data"))) =
+/* TRIM's value: dB in tenths from the table index (coarse >> 1), as dnfw.waverider.live.trim_db
+ * has it: -15.0 at 0, -11.0 at 32 (4 dB over 32 steps), 0.0 at 63 (11 dB over 31) */
+static void trim_text(char *buf, int value)
+{
+    int i = step_of(value, 127) >> 1;
+    int tenths = i <= 32 ? -150 + i * 40 / 32 : -110 + (i - 32) * 110 / 31;
+    int m = tenths < 0 ? -tenths : tenths;
+    SPRINTF(buf, tenths < 0 ? "-%d.%d dB" : "%d.%d dB", m / 10, m % 10);
+}
+
+const void *wr_rate_fmt[8][2] __attribute__((section(".data"))) =
     { { 0, 0 }, { 0, 0 }, { (const void *)smth_text, FORMATTER },
       { (const void *)dclk_text, FORMATTER }, { (const void *)plain_text, FORMATTER },
-      { (const void *)bipolar_text, FORMATTER }, { (const void *)decay_text, FORMATTER } };
+      { (const void *)bipolar_text, FORMATTER }, { (const void *)decay_text, FORMATTER },
+      { (const void *)trim_text, FORMATTER } };
 
 static u32 sound_value(const u8 *sound, u32 slot)
 {

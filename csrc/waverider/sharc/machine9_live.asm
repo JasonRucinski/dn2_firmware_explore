@@ -229,14 +229,14 @@ wr_t5v_halves.:
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
       // and scales R14 (LEV) for this voice and oscillator, then jumps back here
-      JUMP 0x16f700;                    // -> wr_mod.
+      JUMP 0x170100;                    // -> wr_trim. (the level trim's factor, trim.asm, then the modulator)
 .GLOBAL wr_t5v_modded.;
 wr_t5v_modded.:
 
       // M9a: the gain, LEV1 / 100, for reader_m9.asm
       R12 = R12 - R12;
       F14 = FLOAT R14 BY R12;
-      R12 = 0x3823d70a;                 // f32(1 / 25600)
+      R12 = DM(0x2de6c8);               // f32(10^(dB/20) / 25600): the trim's factor for this voice (trim.asm)
       F14 = F14 * F12;
       DM(0x2de6c0) = R14;
 

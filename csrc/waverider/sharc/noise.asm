@@ -99,7 +99,7 @@ wr_noise_held.:
       // the gain, NOIS / 100, as the sub's
       R12 = R12 - R12;
       F6 = FLOAT R6 BY R12;
-      R12 = 0x3823d70a;                 // f32(1 / 25600)
+      R12 = DM(0x2de6c8);               // f32(10^(dB/20) / 25600): the trim's factor for this voice (trim.asm)
       F6 = F6 * F12;
       // TYPE >> 8, at most 3 (DIG)
       R7 = LSHIFT R7 BY -8;

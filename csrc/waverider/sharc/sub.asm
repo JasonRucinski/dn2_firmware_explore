@@ -96,7 +96,7 @@ wr_sub_halves.:
       // the gain, SUB / 100, as machine9_live.asm forms LEV's
       R12 = R12 - R12;
       F6 = FLOAT R6 BY R12;
-      R12 = 0x3823d70a;                 // f32(1 / 25600)
+      R12 = DM(0x2de6c8);               // f32(10^(dB/20) / 25600): the trim's factor for this voice (trim.asm)
       F6 = F6 * F12;
       // WAVE >> 8, at most 3 (PLS)
       R13 = LSHIFT R13 BY -8;

@@ -56,6 +56,7 @@ def siblings() -> dict[str, int]:
             "block_count": dsp.COUNT_SW, "entry_mark": dsp.EMARK_SW, "modulator": dsp.MOD_SW,
             "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW, "pool": dsp.POOL_SW, "sync": dsp.SYNC_SW,
             "smooth": dsp.SMOOTH_SW, "dclk": dsp.DCLK_SW, "sub": dsp.SUB_SW, "noise": dsp.NOISE_SW,
+            "trim": dsp.TRIM_SW,
             "reader_mip": dsp.MIP_SW, "reader_miph": dsp.MIP_SW, "reader_miph2": dsp.MIP_SW,
             "fft3": dsp.FFT3_SW, "spec3": dsp.SPEC3_SW, "mipb3": dsp.MIPB3_SW, "build3": dsp.BUILD3_SW}
 

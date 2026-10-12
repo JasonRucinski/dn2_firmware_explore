@@ -414,10 +414,40 @@ def slot(tbl1: int, count: int) -> int:
     return s if s < count else 0
 
 
-def gain(lev1: int) -> float:
-    """The reader's gain for the frame's 16-bit LEV1 word (Milestone 9a): LEV1 x
-    f32(1/25600) in float32, as the loop computes it; exactly 1.0 at 100."""
-    return _f32(_f32(float(lev1 & 0xFFFF)) * _f32(GAIN_STEP))
+# The level trim (docs/waverider-trim.md): WaveTone's FINE record (parameter 49), a knob on page
+# 4. Its coarse byte >> 1 picks one of 64 factors, f32(10^(dB/20) / 25600): -15 dB at 0, -11 dB
+# at the centre 32 (the record's stock default 0x4000, so a sound that never had the knob lands
+# there), 0 dB at 63.
+TRIM_PARAM = 49
+TRIM_DEFAULT_WORD = 0x4000
+TRIM_MIN_DB, TRIM_CENTRE_DB, TRIM_MAX_DB = -15.0, -11.0, 0.0
+TRIM_STEPS = 64
+
+
+def trim_db(index: int) -> float:
+    """The trim's gain in dB at table INDEX 0..63: linear in dB, 4 dB over the lower 32
+    steps, 11 dB over the upper 31."""
+    i = max(0, min(TRIM_STEPS - 1, index))
+    if i <= 32:
+        return TRIM_MIN_DB + (TRIM_CENTRE_DB - TRIM_MIN_DB) * i / 32
+    return TRIM_CENTRE_DB + (TRIM_MAX_DB - TRIM_CENTRE_DB) * (i - 32) / 31
+
+
+def trim_table() -> list[float]:
+    """The 64 factors the DSP carries at TRIM_TABLE_DM, float32."""
+    return [_f32(10 ** (trim_db(i) / 20) / 25600) for i in range(TRIM_STEPS)]
+
+
+def trim_factor(word: int = TRIM_DEFAULT_WORD) -> float:
+    """The factor for the frame's 16-bit TRIM word (coarse << 8 | fine)."""
+    return trim_table()[min((word & 0xFFFF) >> 9, TRIM_STEPS - 1)]
+
+
+def gain(lev1: int, trim: int = TRIM_DEFAULT_WORD) -> float:
+    """A source's gain for its 16-bit level word (LEV1 in Milestone 9a, SUB and NOIS the same
+    way) and the sound's TRIM word: the level x the trim's factor in float32, as the loop
+    computes it. At LEV 100 and the default trim, 10^(-11/20) = 0.282."""
+    return _f32(_f32(float(lev1 & 0xFFFF)) * trim_factor(trim))
 
 
 # Page 3 (docs/waverider-pages34.md): the sub-oscillator, on FM Tone's records in slots

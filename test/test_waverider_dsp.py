@@ -348,10 +348,10 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
     code_spans = [x for x in sp if "asm (" in x[0]]
-    assert len(code_spans) == 15                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2), sub/noise.asm (page 3), reader_mip.asm
+    assert len(code_spans) == 16                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2), sub/noise.asm (page 3), reader_mip.asm
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"],
+                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
                                                      obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
                                                      obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")])):
         assert payload[:len(code)] == code
@@ -687,7 +687,7 @@ def test_the_noises_types_and_tilt():
         v = live.NoiseVoice(live.noise_seeds()[0])
         return v.render(words, True, n)
     dig = block((0x6400, 0x0300, 0x4000, 0x7F00))
-    assert {abs(x) for x in dig} == {0.5}
+    assert {abs(x) for x in dig} == {live._f32(0.5 * live.gain(0x6400))}      # +-0.5, scaled by the trim's default (-11 dB)
     rms = lambda ys: (sum(y * y for y in ys) / len(ys)) ** 0.5     # noqa: E731
     assert rms(block((0x6400, 0x0200, 0x7F00, 0x7F00))) < rms(block((0x6400, 0x0200, 0x0000, 0x7F00)))
 
