@@ -58,7 +58,7 @@ from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX
                    dclk_names, smth_names)
 
 LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
-C_LOAD = LOAD + 0xC00             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4)
+C_LOAD = LOAD + 0x1000            # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4, 0xC00 until the shape page: 3,484 B)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -72,7 +72,7 @@ TAG = 10                          # the tag every stock SYN descriptor ends with
 # number). Our own strings, so no descriptor points into WaveTone's. The waveform icons
 # a Waverider page first showed at B and F did not come from the titles: they are the
 # SYN page draw's WaveTone OSC-page overlay (page id 7), which `wr_icons` skips.
-TITLES = ("WR 1", "WR 2", "WR 3", "WR 4")
+TITLES = ("WR 1", "WR 2", "WR 3", "WR 4", "WR 5")
 SUBTITLE = "Waverider"             # where WaveTone's say "WaveTone"
 
 SUBNOISE = (227, 228, 229, 230, 231, 232, 233, 234)    # SUB OCT WAVE SRC / NOIS TYPE COLR DEC
@@ -81,6 +81,19 @@ SUBNOISE_SLOT0 = 50                # their sound slots: 50..57 (the record table
 SUBNOISE_PLAIN = (227, 231)        # SUB, NOIS: 0..127 (wr_rate_fmt row 4)
 SUBNOISE_COLR = 233                # -64..+63 (row 5)
 SUBNOISE_DEC = 234                 # 0..126, Inf (row 6)
+
+# Page 5, "Shape" (owner's option 4, 2026-10-12; docs/waverider-shape.md): four live knobs and
+# one typed shaper, reserved before the sound features that fill them. The records are FM
+# Tone's 208..211 and 235..237 in sound slots 58..64 (a WaveTone-type sound has none there)
+# and WaveTone's master tuning 261 in slot 48, which the Waverider voice never reads
+# (scripts/sharc_waverider_inert.py: the render is identical with 48, 49 and 58..64 at their
+# extremes). 262 (FINE, slot 49) stays free. None of the eight reaches the sound yet.
+SHAPE = (208, 209, 210, 211, 235, 236, 237, 261)     # FOLD WARP FM NPOS / TYPE AMT P1 P2
+SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1", "P2")))
+SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
+SHAPE_TYPE = 235
+SHAPE_TYPES = ("Off", "Ring", "AM", "Formant", "Comb")     # more later: the list grows, no slot
+SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
 # frame's params 25..27, which the SHARC loop reads)
@@ -99,7 +112,9 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # pages 3 and 4 (owner, 2026-10-07; docs/waverider-pages34.md): page 3 the
           # sub-oscillator and the noise, on FM Tone's records in slots 50..57, which a
           # WaveTone-type sound doesn't have (prototype: the screen only, no sound yet)
-          **SUBNOISE_LABELS}
+          **SUBNOISE_LABELS,
+          # page 5: the shape (reserved)
+          **SHAPE_LABELS}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -111,7 +126,9 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               248: "Osc1 M.Sync", 260: "Osc2 M.Sync",
               254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth",
               227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
-              231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay"}
+              231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay",
+              208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "Noise to Pos",
+              235: "Shaper Type", 236: "Shaper Amount", 237: "Shaper P1", 261: "Shaper P2"}
 
 # the pages, encoders A..H; 0 is an empty place
 PAGES = (
@@ -119,7 +136,9 @@ PAGES = (
     (242, 245, 243, 251, 244, 256, 250, 257),   # OSC 2: DETN LEV POS TBL RATE MLEV MPOS MOVE
     SUBNOISE,                                   # page 3: SUB OCT WAVE SRC / NOIS TYPE COLR DEC
     (249, 259, 254, 0, 248, 260, 255, 258),     # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
-)                                               # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)
+                                                # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)
+    SHAPE,                                      # page 5: FOLD WARP FM NPOS / TYPE AMT P1 P2 (reserved, 2026-10-12)
+)
 
 # M10b: the controls whose steps and value text are Waverider's own. The records stay
 # WaveTone's (MOVE1 is its Noise Attack, MOVE2 the noise filter Base, TRIG the Noise
@@ -128,12 +147,14 @@ PAGES = (
 VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
                228: SUB_OCTAVES, 229: SUB_WAVES, 230: ("OSC1", "OSC2"),
                232: ("WHT", "PNK", "BRN", "DIG"),
-               248: ("Off", "On"), 260: ("Off", "On")}
+               248: ("Off", "On"), 260: ("Off", "On"),
+               SHAPE_TYPE: SHAPE_TYPES}
 # record id -> (min, max, default), as the firmware's limits getter returns them
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
 RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)
 # page 3's levels (prototype defaults: the sub and the noise off, COLR centred, DEC Inf)
 RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000), 234: (0, 0x7F00, 0x7F00)})   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
+RANGES.update({rid: (0, 0x7F00, 0) for rid in SHAPE_PLAIN})   # the shape's knobs: 0..127, off at 0
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
@@ -212,6 +233,27 @@ DCLK_ID = 254                     # DCLK: likewise (Off at 0, then 1..100 ms)
 TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128 (csrc/waverider/pool.h)
 
 
+SLOT_RUNS = ((SUBNOISE_SLOT0, SUBNOISE[0], len(SUBNOISE)),) + SHAPE_RUNS   # the sound slots Waverider answers
+
+
+def slot_id_runs() -> str:
+    """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot is in it, else
+    on to the next run; past the last, to the stock answer (label 9). Ends at label 6 with d0 = id."""
+    lines = []
+    for k, (first, record, count) in enumerate(SLOT_RUNS):
+        last = k == len(SLOT_RUNS) - 1
+        head = f"{k + 3}:  " if k else "    "
+        lines += [f"{head}move.l  %sp@(8),%d0",
+                  f"    subi.l  #{first},%d0",
+                  f"    moveq   #{count - 1},%d1",
+                  "    cmp.l   %d0,%d1",
+                  f"    bcs.s   {'9f' if last else str(k + 4) + 'f'}",
+                  f"    addi.l  #{record},%d0"]
+        if not last:
+            lines.append("    bra.s   6f")
+    return chr(10).join(lines)
+
+
 def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     """The chunk's assembly (GNU as, ColdFire), linked at LOAD. PAGE_DRAW is the C
     renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE its `wr_tbl_range`
@@ -236,7 +278,7 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
                           + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)]
                           + [f"    .long {60 * rid}, {rate_fmt + 16:#010x}" for rid in SMTH_IDS]
                           + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"]
-                          + [f"    .long {60 * rid}, {rate_fmt + 32:#010x}" for rid in SUBNOISE_PLAIN]
+                          + [f"    .long {60 * rid}, {rate_fmt + 32:#010x}" for rid in SUBNOISE_PLAIN + SHAPE_PLAIN]
                           + [f"    .long {60 * SUBNOISE_COLR}, {rate_fmt + 40:#010x}"]
                           + [f"    .long {60 * SUBNOISE_DEC}, {rate_fmt + 48:#010x}"])
     fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()])
@@ -546,18 +588,14 @@ head_value: .asciz "%s%s"
 | -- param_set_slot_to_id(slot, type, filter) at 0x400dc02a, every per-machine list's
 | source (p-locks, LFO destinations, CC): its first two instructions (`move.l %d2,-(%sp)
 | ; moveq #100,%d1`, 4 bytes) and the next (`movea.l %sp@(8),%a0`, 4) now jsr here and a
-| nop. Slot 50..57 of a Waverider sound: page 3's record, 227 + slot - 50, straight back
-| to the caller. A Waverider sound is type 5 (its own type: the engine's callers), or type
+| nop. Slot 50..57 of a Waverider sound: page 3's record, 227 + slot - 50; slots 58..61 and
+| 62..64: page 5's, 208 + slot - 58 and 235 + slot - 62; straight back to the caller. A Waverider sound is type 5 (its own type: the engine's callers), or type
 | 1 on a Waverider track (the UI reports 5 as WaveTone, 1). Anything else: the three
 | displaced instructions, then on after them (the return address, site + 6, is the nop:
 | back through a1, which the stock code loads only after), with the stack as stock's.
 wr_slot_id:
-    move.l  %sp@(8),%d0
-    subi.l  #{SUBNOISE_SLOT0},%d0
-    moveq   #{len(SUBNOISE) - 1},%d1
-    cmp.l   %d0,%d1
-    bcs.s   9f
-    move.l  %d0,%a0
+{slot_id_runs()}
+6:  move.l  %d0,%a0
     moveq   #{NEW_TYPE},%d1
     cmp.l   %sp@(12),%d1
     beq.s   2f
@@ -568,7 +606,6 @@ wr_slot_id:
     tst.l   %d0
     beq.s   9f
 2:  move.l  %a0,%d0
-    addi.l  #{SUBNOISE[0]},%d0
     addq.l  #4,%sp
     rts
 9:  movea.l %sp@+,%a1

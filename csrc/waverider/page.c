@@ -222,6 +222,8 @@ static const int *limits(u32 id)
 }
 
 #define SCOPE_PAGE 3                 /* page 4: the scope (see scope_track) */
+#define SHAPE_PAGE 4                 /* page 5: the shape's knobs, with the scope in the wave's place too */
+#define SCOPE_SHOWN(p) ((p) == SCOPE_PAGE || (p) == SHAPE_PAGE)
 
 /* the strips: four columns of 25 across x 22..121 */
 #define COL0  22
@@ -630,7 +632,7 @@ int wr_poll(void *screen)
 #endif
     follow(now, osc_of(shown_page));
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
-            && (settling || shown_page == SCOPE_PAGE || signature() != drawn_sig)) {
+            && (settling || SCOPE_SHOWN(shown_page) || signature() != drawn_sig)) {
         asked_at = now;
         SET_DIRTY(screen);
     }
@@ -1000,7 +1002,7 @@ static const struct strip_box scope_box = { WAVE_X, 121, SUB_STRIP_Y0, SUB_STRIP
 static void scope_track(int page)
 {
     if (WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
-        WR_DRIVE_HEAD->events->scope_track = page == SCOPE_PAGE ? ACTIVE_TRACK : 0xFF;
+        WR_DRIVE_HEAD->events->scope_track = SCOPE_SHOWN(page) ? ACTIVE_TRACK : 0xFF;
 }
 
 void wr_page_draw(void *view, void *canvas)
@@ -1026,7 +1028,7 @@ void wr_page_draw(void *view, void *canvas)
     scope_track(page);
     if (page == SUB_PAGE)
         sub_noise(view, canvas);
-    else if (page == SCOPE_PAGE && WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+    else if (SCOPE_SHOWN(page) && WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
         scope_draw(canvas, WR_DRIVE_HEAD->events->scope, &scope_box);
     else
         wave(canvas, view, page);
