@@ -325,6 +325,13 @@ LABEL_SITE = 0x40064622                 # the SYN page's jsr getShortName(this, 
 LABEL_STOCK = bytes.fromhex("4eb9400372da")
 LONG_SITE = 0x400365F2                  # the long-name getter: push record+0x28, push d2
 LONG_STOCK = bytes.fromhex("2f3018282f02")
+# the LFO destination list (owner, 2026-10-13): one SYN group, page and knob order, numbered names
+DESTGROUP_SITE = 0x400DBCE8                 # entry -> group: movel %sp@(4),%d0 ; cmpil #321,%d0
+DESTGROUP_STOCK = bytes.fromhex("202f00040c8000000141")
+TIE_SITE = 0x400390D0                   # the sort comparator's tie-break: cmpl %d3,%d2 ; sgt %d0 ; bras
+TIE_STOCK = bytes.fromhex("b4835ec06004")
+LISTNAME_SITE = 0x40105AF2              # the list: push the name's char*, push the format
+LISTNAME_STOCK = bytes.fromhex("2f2f004048794021f244")
 CANON_ARG_STOCK = bytes.fromhex("7204202f0004")
 PAGE_SITE = 0x400C24F2                  # 0x400c24ee: after `move.l %d2,-(%sp) ; moveq #4,%d2`
 PAGE_STOCK = bytes.fromhex("222f0008202f000c")
@@ -523,6 +530,15 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     edit(LONG_SITE, bytes.fromhex("4eb9") + _long(playout["wr_long"]),
          "the long-name getter: Waverider's long names for a Waverider track (the header, "
          "the LFO destination browser)", LONG_STOCK)
+    edit(DESTGROUP_SITE, bytes.fromhex("4ef9") + _long(playout["wr_group"]) + bytes.fromhex("4e714e71"),
+         "the destination list's group getter: one SYN group for the records a Waverider track's "
+         "pages hold", DESTGROUP_STOCK)
+    _need(content, TIE_SITE + 6, bytes.fromhex("b0845ec0"), "the comparator's else arm, 4 bytes")
+    edit(TIE_SITE, bytes.fromhex("4eb9") + _long(playout["wr_tie"]),
+         "the destination sort's tie-break: page and knob order on a Waverider track", TIE_STOCK)
+    edit(LISTNAME_SITE, bytes.fromhex("4eb9") + _long(playout["wr_list_name"]) + bytes.fromhex("4e714e71"),
+         "the destination list's name text: the page and knob number in front, on a Waverider "
+         "track", LISTNAME_STOCK)
     edit(GRID_SITE, bytes.fromhex("4eb9") + _long(playout["wr_grid"]) + bytes.fromhex("4e714e71"),
          "the SYN page draw: Waverider's own page for a Waverider track (M8.1)", GRID_STOCK)
     edit(GRID9_SITE, bytes.fromhex("4eb9") + _long(playout["wr_grid9"]) + bytes.fromhex("518f"),

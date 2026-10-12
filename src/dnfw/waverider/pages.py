@@ -58,7 +58,7 @@ from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX
                    dclk_names, smth_names)
 
 LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
-C_LOAD = LOAD + 0x1000            # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4, 0xC00 until the shape page: 3,484 B)
+C_LOAD = LOAD + 0x1200            # the C page renderer, after this assembly (0x1000 until the destination list's numbers, 0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4, 0xC00 until the shape page: 3,484 B)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -88,7 +88,9 @@ SUBNOISE_DEC = 234                 # 0..126, Inf (row 6)
 # and WaveTone's master tuning 261 in slot 48, which the Waverider voice never reads
 # (scripts/sharc_waverider_inert.py: the render is identical with 48, 49 and 58..64 at their
 # extremes). 262 (FINE, slot 49) stays free. None of the eight reaches the sound yet.
-SHAPE = (208, 209, 210, 211, 235, 236, 237, 261)     # FOLD WARP FM NPOS / TYPE AMT P1 P2
+# AMT is record 261 (WaveTone's MAST, a modulatable record) and P2 is 236 (mask 0): the amount can be
+# an LFO destination, P2 and P1 cannot (owner, 2026-10-13: the AMT/P2 swap). The sound slots stay.
+SHAPE = (208, 209, 210, 211, 235, 261, 237, 236)     # FOLD WARP FM NPOS / TYPE AMT P1 P2
 SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1", "P2")))
 SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
 SHAPE_TYPE = 235
@@ -130,7 +132,7 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
               231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay",
               208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "Noise to Pos",
-              235: "Shaper Type", 236: "Shaper Amount", 237: "Shaper P1", 261: "Shaper P2",
+              235: "Shaper Type", 261: "Shaper Amount", 237: "Shaper P1", 236: "Shaper P2",
               TRIM_ID: "Level Trim"}
 
 # the pages, encoders A..H; 0 is an empty place
@@ -165,7 +167,8 @@ RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at
 SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
-              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors")
+              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
+              "wr_group", "wr_tie", "wr_list_name")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -270,6 +273,9 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
     long_strings = "\n".join(f'long_{rid}: .asciz "{name}"' for rid, name in LONG_NAMES.items())
+    # record id -> position on the pages (page x 8 + knob): the destination list's order and its numbers
+    key_table = "\n".join(f"    .long {rid}, {8 * p + k}" for p, entries in enumerate(PAGES)
+                          for k, rid in enumerate(entries) if rid)
     pages = []
     for k, entries in enumerate(PAGES):
         pages.append(f"    .long title_{k}, subtitle\n"
@@ -401,6 +407,124 @@ wr_long:
     move.l  %a1,%sp@-
     move.l  %d2,%sp@-
     jmp     %a0@
+
+| -- the LFO destination list (owner, 2026-10-13: one group, page and knob order, numbers).
+| wr_key: d0 = a record id -> d0 = its place on the pages (page x 8 + knob), -1 for a record
+| the pages do not hold. Every other register kept.
+wr_key:
+    move.l  %d1,%sp@-
+    move.l  %a0,%sp@-
+    lea     key_table,%a0
+1:  move.l  %a0@+,%d1
+    beq.s   2f
+    cmp.l   %d1,%d0
+    beq.s   3f
+    addq.l  #4,%a0
+    bra.s   1b
+2:  moveq   #-1,%d0
+    bra.s   4f
+3:  move.l  %a0@,%d0
+4:  movea.l %sp@+,%a0
+    move.l  %sp@+,%d1
+    tst.l   %d0
+    rts
+
+| wr_sortkey: d0 = a record id -> d0 = its place, or 1000 + the id for any other record (so
+| every entry has one key and the order is total). d1 kept.
+wr_sortkey:
+    move.l  %d1,%sp@-
+    move.l  %d0,%d1
+    bsr.s   wr_key
+    bpl.s   1f
+    move.l  %d1,%d0
+    add.l   #1000,%d0
+1:  move.l  %sp@+,%d1
+    rts
+
+| -- the group getter 0x400dbce8(entry), from its first instruction by jmp (its first two
+| instructions, 10 bytes, are replaced). On a Waverider track the records its pages hold
+| answer WaveTone's group (1), FM Tone's borrowed ones (group 0) included, so the list shows
+| one SYN group. Otherwise the displaced `move.l %sp@(4),%d0 ; cmpi.l #321,%d0` and on.
+wr_group:
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    move.l  %sp@(4),%d0
+    bsr.s   wr_key
+    bmi.s   9f
+    moveq   #1,%d0
+    rts
+9:  move.l  %sp@(4),%d0
+    cmpi.l  #321,%d0
+    jmp     0x400dbcf2
+
+| -- the sort comparator's tie-break at 0x400390d0 (`cmp.l %d3,%d2 ; sgt %d0 ; bra.s`, 6
+| bytes, now jsr here). d3 and d2 are the two entries, a before b when the result is true. On a
+| Waverider track the entries' places on the pages decide, within a group; otherwise the
+| entries themselves. Returns past the else arm (4 bytes) to the comparator's exit.
+wr_tie:
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   1f
+    move.l  %d3,%d0
+    bsr.s   wr_sortkey
+    move.l  %d0,%sp@-
+    move.l  %d2,%d0
+    bsr.s   wr_sortkey
+    cmp.l   %sp@+,%d0
+    sgt     %d0
+    bra.s   2f
+1:  cmp.l   %d3,%d2
+    sgt     %d0
+2:  addq.l  #4,%sp@
+    rts
+
+| -- the list's name text at 0x40105af2 (`move.l %sp@(64),%sp@- ; pea 0x4021f244`, 10 bytes,
+| now jsr here and two nops). d2 is the entry; the char* the format reads is at sp+64. On a
+| Waverider track, for a record the pages hold, it becomes "1A " + the name (page, knob), in
+| list_buf. The header's own name path does not come through here. The string object at
+| sp+64 is never touched (its destructor reads a reference-count header list_buf does not
+| have): only the copy of its pointer pushed for the formatter is replaced, via a0, which
+| the stock code sets again before the formatter call.
+wr_list_name:
+    movea.l %sp@+,%a1
+    move.l  %a1,%sp@-
+    move.l  %d0,%sp@-
+    move.l  %d1,%sp@-
+    move.l  %a0,%sp@-
+    move.l  %sp@(80),%sp@
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   8f
+    move.l  %d2,%d0
+    bsr.w   wr_key
+    bmi.s   8f
+    move.l  %d0,%d1
+    lsr.l   #3,%d1
+    add.l   #49,%d1
+    lea     list_buf,%a0
+    move.b  %d1,%a0@+
+    and.l   #7,%d0
+    add.l   #65,%d0
+    move.b  %d0,%a0@+
+    move.b  #32,%a0@+
+    movea.l %sp@(80),%a1
+    moveq   #59,%d1
+2:  move.b  %a1@+,%d0
+    move.b  %d0,%a0@+
+    beq.s   3f
+    subq.l  #1,%d1
+    bne.s   2b
+    clr.b   %a0@
+3:  lea     list_buf,%a0
+    move.l  %a0,%sp@
+8:  movea.l %sp@+,%a0
+    move.l  %sp@+,%d1
+    move.l  %sp@+,%d0
+    movea.l %sp@+,%a1
+    move.l  %a0,%sp@-
+    move.l  #0x4021f244,%sp@-
+    jmp     %a1@
 
 | -- the SYN page draw at 0x4001821e (`moveq #7 ; cmp.l %d3,%d0 ; bne.w` past the icons),
 | now `jsr` here and a nop. Back to the icons (0x40018226) when the stock test would draw
@@ -635,6 +759,12 @@ labels:
 long_names:
 {long_table}
     .long 0
+key_table:
+{key_table}
+    .long 0
+    .align 2
+list_buf:
+    .space 64
 descriptors:
 {page_data}
 {_rep("subtitle", SUBTITLE)}
