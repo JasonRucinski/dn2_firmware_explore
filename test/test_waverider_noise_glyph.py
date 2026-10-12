@@ -15,9 +15,13 @@ def _reference(typ, colr, n):
 
 
 def test_the_trace_follows_the_dsp_reference_sample_for_sample():
+    # the glyph draws the noise at its own level, NOIS / 100; the DSP's output is that times
+    # the level trim's factor (-11 dB at its default, docs/waverider-trim.md), so the trim is
+    # taken back out before comparing
+    trim = live.gain(100 << 8)
     for typ in range(4):
         for colr in (0, 64, 127):
-            ref = _reference(typ, colr, g.WARMUP + 98)[g.WARMUP:]
+            ref = [y / trim for y in _reference(typ, colr, g.WARMUP + 98)[g.WARMUP:]]
             got = [y / g.Q for y in g.samples(100, typ, colr, 127, 98)]
             assert max(abs(a - b) for a, b in zip(ref, got)) < 0.01, (typ, colr)
 

@@ -92,9 +92,17 @@ def test_thresholds_match_the_readers_literals():
     import pathlib
     import re
     sharc = pathlib.Path(__file__).resolve().parent.parent / "csrc/waverider/sharc"
-    for name, limit in (("reader_mip", 24000), ("reader_miph", 24000), ("reader_miph2", 28000)):
+    for name, limit in (("reader_mip", 24000), ("reader_miph", 24000)):
         lits = [int(x, 16) for x in re.findall(r"R1 = (0x[0-9a-f]+);\s*// T\[\d\]", (sharc / f"{name}.asm").read_text())]
         assert lits == mip.thresholds(limit), name
+    # reader_miph2 (stage 3) reads T[k] from each table's header, not from literals: the
+    # header the baked tables carry holds the same seven numbers
+    import struct
+
+    from dnfw.waverider import table3
+    want = mip.thresholds(28000)
+    assert table3.thresholds(mip.POINTS, 28000) == want
+    assert struct.unpack_from(f"<{len(want)}I", table3.header(16, mip.POINTS), 0x10) == tuple(want)
     assert mip.thresholds(24000)[0] == 0x808081          # ceil(2^31 / 255)
 
 
