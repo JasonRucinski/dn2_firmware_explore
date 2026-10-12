@@ -36,13 +36,13 @@ once per block (`0x22`, `0xa7a`, `0xa7c`, `0xa7e`).
 ## What depends on it: nothing we could find
 
 `scripts/sharc_frame_word_check.py` runs the unmodified section 7 in the runner with a note on,
-three blocks, and writes four patterns over the word. It compares every track buffer, the
+three blocks, and writes three patterns over the word (zero, 0x11223344, all ones). It compares every track buffer, the
 reply tail, and DSP data memory (0x200000..0x300000, outside the frame copy and the receive
 buffers).
 
 | word written | machine on track 1 | track buffers | reply | memory words that differ |
 |---|---|---|---|---|
-| 0xa54..0xa57 (3 patterns) | WaveTone | identical | identical | **0** |
+| 0xa54..0xa57 | WaveTone | identical | identical | **0** |
 | 0xa54..0xa57 | machine type 0 | identical | identical | **0** |
 | 0xa54..0xa57 | machine type 3 | identical | identical | **0** |
 | 0x74..0x77, the track levels (control) | WaveTone | identical | identical | **11** |
