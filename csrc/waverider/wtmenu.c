@@ -1,7 +1,7 @@
 /* The wavetable page of the PRESET/KIT menu: page 2, after PRESET/KIT again (layout A,
  * the owner, 2026-10-06; docs/waverider-wtmenu.md).
  *
- * The stock PresetKitMenuView (vtable 0x401e6da0) stays the view. Three of its vtable
+ * The stock PresetKitMenuView (vtable 0x401e6da0) stays the view. Four of its vtable
  * slots point here instead, and each falls through to stock on page 1:
  * - the key handler (slot at 0x401e6db0, stock 0x4008c78e(view, event)). On page 1 the
  *   PRESET/KIT release, which stock answers by closing the menu, turns page 2 on. On
@@ -9,6 +9,8 @@
  *   does;
  * - the redraw (slot at 0x401e6db8, stock 0x4008a5ec(view, canvas)): page 2 is drawn
  *   with the stock primitives, at the stock page's coordinates, so it reads as its twin;
+ * - the encoder handler (secondary vtable slot at 0x401e6e04, stock thunk 0x4008a94a):
+ *   LEVEL/DATA moves page 2's cursor and a list's, as stock's lists follow it;
  * - the LED callback (LedHandler slot at 0x401e6e54, stock thunk 0x4008abec), which
  *   runs every frame while the menu is open. A gap in it means the menu was closed and
  *   opened again, so the next open starts on page 1.
@@ -40,6 +42,14 @@
 #define ICON_LOAD   0x44646464u
 #define ICON_MANAGE 0x44646378u
 #define ICON_POOL   0x44646a90u
+#define STOCK_ENC   ((u32 (*)(void *, void *))0x4008a8c0u)  /* the encoder handler, past its this-adjusting thunk */
+#define ENC_WHICH   ((u32 (*)(void *))0x40113166u)       /* an encoder event's encoder: 9 is LEVEL/DATA */
+#define ENC_DELTA   ((u32 (*)(void *))0x4011315cu)       /* its turn, a signed byte */
+#define ENC_RATE    ((u32 (*)(void *, u32, u32))0x4011313eu)
+#define ENC_STEPS   ((int (*)(void *, u32, u32, u32, u32))0x4011336eu)  /* (accumulator, 0, rate, table, delta) -> steps */
+#define ENC_TABLE   0x44507decu
+#define ENC_LEVEL   9
+#define VIEW_ACCUM  92                                   /* the view's accumulator for the encoder */
 #define KEY_PRESET  7
 #define KEY_YES     10
 #define KEY_UP      11
@@ -59,6 +69,7 @@ volatile struct wr_wtmenu wr_wtmenu __attribute__((section(".data"))) =
     { 0x57524d4eu, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 void wr_wt_led_hook(void);
+void wr_wt_enc_hook(void);
 
 /* the menu was closed since the last frame: it opens on page 1 */
 static void freshen(void)
@@ -153,6 +164,30 @@ u32 wr_wt_key(void *view, void *event)
     }
 }
 
+/* The LEVEL/DATA encoder (the owner, 2026-10-12: stock's lists follow it and its click ticks).
+ * Stock's handler moves the menu's cursor by the steps the firmware's accumulator makes of
+ * the turn; the same call here, its steps going to this page's cursor or the list's. Called
+ * through the thunk's replacement below, with the view as stock's thunk would hand it. */
+u32 wr_wt_enc(void *view, void *event)
+{
+    freshen();
+    if (!wr_wtmenu.page || ENC_WHICH(event) != ENC_LEVEL)
+        return STOCK_ENC(view, event);
+    {
+        u32 delta = ENC_DELTA(event) & 0xff;
+        u32 rate = ENC_RATE(event, 1, 10);
+        int steps = ENC_STEPS((u8 *)view + VIEW_ACCUM, 0, rate, ENC_TABLE, delta);
+        if (wr_wtmenu.page == 2) {
+            wt_list_step(steps);
+        } else {
+            int c = (int)wr_wtmenu.cursor + steps;
+            wr_wtmenu.cursor = c < 0 ? 0 : c >= ITEMS ? ITEMS - 1 : (u32)c;
+        }
+    }
+    SET_DIRTY(view);
+    return 1;
+}
+
 static const char *const labels[ITEMS] = { "LOAD", "MANAGE", "POOL" };
 static const u32 icons[ITEMS] = { ICON_LOAD, ICON_MANAGE, ICON_POOL };
 /* the stock page's rows: text baseline, icon, and the highlight's bottom and top */
@@ -210,4 +245,14 @@ __asm__(
 "	move.l	0x466758b0,%d0\n"               /* d0 is free at a call's entry */
 "	move.l	%d0,wr_wtmenu+16\n"
 "	jmp	0x4008abec\n"
+"	.text\n");
+
+/* The encoder thunk's slot (the secondary vtable's): stock's thunk makes `this` the view
+ * (subq #4) and branches to its handler; this does the same and goes to ours */
+__asm__(
+"	.section .text.wr_wt_enc,\"ax\",@progbits\n"
+"	.globl	wr_wt_enc_hook\n"
+"wr_wt_enc_hook:\n"
+"	subq.l	#4,4(%sp)\n"
+"	jmp	wr_wt_enc\n"
 "	.text\n");

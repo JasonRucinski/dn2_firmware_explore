@@ -16,6 +16,8 @@ edits are in `docs/for-dnx-waverider-pool.md`. **Status: built and checked in th
 | YES | opens its list |
 | in a list: NO | back to page 2 |
 | in a list: hold FUNC and press UP or DOWN | a whole window (7 rows) at a time, stopping at the first and last row, as stock's lists do |
+| LEVEL/DATA turned (page 2 or a list) | the highlight, as UP/DOWN do, with the unit's own acceleration; in the side panel its highlight |
+| LEVEL/DATA clicked in a list | YES: ticks the row and moves down, LOAD loads, in the side panel runs the item |
 | in MANAGE or POOL: YES | ticks or unticks the highlighted row (a check mark at its left) and moves down one, as stock's preset manager does |
 | in a list: RIGHT | the list's operations in a side panel on the right, as stock's PRESET OPERATIONS; UP/DOWN choose, YES runs, NO or LEFT closes. They act on the ticked rows, or on the highlighted row when none is ticked |
 | in a list: LEFT | nothing yet (stock's SORTING menu) |
@@ -43,7 +45,7 @@ A result worth saying replaces the list's title until the next key.
 
 ## How it is built
 
-The stock `PresetKitMenuView` (vtable `0x401e6da0`) stays the view. Three of its vtable
+The stock `PresetKitMenuView` (vtable `0x401e6da0`) stays the view. Four of its vtable
 slots point at our code, which falls through to stock on page 1:
 
 | slot | stock | ours | why |
@@ -51,6 +53,7 @@ slots point at our code, which falls through to stock on page 1:
 | `0x401e6db0` | `0x4008c78e(view, event)`, the key handler | `wr_wt_key` | stock answers the PRESET/KIT release by closing; ours opens page 2 instead |
 | `0x401e6db8` | `0x4008a5ec(view, canvas)`, the redraw | `wr_wt_draw` | page 2 and its lists |
 | `0x401e6e54` | `0x4008abec`, the LedHandler thunk, every frame while open | `wr_wt_led_hook` | a gap in it means the menu was closed, so the next open is page 1 |
+| `0x401e6e04` | `0x4008a94a`, the encoder handler's thunk (secondary vtable; `this` - 4, then `0x4008a8c0`) | `wr_wt_enc_hook` | LEVEL/DATA (encoder 9) turns page 2's cursor and a list's. Stock's handler moves the menu's cursor by the steps `0x4011336e` makes of the turn; ours makes them the same way and applies them to the list |
 
 Measured with panel_drive (`--regs-at`): the key handler gets a press and a release per tap,
 and not the release of the press that opened the menu; the redraw runs at open and after

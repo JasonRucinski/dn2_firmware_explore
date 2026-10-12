@@ -13,6 +13,10 @@ void wt_list_open(unsigned int kind);
  * (the stock handler takes it: UNISON, SETTINGS and the rest go where they go). */
 unsigned int wt_list_key(unsigned int code, unsigned int pressed, unsigned int released);
 
+/* The LEVEL/DATA encoder turned while the list is shown: STEPS rows (negative: up), or the
+ * side panel's highlight. The firmware has already made the steps of the turn. */
+void wt_list_step(int steps);
+
 void wt_list_draw(void *canvas);
 
 #endif

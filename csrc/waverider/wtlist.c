@@ -43,6 +43,7 @@
 #define KEY_LEFT    13
 #define KEY_DOWN    14
 #define KEY_RIGHT   15
+#define KEY_LEVEL   49          /* the LEVEL/DATA encoder's click: stock's lists take it as YES */
 #define HELD        ((u32 (*)(u32))0x4011f7e4u)          /* is the key with this code held (stock asks it 97 times) */
 #define KEY_FUNC    17
 #define VISIBLE     7
@@ -250,6 +251,8 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
     const char *const *names;
     const u8 *codes;
     u32 n = ops(&names, &codes);
+    if (code == KEY_LEVEL)
+        code = KEY_YES;                            /* measured on stock 1.11: the click ticks and moves down, runs a panel's item */
     if (confirming) {
         if (code == KEY_YES && released) {
             u32 k = targets(at), gone = 0;
@@ -308,6 +311,22 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
     if (pressed && count)
         move(code == KEY_DOWN, HELD(KEY_FUNC) ? VISIBLE : 1);
     return 1;
+}
+
+void wt_list_step(int steps)
+{
+    const char *const *names;
+    const u8 *codes;
+    u32 n = ops(&names, &codes);
+    if (confirming || !steps)
+        return;
+    note = 0;
+    if (panel) {
+        int c = (int)choice + steps;
+        choice = c < 0 ? 0 : c >= (int)n ? n - 1 : (u32)c;
+    } else if (count) {
+        move(steps > 0, steps > 0 ? (u32)steps : (u32)-steps);
+    }
 }
 
 static const char *const titles[3] = { "LOAD WAVETABLE", "WAVETABLE MANAGER", "WAVETABLE POOL" };
