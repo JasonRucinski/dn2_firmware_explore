@@ -5,6 +5,10 @@ The frame at `0x80005e60` carries four u16 voice masks at bytes 34..41
 +36 note-off, +38 and +40 repeat them. A note-on or note-off can sit in the mask for two
 frames, so consecutive frames carrying the same non-zero mask are one event.
 
+The note is in the header: one u16 per voice at byte 2 + 2 * voice, `note << 8 | fine`
+(`dnfw.waverider.frame.NOTE`). It is written in the frame of the note-on and stays after it,
+so it is read at the note-on only (a voice that never sounded reads 0).
+
 `panel_drive --capture 0x400cf7be:1:48` keeps those bytes on every send; this module turns the
 captures into events and measures the step period from them. It does no I/O.
 """
@@ -15,6 +19,7 @@ import struct
 from dataclasses import dataclass
 
 NOTE_ON, NOTE_OFF = 34, 36
+NOTE_WORDS = 2               # byte offset of voice 0's note word
 CPU_HZ = 132_000_000          # the clock panel_drive's SSI lane paces against (--ssi-hz)
 
 
@@ -23,6 +28,7 @@ class NoteEvent:
     icount: int
     kind: str                 # "on" or "off"
     voices: tuple[int, ...]   # voice numbers whose bit is set
+    notes: tuple[float, ...] = ()   # note number of each voice at a note-on (fine as a fraction)
 
 
 def _voices(mask: int) -> tuple[int, ...]:
@@ -43,7 +49,13 @@ def events(captures: list[dict]) -> list[NoteEvent]:
         }
         for kind, mask in masks.items():
             if mask and mask != previous[kind]:
-                out.append(NoteEvent(capture["icount"], kind, _voices(mask)))
+                voices = _voices(mask)
+                notes = ()
+                if kind == "on" and len(frame) >= NOTE_WORDS + 2 * (voices[-1] + 1):
+                    notes = tuple(
+                        struct.unpack_from(">H", frame, NOTE_WORDS + 2 * v)[0] / 256
+                        for v in voices)
+                out.append(NoteEvent(capture["icount"], kind, voices, notes))
             previous[kind] = mask
     return out
 

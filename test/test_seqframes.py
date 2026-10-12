@@ -5,8 +5,10 @@ import struct
 from dnfw import seqframes as SF
 
 
-def capture(icount, on=0, off=0):
+def capture(icount, on=0, off=0, notes=()):
     frame = bytearray(48)
+    for voice, note in enumerate(notes):
+        struct.pack_into(">H", frame, 2 + 2 * voice, int(note * 256))
     struct.pack_into(">4H", frame, 34, on, off, on, off)
     return {"icount": icount, "hex": frame.hex()}
 
@@ -38,3 +40,10 @@ def test_step_period_and_tempo():
 
 def test_short_captures_are_skipped():
     assert SF.events([{"icount": 0, "hex": "00" * 10}]) == []
+
+
+def test_the_note_is_read_from_each_voice_word_at_the_note_on():
+    caps = [capture(0, on=0b101, notes=(60, 0, 64.5)), capture(9, off=0b101, notes=(60, 0, 64.5))]
+    found = SF.events(caps)
+    assert found[0].notes == (60.0, 64.5)
+    assert found[1].notes == ()
