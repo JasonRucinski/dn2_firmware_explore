@@ -42,11 +42,13 @@ halts even stock 1.11 on load (`EXCEPTION DS0059`). The `songguard` mod bounds
 the count, and it is confirmed on the instrument (`docs/old-project-load.md`).
 
 **In development: Waverider**, a wavetable machine for the Digitone II modelled
-on Tonverk's Wavefinder (`docs/waverider-feasibility.md`). A baked table has been
-read back on the instrument (Milestone 0), and Milestones 1–4 run offline in
-digikit's SHARC emulator: our own SHARC reader, inside a real DN2 voice, through
-the per-track chain, with its tables baked into the DSP image. The first
-flashable build is Milestone 5.
+on Tonverk's Wavefinder (`docs/waverider-feasibility.md`). It is a sixth machine
+in MACHINE SEL: two wavetable oscillators, a sub-oscillator, noise, a shaper and
+its own modulator, with our own SHARC reader running inside a real DN2 voice and
+its tables in the project's wavetable pool on the +Drive. Alpha builds run on the
+instrument (`docs/waverider-manual.md`, `docs/waverider-performance.md`). It is
+not released: it is not in the table above and has no browser tool, and its
+builds are made locally with `dnfw mods apply ... --mod waverider`.
 
 ## Install and run
 
@@ -89,9 +91,11 @@ before writing it. Nothing leaves this tool that it cannot check.
 
 - **Integrity:** every checksum and the HMAC-SHA256 signature are recomputed and
   re-verified on the rebuilt file.
-- **Boot from reset in an emulator:** `scripts/emu_boot_check.py`, on digikit's
-  ColdFire emulator, against a stock control. A snapshot of a machine that has
-  already booted does not count (`docs/emulator.md`).
+- **Boot from reset in an emulator:** digikit's `boot_gate` boots the image from
+  reset (about 30 s) and watches the firmware's fault reporter and the uploader's
+  refusal; both must see zero hits. `scripts/emu_boot_check.py` is the older
+  route, against a stock control. A snapshot of a machine that has already
+  booted does not count (`docs/emulator.md`).
 - **The engine and save/load:** `scripts/emu_boot_engine.py` runs the audio
   engine's evaluator and a stored sound through LOAD and SAVE.
 - **ColdFire encodings:** `scripts/check_coldfire.py` rejects an addressing mode
@@ -99,6 +103,10 @@ before writing it. Nothing leaves this tool that it cannot check.
 - **Per-mod harnesses** under `scripts/emu_*.py`, each with a stock control.
 - **DSP code** runs offline in digikit's SHARC runner and is compared with a
   Python reference (`scripts/sharc_waverider_*.py`).
+- **Frame words:** before a mod puts data in a word of the ColdFire-to-DSP frame,
+  `scripts/sharc_frame_census.py` and `sharc_frame_word_check.py` run the stock
+  DSP over recorded and random frames and name every instruction that reads that
+  word (`docs/waverider-frame-words.md`).
 - **On the instrument:** each hardware test has a written pass and fail in the
   project's test plan before anything is flashed. The recovery route (stock
   through the Early Start-up Menu) is proven; send it over a clean MIDI link
@@ -145,6 +153,8 @@ skip and say so.
 | `docs/instruments.md` | which tool answers which question |
 | `docs/lfo4-build-plan.md` | the whole LFO4 story, including the dead ends |
 | `docs/waverider-feasibility.md` | Waverider, milestone by milestone |
+| `docs/waverider-manual.md` | Waverider as the alpha behaves: pages, controls, wavetable pool |
+| `docs/waverider-frame-words.md` | which frame words stock writes and the DSP reads, and where Waverider's position moved |
 | `docs/drive-storage-research.md` | the +Drive, and where a sample library could live |
 | `docs/ideas-backlog.md` | ideas, costed, with their state |
 | `docs/ele3-format.md` | the transport, container, codec and integrity layers |
@@ -172,8 +182,13 @@ and the ColdFire disassembly findings from
 SHARC emulators are [m-dwyer/digikit](https://github.com/m-dwyer/digikit)'s
 (GPL-2.0-or-later), used as external tools; our own SHARC code is assembled with
 [js216/selache](https://github.com/js216/selache) (GPL-3.0). The Digitone data
-formats come from the sibling project DNX. What was taken from each, and where
-this project deliberately diverges, is in `docs/references.md`.
+formats come from the sibling project DNX. The USB SysEx probe adapts
+[irpina/digihealth](https://github.com/irpina/digihealth)'s design
+(GPL-2.0-or-later). The frame-word census follows the method of
+[naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw)'s OS 1.12 notes
+(GPL-2.0; method only, no code taken), and its report on words 0xa54 and 0xa56
+(issue #49) is what moved Waverider's song position. What was taken from each,
+and where this project deliberately diverges, is in `docs/references.md`.
 
 None of them is affiliated with Elektron, and neither is this. Everything in
 `docs/` was measured from OS files Elektron publish; no Elektron code has been
