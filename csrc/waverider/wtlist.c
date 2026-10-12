@@ -43,6 +43,8 @@
 #define KEY_LEFT    13
 #define KEY_DOWN    14
 #define KEY_RIGHT   15
+#define HELD        ((u32 (*)(u32))0x4011f7e4u)          /* is the key with this code held (stock asks it 97 times) */
+#define KEY_FUNC    17
 #define VISIBLE     7
 #define ROW_H       8
 #define NAME_LEN    16
@@ -229,12 +231,14 @@ static void run(u32 op)
     build(kind);
 }
 
-static void move(u32 down)
+/* one row, or with FUNC held a whole window as stock's lists do (measured on stock 1.11:
+ * A:003 -> A:010 -> A:017 going down, and up from row 4 stops at row 1: no wrap) */
+static void move(u32 down, u32 step)
 {
-    if (!down && cursor)
-        cursor--;
-    if (down && cursor + 1 < count)
-        cursor++;
+    if (!down)
+        cursor = cursor > step ? cursor - step : 0;
+    else
+        cursor = cursor + step < count ? cursor + step : count - 1;
     if (cursor < top)
         top = cursor;
     if (cursor >= top + VISIBLE)
@@ -292,7 +296,7 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
             else {
                 if (tickable(cursor))
                     ticked[cursor] ^= 1;
-                move(1);                           /* as stock: the next row */
+                move(1, 1);                        /* as stock: the next row */
             }
         }
         return 1;
@@ -302,7 +306,7 @@ u32 wt_list_key(u32 code, u32 pressed, u32 released)
     if (code != KEY_UP && code != KEY_DOWN)
         return 2;                                  /* not the list's: the stock handler's */
     if (pressed && count)
-        move(code == KEY_DOWN);
+        move(code == KEY_DOWN, HELD(KEY_FUNC) ? VISIBLE : 1);
     return 1;
 }
 

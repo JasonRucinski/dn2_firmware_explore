@@ -15,6 +15,7 @@ edits are in `docs/for-dnx-waverider-pool.md`. **Status: built and checked in th
 | UP / DOWN | the highlighted item |
 | YES | opens its list |
 | in a list: NO | back to page 2 |
+| in a list: hold FUNC and press UP or DOWN | a whole window (7 rows) at a time, stopping at the first and last row, as stock's lists do |
 | in MANAGE or POOL: YES | ticks or unticks the highlighted row (a check mark at its left) and moves down one, as stock's preset manager does |
 | in a list: RIGHT | the list's operations in a side panel on the right, as stock's PRESET OPERATIONS; UP/DOWN choose, YES runs, NO or LEFT closes. They act on the ticked rows, or on the highlighted row when none is ticked |
 | in a list: LEFT | nothing yet (stock's SORTING menu) |
