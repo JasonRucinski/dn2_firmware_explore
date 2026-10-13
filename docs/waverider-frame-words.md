@@ -182,8 +182,8 @@ The copy loops they name (`0x1c287d`, `0x1c3030`) and their five direct readers 
 |---|---|---|---|
 | tail `0xa80..0xabb` | never read, not copied | never read, in no block | agrees |
 | `0x22`, `0xa54`, `0xa56`, `0xa7a`, `0xa7c`, `0xa7e` | read straight from the receive buffer at `0x1c2cd6`, `0x1c3084`, `0x1c3052`, `0x1c3069`, `0x1c309c` | the same readers, the same words | agrees |
-| `0x2a` | never read | read by the byte loop at `0x1c2545` (machine type 4, filter 0, and in the corpus replay); flipping it changed 59 DSP memory words | **differs** |
-| `0xa18` | never read | read by `0x1c1fda` and, in the copy, `0x1c2545`, in 2 and 4 augmented blocks; flipping it changed nothing | **differs** |
+| `0x2a` | never read | read by the byte loop at `0x1c2545` (machine type 4, filter 0, 2 reads in the random run; no further reads in the corpus); flipping it changed 59 DSP memory words | **differs** |
+| `0xa18` | never read | read by `0x1c1fda` (2 reads, random frames) and, in the copy, by `0x1c2545` (4 reads, augmented corpus); flipping it changed nothing | **differs** |
 | slot `+0x50`, k 65 (`0x9a8` on track 15) | never read ("inferred beyond that") | read by `0x1c1fe3` in 12 augmented reads; flipping it changed nothing | **differs** |
 | other direct readers | five words | 1,128 words in all: `0x94..0xb2` at `0x1c31c2`, `0x154..0x160` and their per-voice repeats at `0x1c31ed`, `0x1c31fb`, `0x1c3207`, `0x1c31c0`, `0xa5a..0xa78` at `0x1c31bb`, and wide sweeps by `0x1c1fca..0x1c1fe3` and `0x1c2535..0x1c254e` | **ours finds more** |
 
