@@ -3,7 +3,7 @@
 What the firmware will add to the Waverider store and the Data API, so that DNX's Library tab
 (DNX option 1) and the instrument's PRESET/KIT page 2 (option A) can manage wavetables. Decided
 by the owner on 2026-10-06:
-- the pool is **per project**: up to 127 tables, chosen from the +Drive store, saved and loaded
+- the pool is **per project**: up to 128 tables, chosen from the +Drive store, saved and loaded
   with the project;
 - a sound remembers a **pool slot**.
 
@@ -22,9 +22,9 @@ One table has several numbers. Every field below says which one it carries.
 | name | range | what it is |
 |---|---|---|
 | **store slot** | 0..255 | the index entry and the `/waverider/<n>` path (`docs/waverider-store.md`) |
-| **pool index** | 0..126 | an entry in a project's pool list |
-| **shown slot** | 1..127 | what both UIs display: pool index + 1 |
-| **coarse** | 0..128 | what a sound stores in TBL1 / TBL2 (the parameter word's high byte) |
+| **pool index** | 0..127 | an entry in a project's pool list |
+| **shown slot** | 1..128 | what both UIs display: pool index + 1 |
+| **coarse** | 0..129 | what a sound stores in TBL1 / TBL2 (the parameter word's high byte) |
 | **project slot** | 0..128 | which project a pool list belongs to: 1..128 as `/projects` numbers them, and **0 for the working project**. The only number here where 0 is not "the first": the listing names it `working` |
 
 The conversions:
@@ -81,17 +81,17 @@ valid, the project follows the automatic pool** (below), exactly as every projec
 | offset | field |
 |---|---|
 | 0 | magic `"WRPL"` |
-| 4 | version u16 = 1 |
+| 4 | version u16 = 2 (a version 1 record is read and converted, see Revision 4) |
 | 6 | **project slot** u16: 0..128, and it must equal the record's place |
 | 8 | generation u32: 1 or more in a stored record; 0 only in a read with no record behind it |
 | 12 | entries in use u16: **the count of entries that are not `0xFFFF`** (not the highest used index + 1) |
 | 14 | flags u16: bit 0 = **automatic**; every other bit 0 |
-| 16 | 127 × u16: entry j is the **store slot** at **pool index** j, or `0xFFFF` for none |
-| 270..507 | zero |
+| 16 | 128 × u16 (version 1: 127, the 128th read as `0xFFFF`): entry j is the **store slot** at **pool index** j, or `0xFFFF` for none |
+| 272..507 | zero (version 1: 270..507) |
 | 508 | xxHash32, seed 0, over bytes 0..507 |
 
 **Automatic** means "this project plays every stored 16 × 512 table, in store-slot order, the
-first 127 of them": today's pool. With the flag set, the entries are not used. A stored automatic
+first 128 of them": today's pool. With the flag set, the entries are not used. A stored automatic
 record and no record at all play the same; the flag exists so the instrument can make a project
 automatic in a single sector write (LOAD below).
 
@@ -111,7 +111,7 @@ not repair it on its own.
 
 **What a record can't see.** An entry holds a store slot and nothing else. If a table is deleted
 and a different one uploaded into the same store slot, every pool naming that slot plays the new
-table, and nothing can tell. Carrying each entry's hash would take 127 × 6 bytes, which doesn't
+table, and nothing can tell. Carrying each entry's hash would take 128 × 6 bytes, which doesn't
 fit in 512, so this is documented rather than widened.
 
 **An upload shows up in an old project's pool by itself** (seen on the instrument,
@@ -147,7 +147,7 @@ The `/` reply then declares and carries 5 entries.
 12-byte trailer) around a 512-byte payload, the record:
 - content kind **`0x50`** ('P'), not `0x57`, so a pool file sent to `/waverider` or read as a
   table is refused rather than misread;
-- object version 1;
+- object version 2 (a version 1 file is accepted and converted);
 - index (`0x15`) = the project slot, byte `0x18` = p;
 - uncompressed length 512;
 - **raw** (`0x1D` = 0), as `/waverider`.
@@ -162,9 +162,9 @@ The `/` reply then declares and carries 5 entries.
   write.** Written back unchanged it is refused (below). To edit such a pool, clear the flag,
   keep or change the entries, and write an explicit record.
 - **Write:** `/wavepool/<project slot>`, the whole record.
-  - **Checked:** the container (kind `0x50`, version 1, raw, length 512), the magic, the
-    version, the project slot against the path, the flags (only bit 0), bytes 270..507
-    zero, and the hash.
+  - **Checked:** the container (kind `0x50`, version 2 or 1, raw, length 512), the magic, the
+    version, the project slot against the path, the flags (only bit 0), bytes 272..507
+    zero (270..507 for version 1), and the hash.
   - **Without the automatic flag, also checked:** every entry `0xFFFF` or 0..255, and the count
     against the entries.
   - **With the automatic flag, also checked:** every entry `0xFFFF` and the count 0. **An
@@ -334,7 +334,12 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
   Emulator: each step's frames, and record 0 still `[3, 5, 0]` gen 1 after a DELETE, read
   over the Data API.
 
-## Revision 4 (agreed with DNX, 2026-10-06; not built yet): 128 pool slots
+## Revision 4 (agreed with DNX, 2026-10-06; built: `csrc/wrstore/records.c`, RECORD_VERSION 2): 128 pool slots
+
+> **Note, 2026-10-13:** the sections above were written for version 1 and have been corrected to
+> version 2 (DNX pointed out the lag; DNX's emulator test wrote a version 2 record to project slot 7
+> and read it back). This section is kept as the record of what changed and why. The firmware
+> stores only version 2; it converts a version 1 record in place when it reads one.
 
 The owner: a pool of 128 tables, beside the 128-sound pool. Built on
 `feature/waverider-pool-128`; until then `waverider-wtpool1` is v1 (127).
