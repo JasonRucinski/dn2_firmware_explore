@@ -168,7 +168,7 @@ SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming r
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
               "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
-              "wr_group", "wr_tie", "wr_list_name")
+              "wr_group", "wr_tie", "wr_list_name", "wr_minilabel")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -385,6 +385,40 @@ wr_label:
     rts
 9:  jmp     {GET_SHORT_NAME:#010x}
 
+| -- the LFO page's DEST cell (`0x400c2528`, the one that draws SYN over the parameter's name),
+| at 0x400c267c: `movel %a0@(30,%d2:l),%sp@- ; pea 0x40219c2d` (10 bytes, now jsr here and two
+| nops). It pushes the destination record's short name straight from the table, not through
+| getShortName, so the SYN page's wr_label never saw it: a Waverider destination drew its
+| borrowed record's own name (3A Sub Level: PITCH; owner, 2026-10-13). a0 = the record table,
+| d2 = 60 x the id, d0 = 4 x the id (still, from the multiply just above). On a Waverider
+| track and for an id the pages label, our label; otherwise the stock pointer. Replays the two
+| pushes by the return address in a1 (a0 and a1 are free after).
+wr_minilabel:
+    movea.l %sp@+,%a1
+    movea.l %a0@(0x30,%d2:l),%a0
+    move.l  %d0,%sp@-
+    move.l  %d1,%sp@-
+    move.l  %a0,%sp@-
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   8f
+    move.l  %sp@(8),%d0
+    lsr.l   #2,%d0
+    lea     labels,%a0
+1:  move.l  %a0@+,%d1
+    beq.s   8f
+    cmp.l   %d0,%d1
+    beq.s   2f
+    addq.l  #4,%a0
+    bra.s   1b
+2:  move.l  %a0@,%sp@
+8:  movea.l %sp@+,%a0
+    move.l  %sp@+,%d1
+    move.l  %sp@+,%d0
+    move.l  %a0,%sp@-
+    move.l  #0x40219c2d,%sp@-
+    jmp     %a1@
+
 | -- the long-name getter 0x400365c8, at 0x400365f2 (`move.l %a0@(40,%d1:l),-(%sp) ;
 | move.l %d2,-(%sp)`, 6 bytes: push the record's long name, then the string to build),
 | now jsr here. a0 = the record table, d1 = 60 x id; a0 and a1 are free after, the next
@@ -429,15 +463,17 @@ wr_key:
     tst.l   %d0
     rts
 
-| wr_sortkey: d0 = a record id -> d0 = its place, or 1000 + the id for any other record (so
-| every entry has one key and the order is total). d1 kept.
+| wr_sortkey: d0 = a record id -> d0 = 1000 + its place on the pages, or the entry itself for
+| any other record (so every entry has one key, the order is total, and what stock lists
+| first in a group, META None, stays first: owner, 2026-10-13). d1 kept.
 wr_sortkey:
     move.l  %d1,%sp@-
     move.l  %d0,%d1
     bsr.s   wr_key
-    bpl.s   1f
+    bpl.s   2f
     move.l  %d1,%d0
-    add.l   #1000,%d0
+    bra.s   1f
+2:  add.l   #1000,%d0
 1:  move.l  %sp@+,%d1
     rts
 

@@ -323,6 +323,8 @@ CANON_ARG_SITES = (
 COUNT_SITE = 0x400C24D2                 # SYN page count(type): 0x42432ad4[type].count
 LABEL_SITE = 0x40064622                 # the SYN page's jsr getShortName(this, id)
 LABEL_STOCK = bytes.fromhex("4eb9400372da")
+MINILABEL_SITE = 0x400C267C             # the LFO page's DEST cell: movel %a0@(30,%d2:l),%sp@- ; pea 0x40219c2d
+MINILABEL_STOCK = bytes.fromhex("2f302830487940219c2d")
 LONG_SITE = 0x400365F2                  # the long-name getter: push record+0x28, push d2
 LONG_STOCK = bytes.fromhex("2f3018282f02")
 # the LFO destination list (owner, 2026-10-13): one SYN group, page and knob order, numbered names
@@ -527,6 +529,9 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
          "type 5 reads WaveTone's", PAGE_STOCK)
     edit(LABEL_SITE, bytes.fromhex("4eb9") + _long(playout["wr_label"]),
          "the SYN page's label fetch: Waverider's labels for a Waverider track (M7)", LABEL_STOCK)
+    edit(MINILABEL_SITE, bytes.fromhex("4eb9") + _long(playout["wr_minilabel"]) + bytes.fromhex("4e714e71"),
+         "the LFO page's destination cell: Waverider's label for a Waverider track (the cell read "
+         "the record's short name inline: 3A Sub Level showed PITCH)", MINILABEL_STOCK)
     edit(LONG_SITE, bytes.fromhex("4eb9") + _long(playout["wr_long"]),
          "the long-name getter: Waverider's long names for a Waverider track (the header, "
          "the LFO destination browser)", LONG_STOCK)
