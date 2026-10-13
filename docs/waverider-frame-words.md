@@ -99,6 +99,15 @@ outside the receive pages:
 
 So `0x2a` is used in machine 4 / filter 0 and was dropped. `0x9a8` and `0xa18` are not.
 
+> **Correction, 2026-10-13.** "`0x2a` is used in machine 4" is not shown by this. The loop that reads it is
+> ordinary DSP code (a multiply-accumulate over 31-word blocks, `0x1c1fca..0x1c1fe3`, and its sibling at
+> `0x1c2535..0x1c254e`) whose base pointer `I0` comes out as garbage in fully random frames (in the case that
+> reads `0x2a` in the merged census, machine 0, filter 2: `I0 = 0x804acf94`). The runner wraps such an address
+> into the receive page, so the loop "reads" the page as data, and flipping a word in it changes what the loop
+> computes. That is an artefact of the random frame, not a dependence of the stock sound on the word. `0x2a` was
+> dropped as a precaution and stays dropped, but nothing here shows the DSP uses it. (The machine 4 case was not
+> re-traced.) See the comparison below.
+
 ### The wider census (2026-10-13): 1,343 blocks, one new reader of `0xa18`, and what it does
 
 The random-frame census was rerun over 8 more seeds (`out/census_big`, 240 case files,
@@ -175,29 +184,39 @@ words) describe 2,247 blocks of the stock DSP: 247 recorded captures; 400 with t
 random; 400 with per-voice slots, owners, note words and tail random; 1,200 with all 16 voices on each machine
 type 0 to 4 and filter 0 to 5, a note on in the first block and random slot values. Ours has the same four
 kinds: a recorded corpus as sent, `--augment fx`, `--augment voices`, and the random machine by filter grid.
-The copy loops they name (`0x1c287d`, `0x1c3030`) and their five direct readers are the same instructions on
-1.11. What agrees and what does not, by word:
+The author states in issue #49 that the DSP section is byte-identical in 1.11 and 1.12, so the two censuses
+are of the same code. What agrees and what does not, by word:
 
-| word | theirs (1.12) | ours (1.11, 3,285 blocks) | |
+| word | theirs | ours (3,285 blocks) | |
 |---|---|---|---|
 | tail `0xa80..0xabb` | never read, not copied | never read, in no block | agrees |
 | `0x22`, `0xa54`, `0xa56`, `0xa7a`, `0xa7c`, `0xa7e` | read straight from the receive buffer at `0x1c2cd6`, `0x1c3084`, `0x1c3052`, `0x1c3069`, `0x1c309c` | the same readers, the same words | agrees |
-| `0x2a` | never read | read by the byte loop at `0x1c2545` (machine type 4, filter 0, 2 reads in the random run; no further reads in the corpus); flipping it changed 59 DSP memory words | **differs** |
-| `0xa18` | never read | read by `0x1c1fda` (2 reads, random frames) and, in the copy, by `0x1c2545` (4 reads, augmented corpus); flipping it changed nothing | **differs** |
-| slot `+0x50`, k 65 (`0x9a8` on track 15) | never read ("inferred beyond that") | read by `0x1c1fe3` in 12 augmented reads; flipping it changed nothing | **differs** |
-| other direct readers | five words | 1,128 words in all: `0x94..0xb2` at `0x1c31c2`, `0x154..0x160` and their per-voice repeats at `0x1c31ed`, `0x1c31fb`, `0x1c3207`, `0x1c31c0`, `0xa5a..0xa78` at `0x1c31bb`, and wide sweeps by `0x1c1fca..0x1c1fe3` and `0x1c2535..0x1c254e` | **ours finds more** |
+| `0x2a`, `0xa18`, slot `+0x50` (`0x9a8` on track 15) | never read | readers appear at `0x1c2545`, `0x1c1fda`, `0x1c1fe3`, in random or augmented frames only, in loops whose `I0` is garbage there (traced for `0x9a8` and `0x2a`; `0xa18`'s readers are the same loops); flipping `0xa18` and `0x9a8` on every such variant changed nothing | **agrees, where traced** |
+| other direct readers | five words | 1,128 words in all: most by the two sweep loops (the mechanism below, not traced word by word), and the readers at `0x1c31bb..0x1c3207` (`0x94..0xb2`, `0x154..0x160`, `0xa5a..0xa78` and their per-voice repeats), which were not traced | **open** |
 
-The sweeps are the reason for most of the differences: in augmented variants (header flags, FX block, owners or
-tail randomised) a group of byte loops at `0x1c1fca..0x1c1fe3` and `0x1c2535..0x1c254e` reads nearly the whole
-receive page, so every word in it has a "direct reader" in some variant. What the sweeps are for, and which
-header value selects them, was not traced. Why their census did not see them is open too: it may be that 1.12
-differs from 1.11 there (the addresses match, which argues against it), or that their random model stays inside
-values our fully random words leave. **For anyone using `0x2a` on OS 1.12** (their plan names it as unused on
-both sides): on 1.11 it is read in machine type 4, so it is worth one check on a 1.12 image before relying on it.
+**What the extra readers are.** At `0x1c1fca..0x1c1fe3` the DSP runs a floating-point multiply-accumulate over
+31-word blocks (`lcntr = 0x1f`, `f0*f2`, `f12+f4`, with `I0` and `I1` as the two block pointers), and a sibling
+loop sits at `0x1c2535..0x1c254e`. Traced in the replay variant that reads `0x9a8` (corpus shard 0, file `0016` of
+`fmdrum_p2`, voices variant), at the same point of the block (about 288,000 steps in):
 
-What this does for the claim: coverage of the same kinds and a larger count, with every word of the payload
-read by something; and **no conclusion that any word is free beyond what the flip tests show** (the tail, and
-`0x9a8` and `0xa18` for the cases flipped).
+| pointer at `0x1c1fca` | the frame as sent | the same frame, slots/owners/tail randomised |
+|---|---|---|
+| `I0` | `0x258f68`, then `+4` per step | `0xffeb5968`, then `+4` per step |
+| `I1`, `I2`, `I3`, `I4`, `I5`, `I6`, `I7` | `0x257eec`, `0x25789a`, `0x268438`, `0x257ee8`, `0x2578b9`, `0x2ffe98`, `0x2ffe50` | identical |
+
+Same code, same place, one pointer wild. The runner wraps the address into the receive page, so the loop reads
+frame words as data: that is how "direct readers" of nearly every word appear, only in randomised variants, and
+why flipping those words changes nothing in the real path. In a fully random frame (machine 0, filter 2, seed
+1002, the case that reads `0x2a`) `I0 = 0x804acf94` at `0x1c2535`. Which frame field feeds `I0` was not traced.
+
+So the two censuses agree: with valid pointers nothing reads `0x2a`, `0xa18` or slot `+0x50`. Two rules for any
+such census: a read outside the copy loops in a randomised block is first a question about the pointer, and a
+read is a dependence only if flipping the word changes DSP memory (`replay --flip`, `diff`).
+
+What this does for the claim: coverage of the same kinds and a larger count, with agreement on every finding
+once the pointer artefact is accounted for. It does not make any word free beyond what the flip tests show
+(the tail, and `0x9a8` and `0xa18` for the variants flipped; 3 variants stopped in the runner before they
+could be flipped).
 
 ### The earlier narrow check
 

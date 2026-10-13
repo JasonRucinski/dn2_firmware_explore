@@ -1228,8 +1228,8 @@ reading only.
 Digitone II (OS 1.12): notes, tools and new effects. No Elektron firmware included."
 It reached this repository as issue #49 (2026-10-12).
 
-**Licence: GPL-2.0.** That is what the GitHub licence record says; whether the grant
-is "or later" was not checked in the file headers. A GPL-2.0-only work does not
+**Licence: GPL-2.0 or later, as the author states it** (issue #49); the GitHub licence record says
+GPL-2.0, and file headers were not checked (the owner asked the author to check them). A GPL-2.0-only work does not
 combine with this repository's AGPL-3.0-or-later, so **nothing was copied**: we cite
 its notes by file and re-did the measurements in our own code.
 
