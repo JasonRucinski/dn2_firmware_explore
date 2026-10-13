@@ -10,7 +10,7 @@ generation set to the sent one and the record hash and trailer recomputed, must 
 the sent file byte for byte. A version 1 file (rev 3, 127 entries) is stored as version 2
 (rev 4), so it must equal the sent file converted: the same entries and an empty 128th,
 both version fields 2. The firmware's own read-backs go to --out, unaltered, for DNX to
-pin. On an empty store an automatic record reads back with no entries, so it compares as
+pin. On an empty store a follows-store record reads back with no entries, so it compares as
 sent too.
 """
 

@@ -9,7 +9,7 @@ pool test table (`testtable.pool_table`), slot 3 the baked test table, slot 5 a 
 the pool cannot play (frames of 96 points: not a power of two), and slot 7 one of 5
 frames of 1024 points. The image boots from reset with `panel_drive --card-extent`.
 
-With no pool list on the card the working project follows the automatic pool: pool
+With no pool list on the card the working project follows the store-order pool: pool
 entries 0, 1 and 2 are slots 0, 3 and 7. `--record` also places a pool list for the working
 project (record 0, `dnfw.waverider.poolrecord`) naming slots [3, 5, 0]: entry 0 is
 slot 3, entry 1 is empty (slot 5 is stored but not playable), entry 2 is slot 0, and

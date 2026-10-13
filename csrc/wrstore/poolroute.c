@@ -8,8 +8,8 @@
  * A version 1 write (127 entries) is accepted and stored as version 2 (records.c); the
  * container's version and the record's must agree.
  * - A read returns what project slot p plays (wr_record_resolve): its stored record,
- *   or with none generation 0, the automatic flag and the automatic pool's entries.
- * - A write is checked whole at the commit (wr_record_check: an automatic record must
+ *   or with none generation 0, the follows-store flag and the store-order pool's entries.
+ * - A write is checked whole at the commit (wr_record_check: a follows-store record must
  *   carry no entries), then written to the sector that is not current with
  *   generation + 1. A non-zero generation sent must be the current one (0 for a slot
  *   with no record), or the write is refused: two writers can't lose each other's edit. A write to record 0 makes Waverider refill its pool

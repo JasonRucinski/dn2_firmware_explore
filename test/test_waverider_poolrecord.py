@@ -32,13 +32,13 @@ def test_v1_reads_as_127_entries():
 
 def test_round_trip_keeps_gaps():
     rec, checks = PR.from_bytes(PR.Record(0, [3, PR.NONE, 0]).to_bytes())
-    assert rec.entries == [3, PR.NONE, 0] and not rec.automatic
+    assert rec.entries == [3, PR.NONE, 0] and not rec.follows_store
     assert all(checks[k] for k in ("magic", "known", "hash", "count"))
 
 
-def test_automatic_record_carries_no_entries():
-    rec, checks = PR.from_bytes(PR.Record(9, [], automatic=True).to_bytes())
-    assert rec.automatic and rec.entries == [] and checks["count"]
+def test_follows_store_record_carries_no_entries():
+    rec, checks = PR.from_bytes(PR.Record(9, [], follows_store=True).to_bytes())
+    assert rec.follows_store and rec.entries == [] and checks["count"]
 
 
 def test_sectors_are_256_apart():
