@@ -41,6 +41,7 @@ import hashlib
 import json
 import os
 import pathlib
+import struct
 import subprocess
 import sys
 import tempfile
@@ -52,6 +53,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from dnfw.cli.files import read_image                      # noqa: E402
 from dnfw.firmware.load import load                        # noqa: E402
+from dnfw.audio import wavio                              # noqa: E402
 from dnfw.image import bootstream, sharc_object           # noqa: E402
 from dnfw.waverider import render, testtable             # noqa: E402
 from dnfw import sharcemu  # noqa: E402
@@ -391,13 +393,18 @@ def gate2(dk, reader: Reader, table) -> dict:
     return {"ok": ok, "cases": rows}
 
 
-def write_wav(path: pathlib.Path, samples: list[float], rate: int = 48000) -> None:
+def write_wav(path: pathlib.Path, samples: list[float], rate: int = 48000, comment: str = "") -> None:
+    """16-bit mono. COMMENT says what rendered the file and whether it is looped
+    (`dnfw wav report` prints it as the source)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(rate)
         w.writeframes(render.pcm16(samples))
+    if comment:
+        raw = path.read_bytes() + wavio.info_chunk(comment)
+        path.write_bytes(raw[:4] + struct.pack("<I", len(raw) - 8) + raw[8:])
 
 
 def gate3(reader: Reader, table, seconds: float, freq: float, block: int) -> dict:

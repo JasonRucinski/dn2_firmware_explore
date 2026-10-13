@@ -244,7 +244,7 @@ def main(argv=None) -> int:
               "the runner: TBL1 slot 2 = the pool table loaded through command 4, WAV1 64, note 60")
         g.wav("pool_slot2_preview.wav", g.preview(tables, 60.0, 0, 0x7800, 2 * SLOT, a.seconds),
               a.seconds, wavs, "PREVIEW (the reference, not the runner): the pool table swept "
-                               "POS 0 -> 120, note 60")
+                               "POS 0 -> 120, note 60", source="the model")
     report["checks"] = checks
     report["wavs"] = wavs
     (g.OUT / "pool_report.json").write_text(json.dumps(report, indent=1, default=str) + "\n")

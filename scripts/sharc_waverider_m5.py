@@ -428,14 +428,17 @@ def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict
 
 # -- WAVs ------------------------------------------------------------------------------------------
 
-def wav(name, samples, seconds, wavs, what, normalise=False):
+def wav(name, samples, seconds, wavs, what, normalise=False, source="the runner"):
+    """SOURCE goes into the file with the loop note, so a reader of the WAV alone knows
+    what rendered it: the runner (the default) or "the model" for a preview."""
     n = int(seconds * RATE)
     pk = V.peak(samples)
     scale = 0.9 / pk if normalise and pk else 1.0
     looped = 0 < len(samples) < n
     data = V.loop_to([x * scale for x in samples], n) if looped else [x * scale for x in samples]
     path = OUT / name
-    m1.write_wav(path, data, RATE)
+    m1.write_wav(path, data, RATE, source + (", LOOPED from %d rendered samples" % len(samples) if looped
+                                             else ", not looped") + ": " + what)
     wavs.append({"file": str(path), "seconds": round(len(data) / RATE, 3),
                  "rendered_samples": len(samples), "looped": looped, "gain": round(scale, 4),
                  "peak": pk, "rms": V.rms(samples),
@@ -526,7 +529,7 @@ def main(argv=None):
                 wav("m5_voice_machine.wav", track_series(runs["init"], 0), a.seconds, wavs,
                     "track 0's buffer after the type-5 loop, bit-exact to the reference (init sound)")
                 wav("m5_preview_init_sound.wav", preview(tables, 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
-                    "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)")
+                    "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)", source="the model")
             for key, what, pv in (
                     ("pos120", "POS (WAV1) 120: slot 0's last frame, the sine", (60.0, 0x7800, 0x7800, 0)),
                     ("slot1", "TBL1 1, WAV1 64: the overtone table, partials 9-10", (60.0, 0x4000, 0x4000, 0x100)),
@@ -535,16 +538,16 @@ def main(argv=None):
                     wav(f"m5_{key}_machine.wav", track_series(runs[key], 0), a.seconds, wavs,
                         f"track 0's buffer, {what}")
                     wav(f"m5_preview_{key}.wav", preview(tables, *pv[:1], pv[1], pv[2], pv[3], a.seconds),
-                        a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}")
+                        a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}", source="the model")
             if runs["silent"]["ok"]:
                 wav("m5_no_trigger.wav", runs["silent"]["amp_out"], a.seconds, wavs,
                     "control: no trigger, amp output (silent)")
             wav("m5_demo_pos_sweep_preview.wav", preview(tables, 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 0 at note 48, POS swept 0 -> 120 over 4 s: "
-                "a buzzy saw darkening to a sine")
+                "a buzzy saw darkening to a sine", source="the model")
             wav("m5_demo_harmonic_climb_preview.wav", preview(tables, 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 1 at note 48, POS swept 0 -> 120 over 4 s: "
-                "the overtone series climbing, partial 1 to 16")
+                "the overtone series climbing, partial 1 to 16", source="the model")
 
         if "stock" in steps:
             print("\nstep 4: types 0-4 unchanged")
@@ -569,7 +572,7 @@ def main(argv=None):
                 i0 = run["t5_inputs"][-1][t]
                 wav(f"m5_preview_frame{sep[:-1]}.wav", preview(tables, i0["note"], i0["wav1"], i0["wav1"],
                                                     i0["tbl1"], a.seconds), a.seconds, wavs,
-                    "PREVIEW, not the runner: the reference for the caller's frame's last block inputs")
+                    "PREVIEW, not the runner: the reference for the caller's frame's last block inputs", source="the model")
 
     ok = bool(results) and all(r.get("ok") for r in results.values())
     report["steps"] = results

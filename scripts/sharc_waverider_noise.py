@@ -132,7 +132,7 @@ def main(argv=None) -> int:
             tour += v.render((0x6400, 0, colr, 0x7F00), b == 0, g.BLOCK)
     g.wav("noise_reference_tour.wav", tour, len(tour) / g.RATE, wavs,
           "the reference (bit for bit with the runner above): WHT, PNK, BRN, DIG at DEC 60, two notes "
-          "a second; then WHT at COLR -64, then +63; 1 s each, the noise alone", normalise=True)
+          "a second; then WHT at COLR -64, then +63; 1 s each, the noise alone", normalise=True, source="the model")
     report["checks"] = checks
     report["wavs"] = wavs
     (g.OUT / "noise_report.json").write_text(json.dumps(report, indent=1, default=str) + "\n")
