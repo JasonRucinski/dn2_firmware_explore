@@ -1,7 +1,7 @@
 /* Edits of the working project's pool list (record 0), from the wavetable page.
  *
  * Each edit starts from what plays (wr_record_resolve): the stored list, or, for a
- * project still on the automatic pool, the automatic pool written out as a list, so the
+ * project still on the store-order pool, the store-order pool written out as a list, so the
  * edit keeps what was playing (docs/for-dnx-waverider-pool.md §2). It changes the list,
  * writes it in one sector (generation + 1), and makes Waverider refill its pool.
  *

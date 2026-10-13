@@ -6,17 +6,17 @@
  *   SLOT (0-based, 128 the working copy). SAVE PROJECT AS 002 calls it with 1, then
  *   with 128 (measured in the emulator, 2026-10-06; boot and CREATE NEW call it with
  *   128 only). After a save to 0..127 that succeeded, record 0 is copied to record
- *   SLOT + 1: a stored record as it is, and with none an automatic record.
+ *   SLOT + 1: a stored record as it is, and with none a follows-store record.
  * - 0x400f6a2c(handle, slot, project, progress), the +Drive read of LOAD PROJECT
  *   (called from 0x40042c48 with slot 1 for LOAD PROJECT 002, measured). After a read
- *   that succeeded, record SLOT + 1 is copied to record 0 (none: an automatic one),
+ *   that succeeded, record SLOT + 1 is copied to record 0 (none: a follows-store one),
  *   and Waverider refills its pool (wr_store.changes).
  * - CREATE NEW: 0x400428c0 makes a new working project and saves it with
  *   0x40040288(app, 128, progress) at 0x40042b60 (reached from the LOAD list's CREATE NEW
  *   through 0x4009ab30, measured). A hook on that call site writes record 0 as an empty
  *   list after the save: a new project starts with no pool tables, as it starts with an
  *   empty sound pool (the owner, 2026-10-06). An empty list is a stored record, not the
- *   automatic one, which stays what a project saved before the lists plays.
+ *   follows-store one, which stays what a project saved before the lists plays.
  * Each copy is one sector write, so an interrupted one leaves the old record or the
  * new one. The stock result is returned unchanged. Both routines answer success in
  * d0's low byte (the callers test it with tstb). 1.11 addresses: for 1.12, find both
@@ -39,7 +39,7 @@ static void copy_record(u32 from, u32 to)
     if (wr_record_read(from, rec)) {
         wr_put16(rec + R_PROJECT, to);       /* the rest as stored; the write rehashes */
     } else {
-        wr_record_automatic(to, rec);
+        wr_record_follows_store(to, rec);
     }
     generation = wr_record_write(to, rec);
     DELETE(rec);
@@ -73,8 +73,8 @@ void wr_project_created(u32 ok)
     if (!(ok & 0xff))
         return;
     rec = NEW(RECORD_BYTES);
-    wr_record_automatic(0, rec);
-    wr_put16(rec + R_FLAGS, 0);              /* an empty list, not the automatic pool */
+    wr_record_follows_store(0, rec);
+    wr_put16(rec + R_FLAGS, 0);              /* an empty list, not the store-order pool */
     generation = wr_record_write(0, rec);
     DELETE(rec);
     wr_projects.last_slot = 0;

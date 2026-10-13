@@ -63,7 +63,7 @@ u32 wr_store_commit_entry(u32 n, const u8 *entry);
 #define WR_MAX_POINTS  4096
 
 /* Can the DSP play slot n's table? Used, a wavetable of 1..64 waves of 64..4096 int16
- * big-endian (a power of two), whole, in its own extent. The automatic pool is the slots
+ * big-endian (a power of two), whole, in its own extent. The store-order pool is the slots
  * for which this holds, in order; a stored table it refuses shows no name in the pool. */
 static inline int wr_store_playable(const u8 *e, u32 n)
 {

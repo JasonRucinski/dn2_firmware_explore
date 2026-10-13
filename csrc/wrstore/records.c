@@ -14,20 +14,20 @@ u32 wr_record_check(u8 *rec, u32 p)
         return WP_VERSION;
     if (be16(rec + R_PROJECT) != p)
         return WP_PROJECT;
-    if (flags & ~RF_AUTOMATIC)
+    if (flags & ~RF_FOLLOWS_STORE)
         return WP_FLAGS;
     for (u32 j = 0; j < entries; j++) {
         u32 s = be16(rec + R_ENTRIES + 2 * j);
         if (s == RECORD_NONE)
             continue;
-        if (flags & RF_AUTOMATIC)
-            return WP_AUTO_ENTRIES;
+        if (flags & RF_FOLLOWS_STORE)
+            return WP_STORE_ENTRIES;
         if (s >= SLOTS)
             return WP_ENTRY;
         used++;
     }
     if (be16(rec + R_COUNT) != used)
-        return (flags & RF_AUTOMATIC) ? WP_AUTO_ENTRIES : WP_COUNT;
+        return (flags & RF_FOLLOWS_STORE) ? WP_STORE_ENTRIES : WP_COUNT;
     for (u32 i = R_ENTRIES + 2 * entries; i < R_HASH; i++)
         if (rec[i])
             return WP_RESERVED;
@@ -77,14 +77,14 @@ static void rehash(u8 *rec)
     wr_put32(rec + R_HASH, XXH32(rec, R_HASH, 0));
 }
 
-void wr_record_automatic(u32 p, u8 *rec)
+void wr_record_follows_store(u32 p, u8 *rec)
 {
     for (u32 i = 0; i < RECORD_BYTES; i++)
         rec[i] = 0;
     wr_put32(rec + R_MAGIC, RECORD_MAGIC);
     wr_put16(rec + R_VERSION, RECORD_VERSION);
     wr_put16(rec + R_PROJECT, p);
-    wr_put16(rec + R_FLAGS, RF_AUTOMATIC);
+    wr_put16(rec + R_FLAGS, RF_FOLLOWS_STORE);
     for (u32 j = 0; j < POOL_ENTRIES; j++)
         wr_put16(rec + R_ENTRIES + 2 * j, RECORD_NONE);
     rehash(rec);
@@ -94,8 +94,8 @@ u32 wr_record_resolve(u32 p, u8 *rec, const u8 *index)
 {
     u32 generation = wr_record_read(p, rec), used = 0;
     if (!generation)
-        wr_record_automatic(p, rec);
-    if (!(be16(rec + R_FLAGS) & RF_AUTOMATIC))
+        wr_record_follows_store(p, rec);
+    if (!(be16(rec + R_FLAGS) & RF_FOLLOWS_STORE))
         return generation;
     for (u32 n = 0; index && n < SLOTS && used < POOL_ENTRIES; n++)
         if (wr_store_playable(index + n * ENTRY_BYTES, n))

@@ -18,7 +18,7 @@ BYTES = 512
 ENTRIES = 128
 V1_ENTRIES = 127
 NONE = 0xFFFF
-AUTOMATIC = 1
+FOLLOWS_STORE = 1
 PROJECT_SLOTS = 129                 # 0 the working project, 1..128 as /projects
 SECTOR_A = 0x800                    # sectors, from the store region's start
 SECTOR_B = 0x900
@@ -41,7 +41,7 @@ def entries_of(version: int) -> int:
 class Record:
     project: int
     entries: list[int] = field(default_factory=list)   # store slots by pool index; NONE a gap
-    automatic: bool = False
+    follows_store: bool = False
     generation: int = 0
 
     def positions(self, version: int = VERSION) -> list[int]:
@@ -52,7 +52,7 @@ class Record:
         pos = self.positions(version)
         used = sum(1 for s in pos if s != NONE) if count is None else count
         r = struct.pack(HEAD, MAGIC, version, self.project, self.generation, used,
-                        AUTOMATIC if self.automatic else 0)
+                        FOLLOWS_STORE if self.follows_store else 0)
         r = (r + struct.pack(f">{len(pos)}H", *pos)).ljust(508, b"\0")
         return r + struct.pack(">I", store.xxh32(r))
 
@@ -64,7 +64,7 @@ def from_bytes(data: bytes) -> tuple[Record, dict]:
     pos = list(struct.unpack_from(f">{n}H", data, 16))
     while pos and pos[-1] == NONE:
         pos.pop()
-    rec = Record(project, pos, bool(flags & AUTOMATIC), generation)
+    rec = Record(project, pos, bool(flags & FOLLOWS_STORE), generation)
     checks = {"magic": magic == MAGIC, "version": version, "known": version in (1, VERSION),
               "hash": struct.unpack_from(">I", data, 508)[0] == store.xxh32(data[:508]),
               "count": count == sum(1 for s in pos if s != NONE), "flags": flags,
