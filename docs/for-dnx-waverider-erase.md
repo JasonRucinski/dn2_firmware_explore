@@ -17,8 +17,9 @@ control and DNX must not offer the button.
   Someone who already flashed stock has to flash the Waverider build again, erase, and flash stock.
 - It removes **all** tables and **all** pool lists, on every project. A project's TBL values keep
   their numbers and play Prim. afterwards, because the pool entries they named are gone.
-- It cannot be undone. DNX's copy of every table (its backup hook, as for a single delete) is
-  the only way back, and it should be taken before the request is sent.
+- It cannot be undone by the firmware. The way back is a copy of every table saved as a file
+  before the request is sent (as for a single delete). DNX has no restore from those files yet,
+  so the text should say what the copies are for rather than imply an undo.
 - It does not touch projects, presets, kits or samples. A project saved with Waverider tracks
   stays; what stock 1.11 does when it loads one is not tested.
 

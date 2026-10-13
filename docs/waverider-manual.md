@@ -97,7 +97,8 @@ features that come next and **do not change the sound yet**. You can set and p-l
 To return the unit to what Elektron shipped:
 
 1. In DNX, back up the device, then use **Remove all Waverider data** in Settings. It removes
-   every stored table and every pool list from the +Drive and keeps a copy of each table first.
+   every stored table and every pool list from the +Drive. It saves each table as a file first.
+   Those files are a record of what was removed; DNX cannot put them back yet.
 2. Flash the stock 1.11 file over MIDI, as in "Before you start".
 
 Do step 1 first. Stock 1.11 cannot reach the wavetable region, so once it is on, the data stays
