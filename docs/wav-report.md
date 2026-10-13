@@ -21,13 +21,24 @@ The tool reads a file. It cannot tell what made it, and that decides what a read
 | source | what it is | limits |
 |---|---|---|
 | the model | the Python reference (`dnfw.waverider.render`), which the DSP code is checked against | not the DSP |
-| the runner | our SHARC code executed in digikit's SHARC runner inside the stock image, bit for bit | slow: the Waverider tests render 12 blocks (384 samples, 8 ms) and **loop** them to fill a WAV |
+| the runner | our SHARC code executed in digikit's SHARC runner inside the stock image, bit for bit | the Waverider tests render 12 blocks (384 samples, 8 ms) and **loop** them to fill a WAV; `scripts/sharc_waverider_long.py` renders any length without looping |
 | the instrument | the unit's own output, through the probe's tap or a recording | not in this repository's renders yet |
 
 A file can say which it is in a `LIST/INFO` comment (`wavio.info_chunk`); `report` prints it on the
 sheet as `source`, raises a finding when it is missing, and another when it says the render is
 looped. A looped file's pitch and spectrum describe the loop: 384 samples looped read as 125 Hz
 whatever the note was.
+
+The runner's WAVs say so themselves since 2026-10-14 (`g.wav` in `sharc_waverider_m5.py`): the
+runner or the model, and looped or not. For a report on the DSP's real output, render it long:
+
+```
+python scripts/sharc_waverider_long.py sweep --native      # 375 blocks, a quarter second, about 2 minutes
+dnfw wav report out/waverider/long_sweep_native_machine.wav
+```
+
+Every block of it is compared with the model bit for bit, so the sheet is of samples known to be
+the DSP code's. Without `--native` the same render takes over an hour in the Python runner.
 
 ## The numbers
 
