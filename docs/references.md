@@ -1256,3 +1256,21 @@ a real-frame corpus was still running when this was written. Read "no reader fou
 bounded by that, not as proof.
 
 **Adopted so far:** the method and the region list. No code and no data.
+
+## `m-dwyer/moveforge`: judging a DSP render by numbers and plots (added 2026-10-14)
+
+A development platform for Ableton Move modules by digikit's author. No licence file as of
+2026-10-14, so it is read for its method and nothing is copied.
+
+**What it does that we wanted:** every module is rendered offline to WAVs (a preset suite and
+generated stress cases at each parameter's ends), each WAV is reduced to a metrics file (peak, RMS,
+DC offset, silence, clipped samples, a time profile and band energies in dB), the suite is compared
+against blessed goldens, the stress cases against safety limits (clipping, DC, silence, too-hot
+peaks, stereo imbalance), and waveform and spectrum plots are drawn for a person or a model to
+read before listening. Its README says why: audio bugs are easier to catch in a plot than by ear.
+
+**Adopted:** the method, in `dnfw wav report` and `dnfw wav compare` (`docs/wav-report.md`), with
+our own code and three additions: a spectrogram, the pitch and what lies between its harmonics,
+and a classification of steps into periodic and isolated. Not adopted yet: goldens and generated
+stress cases.
+
