@@ -92,9 +92,24 @@ features that come next and **do not change the sound yet**. You can set and p-l
 - **LFO destinations:** every control except Shape's TYPE, AMT and P1 appears in the LFO's
   DEST list, in two groups both headed SYN.
 
+## Going back to stock
+
+To return the unit to what Elektron shipped:
+
+1. In DNX, back up the device, then use **Remove all Waverider data** in Settings. It removes
+   every stored table and every pool list from the +Drive and keeps a copy of each table first.
+2. Flash the stock 1.11 file over MIDI, as in "Before you start".
+
+Do step 1 first. Stock 1.11 cannot reach the wavetable region, so once it is on, the data stays
+where it is. Someone who already flashed stock can flash this build again, remove the data, and
+flash stock once more. Your projects, presets, kits and samples are not touched. A project you
+saved with Waverider tracks stays on the unit.
+
 ## Known limits in this alpha
 
 - Page 5 is inert.
+- A pool reload while a note plays on a pool table may click. It has not been measured on the unit; tell us if you hear it.
+- 4096-point tables have not been measured on the unit.
 - A sound made before page 5 existed shows FOLD, WARP, FM and NPOS at 64.
 - The wavetable page in DNX may call a 64x2048 table unplayable. It plays.
 - The load on the DSP with a 16-note chord, both oscillators, sub and noise is about 65 %. See
