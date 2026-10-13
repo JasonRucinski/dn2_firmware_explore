@@ -108,6 +108,14 @@ The table cannot grow in place: new ids 321+ need the table relocated and its 56
 
 **C, as built [E]:** `getShortName` `0x400372da(this, id)` returns `record + 0x30`, and it is the only reader of `+0x30` measured in the emulator (`--label-log`). The SYN page calls it from `0x40064622`, and its `this` is not a sound. So the hook finds the track itself (`is_wr`, the active track) and is placed at the SYN page's call, not in `getShortName`. That also leaves lfowaves' DISP record at `0x400372da` alone.
 
+**Correction, 2026-10-13: `getShortName` is not the only reader of `+0x30`.** The `--label-log` run above
+watched the SYN page. The LFO page's DEST cell (`0x400c2528`, SYN over the parameter's name) pushes the
+record's short name straight from the table at `0x400c267c` (`movel %a0@(30,%d2:l),%sp@-`, the `30` is hex
+`0x30`), and `0x4010758a` does the same for the page's other columns. So a destination on a Waverider track
+drew its borrowed record's own name (the owner saw 3A Sub Level as SYN PITCH). `wr_minilabel` hooks
+`0x400c267c` and answers from the same label table. `0x4010758a` did not run in the DEST flow (a hit count)
+and is not hooked. Measured on `waverider-destlist5`: 3A SYN SUB, 1A SYN TUNE, 3E SYN NOIS.
+
 **Not yet relabelled:** the header's parameter line (`Osc1 Waveform=20` while POS turns) is the record's long name, `+0x28`. A later milestone hooks that, or relabels the long names with the same test.
 
 ## M8: the wave [E]

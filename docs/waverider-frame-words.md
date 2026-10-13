@@ -99,6 +99,43 @@ outside the receive pages:
 
 So `0x2a` is used in machine 4 / filter 0 and was dropped. `0x9a8` and `0xa18` are not.
 
+### The wider census (2026-10-13): 1,343 blocks, one new reader of `0xa18`, and what it does
+
+The random-frame census was rerun over 8 more seeds (`out/census_big`, 240 case files,
+every machine type 0..4 and filter 0..5) and merged: **1,343 blocks**, against 169 above and
+naturarum's 2,247. `sharc_frame_census.py report --word` over the merge:
+
+| word | read by | after the copy |
+|---|---|---|
+| `0x9a8` | the two unpack copy loops only (`0x1c287d`, `0x1c3030`) | no reads |
+| `0xa18` | the copy loops, and **`0x1c1fda`, twice in 1,343 blocks** | no reads |
+| `0x2a` | the copy loops, `0x1c2545` (machine 4) and `0x1c1fda` | a byte loop, as before |
+
+`0x1c1fda` is new here. It is a wide reader: across the merge it touches 728 frame words, in
+a few cases a block of the copy and, in exactly one case, a 62-word window of the receive
+page, `0x9f4..0xa6e` (machine type 2, filter 2, seed 6014, one block of six), which includes
+`0xa18`, `0xa1a` and `0xa54`. A reader is not a dependence, so the same frames were replayed
+with the words flipped (`diff --machine 2 --filters 2 --blocks 6 --seed 6014`, all DSP memory
+outside the receive pages and the frame copy compared):
+
+| flipped | memory words that differ, blocks 0 to 5 |
+|---|---|
+| `0xa18` | 0, 0, 0, 0, 0, 0 |
+| `0x9a8` | 0, 0, 0, 0, 0, 0 |
+| `0xa18` and `0x9a8` | 0, 0, 0, 0, 0, 0 |
+| `0x74` (control: a track level) | 5, 833, 525, 435, 429, 427 |
+
+The control shows the replay can see a dependence in these very frames. So the read at
+`0x1c1fda` does not carry `0xa18` or `0x9a8` into anything measured, and the position stays
+where it is. What the read at `0x1c1fda` is for was not traced: it looks like a window
+copy, taken only when a random frame sets a combination real sound does not. That is a
+reading of its access pattern, not a disassembly.
+
+Not yet in this merge: the replay of the recorded real-frame corpus (`out/frame_corpus`,
+8 shards) and of real captures, both still running when this was written. Until they are
+read, "no dependence" means: not in 1,343 random blocks, one targeted replay, and weeks of
+the SYNC build on the instrument with no symptom.
+
 ### The earlier narrow check
 
 `scripts/sharc_frame_word_readers.py` (reads of one word) and `sharc_frame_word_check.py` (a
@@ -112,7 +149,7 @@ from its frame copy as 16-bit halves (`csrc/waverider/sharc/sync.asm`).
 ## Limits that remain
 
 - Random frames are not real frames: parameters take values no sound produces, and the runner
-  stops on a few. 169 blocks is a tenth of naturarum's 2,247. A path reached only by real
+  stops on a few. 1,343 blocks is three fifths of naturarum's 2,247 (169 in the first pass). A path reached only by real
   sequences (a particular FX mode, a song mode) could still read these words.
 - Both words are copies of parameters (k 40 and k 65). If a later OS version made the DSP read
   them, the position would feed it.
