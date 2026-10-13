@@ -131,10 +131,42 @@ where it is. What the read at `0x1c1fda` is for was not traced: it looks like a 
 copy, taken only when a random frame sets a combination real sound does not. That is a
 reading of its access pattern, not a disassembly.
 
-Not yet in this merge: the replay of the recorded real-frame corpus (`out/frame_corpus`,
-8 shards) and of real captures, both still running when this was written. Until they are
-read, "no dependence" means: not in 1,343 random blocks, one targeted replay, and weeks of
-the SYNC build on the instrument with no symptom.
+### Corpus replay and real frames (2026-10-13): 3,285 blocks, and the flip on every trigger
+
+The same census over the frames the ColdFire really sends (`scripts/frame_corpus.py`: stock 1.11 from
+reset, machine types 0 to 4 on track 1, three trig patterns) with naturarum's two augmentations,
+`replay --augment both` (as sent, the FX block and header flags randomised, the voice slots, owners and
+tail randomised), 8 shards of 40 frames, 2 blocks per variant; plus 9 recorded real frames. Merged with
+the random run: **3,285 blocks** (1,343 random, 1,906 corpus replay, 36 real), against naturarum's 2,247.
+`report` now merges every census file in a directory (it read only `m*f*.json` before).
+
+| word | direct readers outside the copy loops, 3,285 blocks | where |
+|---|---|---|
+| `0x9a8` | `0x1c1fe3`, 12 reads | corpus shards 0, 2 and 3, in the augmented variants only |
+| `0xa18` | `0x1c1fda` (2 reads, the random run) and, in the frame copy, `0x1c2545` (4 reads) | the random run, and corpus shard 1 |
+| `0xa80..0xaba`, the 30-word tail | none | never read in the receive page or the copy, in any block |
+
+A reader is not a dependence, so each variant in which one of these readers touched `0x9a8` or `0xa18`
+was replayed twice with both words flipped in the second (`replay --flip 0x9a8,0xa18`), 2 blocks each,
+all DSP memory outside the receive pages and the frame copy compared:
+
+| case | variants triggered | memory words that differ |
+|---|---|---|
+| corpus shards 0, 1, 2, 3, `0x9a8` and `0xa18` flipped | 4 (one per shard, all `voices` variants) | **0 in every block** |
+| control: `0x74`, a track level, on 4 real frames | 24 blocks | 131 to 647 in every block |
+
+So none of the new readers carries either word into anything the check can see, and the position
+stays at `0xa18` and `0x9a8`. What bounds that:
+
+- **4 triggered variants, 2 blocks each.** The readers fire only in augmented variants (randomised FX
+  block, owners or tail), never in a frame as sent.
+- **3 variants stopped by the runner** (an unmodeled MMR at `0x1c1fca` or `0x1c2535`: a randomised tail
+  steers the DSP to an MMR the runner does not model) before the flip could be compared. Whether `0x9a8`
+  or `0xa18` matters there is unknown.
+- The readers at `0x1c1fe3`, `0x1c1fda` and `0x1c2545` were not disassembled; what they are for is
+  unknown.
+- The tail `0xa80..0xabb` stays the fallback: it is read by nothing in 3,285 blocks, and using it needs
+  a DSP read of the receive buffer (above).
 
 ### The earlier narrow check
 
@@ -149,7 +181,7 @@ from its frame copy as 16-bit halves (`csrc/waverider/sharc/sync.asm`).
 ## Limits that remain
 
 - Random frames are not real frames: parameters take values no sound produces, and the runner
-  stops on a few. 1,343 blocks is three fifths of naturarum's 2,247 (169 in the first pass). A path reached only by real
+  stops on a few. 3,285 blocks against naturarum's 2,247 (169 in the first pass); not the same frames, so not the same coverage. A path reached only by real
   sequences (a particular FX mode, a song mode) could still read these words.
 - Both words are copies of parameters (k 40 and k 65). If a later OS version made the DSP read
   them, the position would feed it.
