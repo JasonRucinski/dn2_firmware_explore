@@ -251,7 +251,11 @@ def run_flip(a) -> int:
 def run_replay(a) -> int:
     """Real frames: each file is a frame as the ColdFire holds it (big-endian 16-bit words,
     2,688 bytes, tools/dn2probe_frame.py). Every file is replayed --blocks times in a row from
-    a fresh DSP state, with the same read watchpoints as `run`."""
+    a fresh DSP state, with the same read watchpoints as `run`. With --flip BYTE,...: a
+    variant in which a reader outside the copy loops touches one of those frame words is
+    replayed twice, the word flipped in the second, and all DSP memory outside the receive
+    pages and the frame copy is compared (as `diff` does): a read that carries the word into
+    nothing shows as 0 differing words, and the control is any word that matters."""
     import sharc_waverider_m5 as g
     from dnfw import sharcemu
     sys.path.insert(0, str(sharcemu.path()))
@@ -292,6 +296,41 @@ def run_replay(a) -> int:
                 out.append((f"voices{v}", bytes(r)))
         return out if a.augment != "none" or a.variants == 0 else out[:1]
     watch_to = FRAME_LEN
+    flip = [int(x, 0) for x in a.flip.split(",")] if a.flip else []
+    skip = [(FRAME_COPY, FRAME_COPY + PAYLOAD), (0x2C29D0, 0x2C29D0 + 0x1000), (0x2C39D0, 0x2C39D0 + 0x1000),
+            (0x2C0478, 0x2C0478 + 0x100 + 0xAC0)]
+
+    def mem_of(r):
+        mem = {}
+        for addr in range(0x200000, 0x300000, 4):
+            if any(lo <= addr < hi for lo, hi in skip):
+                continue
+            v = g.m2.word(r.state, addr)
+            if v is not None:
+                mem[addr] = v
+        return mem
+
+    def flipped(framebytes):
+        out = bytearray(framebytes)                      # DSP memory order: little-endian words
+        for w in flip:
+            out[w:w + 2] = (int.from_bytes(out[w:w + 2], "little") ^ 0xFFFF).to_bytes(2, "little")
+        return bytes(out)
+
+    def flip_pair(label_of, framebytes):
+        chains = [g.init_on(snap, m2mach, stock_image), g.init_on(snap, m2mach, stock_image)]
+        for b in range(a.blocks):
+            mems = []
+            for k, frame in enumerate((framebytes, flipped(framebytes))):
+                r = g.m4.unpack_call(chains[k], frame)
+                res = g.fx.run(r, 8_000_000, g.fixups({}))
+                if not (res[0] == "halt" and res[1].pc_sw == g.m4.UNPACK_RETURN):
+                    print(f"  FLIP {label_of} block {b}: no clean return {res[:2]}", flush=True)
+                    return
+                chains[k] = r
+                mems.append(mem_of(r))
+            diff = [x for x in mems[0] if mems[0][x] != mems[1].get(x)]
+            print(f"  FLIP {label_of} block {b}: {len(diff)} memory words differ"
+                  + (" first " + ", ".join(f"{x:#x}" for x in diff[:6]) if diff else ""), flush=True)
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
         snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
         for fpath in files:
@@ -300,6 +339,7 @@ def run_replay(a) -> int:
             raw[0::2], raw[1::2] = be[1::2], be[0::2]            # DSP memory order
             for label, framebytes in variants(raw):
                 state = g.init_on(snap, m2mach, stock_image)
+                triggered = False
                 for b in range(a.blocks):
                     r = g.m4.unpack_call(state, framebytes)
                     idx = g.m2.word(r.state, g.m4.RX_INDEX) or 0
@@ -319,8 +359,15 @@ def run_replay(a) -> int:
                         begin = ev.address - ALIAS if ev.address >= ALIAS else ev.address
                         for byte in range(begin, begin + max(ev.width, 1)):
                             reads[(ev.label, (byte - base[ev.label]) // 2)][ev.pc_sw] += 1
+                            if flip and ev.pc_sw not in COPY_LOOPS and any(
+                                    0 <= byte - base[ev.label] - w < 2 for w in flip):
+                                triggered = True
                     blocks_run += 1
                     state = r
+                if triggered:
+                    print(f"{fpath.name} {label}: a reader outside the copy loops touched a flipped word",
+                          flush=True)
+                    flip_pair(f"{fpath.name} {label}", framebytes)
             print(f"{fpath.name}: {a.blocks} blocks x {len(variants(raw))} variants", flush=True)
     out = {"machine": -1, "filters": [], "blocks": blocks_run, "seed": 0, "real": [f.name for f in files],
            "forms": {str(pc): list(v) for pc, v in forms.items()},
@@ -360,7 +407,7 @@ def report(a) -> int:
     d = pathlib.Path(a.dir)
     merged = collections.defaultdict(collections.Counter)
     blocks = 0
-    for fpath in sorted(d.glob("m*f*.json")):
+    for fpath in sorted(d.glob("*.json")):          # run, replay and real captures alike
         j = json.loads(fpath.read_text())
         blocks += j["blocks"]
         for key, c in j["reads"].items():
@@ -442,6 +489,8 @@ def main() -> int:
     rpl.add_argument("--shard", default="0/1", help="K/N: every Nth file from K")
     rpl.add_argument("--limit", type=int, default=0, help="most frames used (an even spread)")
     rpl.add_argument("--seed", type=int, default=1)
+    rpl.add_argument("--flip", default="", help="frame byte offsets: replay a variant a reader "
+                     "touches twice, the word flipped in the second, and diff DSP memory")
     rpl.add_argument("--out", required=True)
     fl = sub.add_parser("flip")
     fl.add_argument("--machine", type=int, default=1)
