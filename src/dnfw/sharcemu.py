@@ -24,6 +24,16 @@ DEFAULT = ROOT.parent / "digikit-wt-sharcemu3"
 HEAD = "277760a"
 
 
+NATIVE = ROOT.parent / "digikit-rust/out/native/target-host-sharc/release/deps/sharc_native.dll"
+
+
+def native_library() -> pathlib.Path:
+    """digikit's native SHARC engine (`native/sharc` built with a generated core), for
+    scripts/sharc_native.py: DNFW_SHARC_NATIVE_LIB, or the build in the digikit-rust checkout."""
+    env = os.environ.get("DNFW_SHARC_NATIVE_LIB")
+    return pathlib.Path(env) if env else NATIVE
+
+
 def path() -> pathlib.Path:
     """The digikit checkout to use: the environment's, or DEFAULT."""
     env = os.environ.get("DNFW_DIGIKIT_SHARC") or os.environ.get("DIGIKIT_SHARC")

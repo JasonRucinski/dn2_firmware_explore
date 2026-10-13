@@ -346,3 +346,39 @@ path. The active render paths (a non-null pointer) all run and match a reference
 bit for bit, so this is only the degenerate silence path; we prove silence
 instead with a triggered all-zero sample, which renders exact zero. Worth a look
 at where the zero-fill count is meant to come from; **not a PR yet**.
+
+## 22. The native engine on a patched image, and which gaps still matter on 277760a (measured 2026-10-14)
+
+We ran our per-block call (`sw 0x1c2712`, the frame unpack and the voice dispatch, about
+155,000 instructions) in `native/sharc` through `tools/sharc_transpile_run.py`'s `NativeCore`,
+from a Python state moved over with `to_native`. Three things came out of it.
+
+**The library runs the stock instruction where an image is patched, unless option 4 is set.**
+Our library was generated for the stock DN2 image (`sharc_native_info` gives its
+`image_sha256`). We gave `sharc_native_create` our own image, which has a jump patched in at
+`sw 0x1c9448`. Stepping reached that address and ran stock's instruction there: I5 moved by
+0x40 and the run fell through to `0x1c944a`. Nothing reported it: `traps` and
+`model_code_mismatch` stayed 0 and the run reached its return. `to_native` does not set
+`OPT_RUNTIME_DECODE` (4); with it set, the run follows our image. `open_dn2_engine` sets it,
+so the coupled path is not affected. **Candidate:** set it in `to_native`, or have
+`sharc_native_create` compare the image's hash with the generated one and turn it on.
+
+**On 277760a only sections 7 and 8 still change this path's output.** With our fix-ups for
+section 6 (the SIMD two-pass) switched off for one form at a time (4a, 3a, 15b, 2a, 5a_move,
+3c, 5b_move, 7a) and then for all of them, every track buffer at the end of the block is the
+same word for word. The control: with section 7's fix-up off, 31 of 512 words differ. In one
+block the fix-ups fire 5,810 times for section 6, 24 times for section 7 and 120 times for
+section 8. We have not checked init this way, only the block call, so read "no longer needed"
+as bounded by that.
+
+**With sections 7 and 8 applied from the host, the native engine equals the Python runner.**
+Both are a write after the step (Sn, or the pair's registers or words), so we step one
+instruction at a time and write them through `sharc_native_set_reg` and `sharc_native_poke`.
+Over 12 blocks and two frame series, every buffer, the amp's input and output, the unpacked
+inputs and the instruction counts (1,867,934 and 1,934,523) are identical; with the two writes left out,
+the amp's output differs. Speed here: 10.8 s a block in the Python runner, 0.57 s stepping
+the native engine from Python, 0.036 s when the engine runs the block in one call.
+
+So sections 7 and 8, fixed in `tools/sharc_core`, would let a patched DN2 image run its
+block path natively with no host help. Our side of it is `scripts/sharc_native.py` and
+`scripts/sharc_native_check.py`.

@@ -102,6 +102,8 @@ class Machine:
 
 
 def word(state, addr: int) -> int | None:
+    if hasattr(state, "native_word"):          # sharc_native.Engine: the same word, from the native engine
+        return state.native_word(addr)
     v = fx._dm_read(state, addr, 4)
     return v.value if isinstance(v, fx.Const) else None
 
@@ -156,6 +158,8 @@ def controls(mach: Machine) -> dict:
 
 
 def word_reg(runner, name: str) -> int:
+    if hasattr(runner, "native_reg"):
+        return runner.native_reg(fx.UREG_CODES[name]) or 0
     v = runner.state.uregs[fx.UREG_CODES[name]]
     return v.value if isinstance(v, fx.Const) else 0
 

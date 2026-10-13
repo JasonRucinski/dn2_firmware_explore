@@ -147,6 +147,14 @@ def init_on(snap, m2mach, image: Image):
     return runner
 
 
+def native_on(init, image: Image, library=None, host_fixups: bool = True):
+    """INIT (from `init_on`) in digikit's native engine: `run_blocks` then runs the same
+    blocks about 20 times faster. See scripts/sharc_native.py for what that is trusted for.
+    One engine holds one run's state: make a new one for each series of blocks."""
+    import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
+    return sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups)
+
+
 def fixups(hooks=None) -> fx.Fixups:
     return m4.fixups(hooks)
 
@@ -290,9 +298,10 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                  SETUP_TABLE_READ: table_read, SETUP_NONE: none_arm}
         hooks.update(extra_hooks or {})
         f = fixups(hooks)
-        r = m4.unpack_call(state, frames(b))
+        native = hasattr(state, "block_call")   # a sharc_native.Engine: the taps above read it as they are
+        r = state.block_call(frames(b)) if native else m4.unpack_call(state, frames(b))
         t0 = time.perf_counter()
-        res = fx.run(r, 8_000_000, f)
+        res = r.run(8_000_000, hooks, m4.UNPACK_RETURN) if native else fx.run(r, 8_000_000, f)
         wall += time.perf_counter() - t0
         if not (res[0] == "halt" and res[1].pc_sw == m4.UNPACK_RETURN):
             halt = f"{res[1].reason} at {res[1].pc_sw:#x}" if res[0] == "halt" else f"{res[0]} at {res[1]:#x}"
