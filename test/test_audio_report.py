@@ -104,3 +104,11 @@ def test_a_file_says_what_rendered_it_and_a_loop_is_a_finding(tmp_path):
     assert wav.comment == "runner, 384 samples looped" and len(wav.data) == RATE
     assert any("looped" in f for f in metrics.measure(wav)["findings"])
     assert any("does not say" in f for f in measured(tmp_path, sine(440.0))["findings"])
+
+
+def test_a_float_file_written_here_reads_back_and_not_looped_is_no_finding(tmp_path):
+    x = sine(440.0)
+    wavio.write(tmp_path / "long.wav", x, RATE, "the runner, not looped, 375 blocks")
+    wav = wavio.read(tmp_path / "long.wav")
+    assert wav.is_float and np.array_equal(wav.mono, np.asarray(x, dtype="<f4").astype(np.float64))
+    assert not any("loop" in f for f in metrics.measure(wav)["findings"])

@@ -7,6 +7,7 @@ Frequency axes are logarithmic, 20 Hz to Nyquist; levels are dB re full scale.
 from __future__ import annotations
 
 import pathlib
+import textwrap
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -157,7 +158,8 @@ def sheet(wav: Wav, measured: dict, title: str, out: str | pathlib.Path) -> path
             f"RMS {measured['rms_db']} dB   DC {max((abs(v) for v in measured['dc_offset']), default=0):.4f}   "
             f"pitch {f0 if f0 else 'none'}" + (" Hz" if f0 else ""))
     draw.text((LEFT, 34), line, fill=TEXT, font=_font())
-    draw.text((WIDTH - RIGHT - 520, 12), "source: " + measured.get("source", "")[:70], fill=TEXT, font=_font())
+    for k, row in enumerate(textwrap.wrap("source: " + measured.get("source", ""), 84)[:3]):
+        draw.text((WIDTH - RIGHT - 520, 8 + 15 * k), row, fill=TEXT, font=_font())
     for k, note in enumerate(notes):
         draw.text((LEFT, 54 + 16 * k), "- " + note, fill=MARK if measured.get("findings") else TEXT, font=_font())
     top = head + 20

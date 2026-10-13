@@ -69,6 +69,16 @@ def read(path: str | pathlib.Path) -> Wav:
     return Wav(rate, x[:frames * channels].reshape(frames, channels), bits, code == FLOAT, full, comment)
 
 
+def write(path: str | pathlib.Path, samples, rate: int = 48000, comment: str = "") -> None:
+    """Mono 32-bit float, the samples as they are (a DSP's floats lose nothing), with COMMENT
+    as the file's source note."""
+    body = np.asarray(samples, dtype="<f4").tobytes()
+    fmt = struct.pack("<HHIIHH", FLOAT, 1, rate, rate * 4, 4, 32)
+    chunks = b"fmt " + struct.pack("<I", len(fmt)) + fmt + b"data" + struct.pack("<I", len(body)) + body
+    chunks += info_chunk(comment) if comment else b""
+    pathlib.Path(path).write_bytes(b"RIFF" + struct.pack("<I", 4 + len(chunks)) + b"WAVE" + chunks)
+
+
 def info_chunk(comment: str) -> bytes:
     """A LIST/INFO chunk holding COMMENT, for a writer to append after the data chunk: what
     rendered the file (the model, the runner, the instrument) and whether it is looped."""

@@ -184,7 +184,7 @@ def findings(m: dict) -> list[str]:
     notes = []
     if m["source"].startswith("not stated"):
         notes.append("the file does not say what rendered it (model, runner or instrument) or whether it is looped")
-    elif "loop" in m["source"].lower():
+    elif "loop" in m["source"].lower().replace("not looped", ""):
         notes.append("the file is a short render looped: the pitch and the spectrum describe the loop")
     if m["at_full_scale"]:
         notes.append(f"{m['at_full_scale']} samples at full scale: clipped, or one bit from it")
