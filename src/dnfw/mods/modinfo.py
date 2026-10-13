@@ -48,7 +48,7 @@ MARKER = b"MODINFO-UNFILLED"      # at 24 until the build writes the record
 MARKER_AT = 24
 MOD_AT, MOD_BYTES, MAX_MODS = 72, 16, 11
 CAPS = {0x01: "store", 0x02: "pool", 0x04: "rename", 0x10: "pool_cas", 0x20: "page",
-        0x40: "playable"}   # 0x08 unused
+        0x40: "playable", 0x80: "erase"}   # 0x08 unused
 
 
 class ModInfoError(Exception):

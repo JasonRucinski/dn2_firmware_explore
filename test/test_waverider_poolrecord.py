@@ -44,3 +44,11 @@ def test_follows_store_record_carries_no_entries():
 def test_sectors_are_256_apart():
     assert PR.sector_a(0) == 0x600800 and PR.sector_b(0) == 0x600900
     assert PR.sector_b(128) == 0x600980
+
+
+def test_erase_request_is_512_bytes_hashed_over_the_first_508():
+    r = PR.erase_request(3, 2)
+    assert len(r) == 512 and r[:4] == b"WRER" and r[4:6] == b"\x00\x01"
+    assert r[8:12] == (3).to_bytes(4, "big") and r[12:16] == (2).to_bytes(4, "big")
+    assert not any(r[16:508])
+    assert PR.store.xxh32(r[:508]) == int.from_bytes(r[508:], "big")

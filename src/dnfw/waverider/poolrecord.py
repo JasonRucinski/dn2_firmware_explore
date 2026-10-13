@@ -25,6 +25,19 @@ SECTOR_B = 0x900
 HEAD = ">IHHIHH"                    # magic, version, project slot, generation, count, flags
 
 
+ERASE_P = PROJECT_SLOTS             # /wavepool/129: the erase control, not a project
+ERASE_MAGIC = 0x57524552            # 'WRER'
+ERASE_VERSION = 1
+
+
+def erase_request(tables: int, lists: int) -> bytes:
+    """The 512-byte body written to /wavepool/129 (docs/for-dnx-waverider-erase.md): what the
+    writer saw, so a store that changed since is refused. Magic, version, 0, the tables in
+    use, the project slots with a stored record, zeros, the hash at 508 over 0..507."""
+    r = struct.pack(">IHHII", ERASE_MAGIC, ERASE_VERSION, 0, tables, lists).ljust(508, b"\0")
+    return r + struct.pack(">I", store.xxh32(r))
+
+
 def sector_a(p: int) -> int:
     return store.REGION + SECTOR_A + p
 

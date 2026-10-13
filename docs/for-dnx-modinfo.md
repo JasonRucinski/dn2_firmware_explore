@@ -75,6 +75,7 @@ One bit per thing DNX does differently.
 | 0x10 | pool_cas | a refused write that sent a generation means "the instrument changed this pool"; without the bit DNX can't say that |
 | 0x20 | page | the instrument has its own wavetable page (PRESET/KIT, page 2): DNX's only way to know there is a second writer of the working project's pool, so a refused write can say "the instrument changed this pool" |
 | 0x40 | playable | judges a stored table by bytes 248..251: it plays when it has 1..max waves of min..max points (a power of two when 0x01 is set), its length 2 x waves x points, in its own slot; without the bit, the 16 x 512 rule of earlier builds |
+| 0x80 | erase | enables the "remove every Waverider table and pool list" control (`/wavepool/129`, docs/for-dnx-waverider-erase.md) |
 
 **Unknown bits must be ignored.** That's the opposite of the pool record's rule, where an undefined flag is refused, and the difference is deliberate:
 - a data record must not be half-understood;

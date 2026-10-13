@@ -53,6 +53,10 @@ static inline u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 |
 u8 *wr_store_index(void);
 
 #define DRIVE_WRITE  ((int (*)(u32, u32, const void *))0x4012c780u)
+/* The driver's TRIM (CMD35/36/38 with argument 1) over COUNT sectors from SECTOR: the
+ * call FORMAT +DRIVE makes for its own slots (docs/drive-storage-research.md). -> 0 done. */
+#define DRIVE_TRIM   ((int (*)(u32, u32))0x4012c4b2u)
+#define DATA_END     (DATA_START + SLOTS * SLOT_SECTORS)   /* 0x41000 sectors from the region */
 
 /* Slot n's index entry becomes ENTRY (all zero frees it): the other group's index, then
  * its superblock, generation + 1 (route.c). -> 1 written, 0 the +Drive write failed. */

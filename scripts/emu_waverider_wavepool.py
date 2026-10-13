@@ -197,7 +197,8 @@ def main() -> int:
           r5 and {k: r5[k] for k in ("generation", "flags", "entries")})
     for label, text in (("bad_kind", b"the file is not a pool list"), ("bad_length", b"a pool list is 512 bytes")):
         check(f"{label} is refused at the first chunk", text in answer(f"{label}:chunk0"), answer(f"{label}:chunk0")[:70])
-    check("project slot 129 is out of range", b"out of range" in answer("open129"), answer("open129")[:70])
+    check("project slot 129 is the erase control: a read is refused, it is not a project",
+          b"cannot be read" in answer("open129"), answer("open129")[:70])
     l2 = listing(replies["list2"][0])
     _, r9 = read_record("r9")
     check("a version 1 write is accepted and reads back as version 2, the same entries",

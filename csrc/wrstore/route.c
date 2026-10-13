@@ -119,7 +119,6 @@ static void fail_slot(u32 *out, u32 n, const char *rule) { fail_slot_in(out, RES
  * serves one transfer at a time, as DNX makes them. */
 #define TABLE_MAX    (SLOT_SECTORS * 512)              /* 512 KiB */
 #define FILE_MAX     (ENTRY_BYTES + TABLE_MAX)
-#define DATA_END     (DATA_START + SLOTS * SLOT_SECTORS)  /* 0x41000 */
 #define CONTENT_KIND 0x57u                             /* 'W' (stock: 1 project, 3 sound, 5 kit) */
 
 void wr_check_invoker(void);
