@@ -85,7 +85,8 @@ The code, one subject each, in the +Drive chunk (`dnfw.waverider.drive`):
 - `csrc/waverider/wtmenu.c`: page 2's menu and where its keys go;
 - `csrc/waverider/wtlist.c`: the lists' rows, keys and drawing;
 - `csrc/waverider/wtedit.c`: what the page changes. Pool edits start from what plays, so a
-  project on the store-order pool keeps its tables when it first gets a list, and write
+  project that follows the store keeps its tables when it first gets a list (one with no
+  record starts from an empty list), and write
   record 0 in one sector (generation + 1). DELETE changes no pool list. LOAD
   writes the kit sound's TBL value word (slot 27 or 33, coarse = pool index + 2).
   `page.c` leaves the SYN page's oscillator in `wr_events.shown_osc` for it.

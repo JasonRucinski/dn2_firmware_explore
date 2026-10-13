@@ -5,7 +5,7 @@
 Through digikit's sysex_bridge, DNX's own frames (docs/for-dnx-waverider-pool.md §2):
 1. `/` lists `wavepool`; `/wavepool` lists 0..128, 0 named `working`, none used;
 2. with tables in store slots 0 and 3, a read of project slot 0 (no record) says what
-   plays: generation 0, follows the store, entries [0, 3], count 2, a correct hash;
+   plays: generation 0, no flag, no entries, count 0, a correct hash (an empty pool);
 3. that read written back unchanged is refused (a follows-store write carrying entries);
 4. an explicit record for slot 0 is written (generation 1), then again sending the
    generation it replaces (generation 2, the other sector); each reads back as sent, with
@@ -172,9 +172,9 @@ def main() -> int:
           and not any(u for _, _, u in l0), l0[:3])
 
     head, r0 = read_record("r0")
-    check("no record reads as what plays: generation 0, follows the store, entries [0, 3], count 2",
-          r0 and r0["generation"] == 0 and r0["flags"] == 1 and r0["entries"] == [0, 3]
-          and r0["count"] == 2 and r0["hash_ok"] and r0["project"] == 0, r0 and {k: r0[k] for k in ("generation", "flags", "entries", "count", "hash_ok")})
+    check("no record reads as what plays, an empty pool: generation 0, no flag, no entries, count 0",
+          r0 and r0["generation"] == 0 and r0["flags"] == 0 and r0["entries"] == []
+          and r0["count"] == 0 and r0["hash_ok"] and r0["project"] == 0, r0 and {k: r0[k] for k in ("generation", "flags", "entries", "count", "hash_ok")})
     check("the container: kind 0x50, version 2, index 0, 512 bytes, raw",
           head and struct.unpack(">IIII", head[13:29]) == (0x50, 2, 0, 512) and head[29] == 0,
           head.hex() if head else None)

@@ -1,8 +1,8 @@
 /* Edits of the working project's pool list (record 0), from the wavetable page.
  *
- * Each edit starts from what plays (wr_record_resolve): the stored list, or, for a
- * project still on the store-order pool, the store-order pool written out as a list, so the
- * edit keeps what was playing (docs/for-dnx-waverider-pool.md §2). It changes the list,
+ * Each edit starts from what plays (wr_record_resolve): the stored list; for a project with
+ * no record, an empty list; for one that follows the store, the store-order pool written out
+ * as a list, so the edit keeps what was playing (docs/for-dnx-waverider-pool.md §2). It changes the list,
  * writes it in one sector (generation + 1), and makes Waverider refill its pool.
  *
  * LOAD sets the active track's TBL1 or TBL2 in the kit's sound (the value array at

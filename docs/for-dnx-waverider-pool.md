@@ -74,7 +74,8 @@ The two copies of one record are 256 sectors apart, not neighbours, for the same
 groups are apart. 258 sectors in all, ending at `0x600981`.
 
 The current record is the valid one with the higher generation; on a tie A wins. **If neither is
-valid, the project follows the store-order pool** (below), exactly as every project does today.
+valid, the project's pool is empty** (revision 5, 2026-10-13; until then it followed the
+store-order pool, which only a record with the flag below does now).
 
 **A pool record**: 512 bytes, every multi-byte field big-endian, as in the store.
 
@@ -90,18 +91,18 @@ valid, the project follows the store-order pool** (below), exactly as every proj
 | 272..507 | zero (version 1: 270..507) |
 | 508 | xxHash32, seed 0, over bytes 0..507 |
 
-**Follows the store** means "this project plays every stored 16 × 512 table, in store-slot order, the
-first 128 of them": today's pool. With the flag set, the entries are not used. A stored follows-store
-record and no record at all play the same; the flag exists so the instrument can make a project
-follow the store in a single sector write (LOAD below).
+**Follows the store** means "this project plays every stored table the pool can play, in store-slot
+order, the first 128 of them". With the flag set, the entries are not used. It is a deliberate
+opt-in: a project with no record at all plays **nothing** from the store (revision 5, below), and
+only a stored record with this flag plays the store's order.
 
 **Three states, as both sides name them** (DNX's `poolState`). Two read almost alike and
 differ by one byte, the flags word's low half:
 
 | state | generation | follows the store | what a sound reaches |
 |---|---|---|---|
-| untouched | 0 (no stored record) | yes | every playable table, in store-slot order |
-| follows the store | 1 or more | yes | the same, on purpose |
+| empty | 0 (no stored record) | no | nothing: no table plays from the store until one is put in a pool |
+| follows the store | 1 or more | yes | every playable table, in store-slot order, on purpose |
 | list | 1 or more | no | exactly the entries, which may be none (a new project's) |
 
 An entry may name a store slot that is free, or whose table the DSP can't play (not 16 × 512).
@@ -115,11 +116,10 @@ table, and nothing can tell. Carrying each entry's hash would take 128 × 6 byte
 fit in 512, so this is documented rather than widened.
 
 **An upload shows up in an old project's pool by itself** (seen on the instrument,
-waverider-wtpool1, 2026-10-06). A project with no record follows the store-order pool, so tables
-uploaded to the +Drive appear in its pool with nobody having added them, while a CREATE NEW
-project (an empty list) stays empty after the same upload. Both are as designed; only whether
-a record exists separates them. Queued: the instrument's page 2 says when a project follows the
-store-order pool, where the count is, so the two don't read as a bug.
+waverider-wtpool1, 2026-10-06). That was the rule then: a project with no record followed the
+store-order pool. **Revision 5 (2026-10-13) reversed it**: a project with no record is empty, as a
+CREATE NEW project always was, and the owner read the old behaviour as a bug. Only a project
+whose stored record has the follows-store flag is filled by an upload.
 
 **What the store-order pool can't hold steady.** Its order is store-slot order, so an upload into a
 free store slot below the others shifts every later pool index, and sounds in a follows-store
@@ -134,11 +134,11 @@ long-form layout as `/waverider`'s:
   to the `/projects` names itself; the record holds no project name, because the stock project
   operations don't carry pools along (below), so only a join can be truthful;
 - occupancy `01 01` when that project slot has a valid stored record (follows the store or not, empty or
-  not), `00 00` when it has none and follows the store-order pool;
+  not), `00 00` when it has none (an empty pool);
 - the size is 512; permissions `0x007e`.
 
 **Occupancy says "a record exists", never "the user chose this pool".** A backup and restore of a
-slot that had no record leaves a stored follows-store record there: it plays the same, but occupancy
+slot that had no record leaves a stored empty list there: it plays the same, but occupancy
 flips from `00 00` to `01 01`. Nothing downstream should read intent into it.
 
 The `/` reply then declares and carries 5 entries.
@@ -154,10 +154,11 @@ The `/` reply then declares and carries 5 entries.
 
 - **Read:** `/wavepool/<project slot>`, as `/waverider/<n>` is read. It returns the current
   record. A project slot with no valid record returns what that project plays: the right magic,
-  version and project slot, **generation 0**, the follows-store flag set, the entries filled with the
-  store-order pool as it stands now, the count to match, and a correct hash. So a read always says
-  what plays, and generation 0 is how to tell "no record" from a stored follows-store one. A stored
-  follows-store record reads the same way, with its own generation.
+  version and project slot, **generation 0**, the flag clear, every entry `0xFFFF`, the count 0, and
+  a correct hash (revision 5; before it the flag was set and the entries were filled with the
+  store-order pool). So a read always says what plays, and generation 0 is how to tell "no record"
+  from a stored empty list. A stored follows-store record reads with its flag set, the entries
+  filled with the store-order pool as it stands now, and its own generation.
   **A record read from a follows-store slot describes what plays; it is not a template for a
   write.** Written back unchanged it is refused (below). To edit such a pool, clear the flag,
   keep or change the entries, and write an explicit record.
@@ -203,15 +204,17 @@ Every project's list is readable, not only the working project's. That is what l
   edits. It is kept with the working project, so it survives a reboot as everything else does
   (the working-project rule).
 - **SAVE PROJECT to slot k** writes record k as record 0 reads: a stored record is copied, and
-  with no record 0 a follows-store record is written. Either way k then has a record of its own.
+  with no record 0 an empty list is written. Either way k then has a record of its own.
 - **LOAD PROJECT k** writes record 0 as record k reads, then refills the DSP's pool from it: a
-  stored record is copied, and with no record at k a follows-store record is written. One sector
+  stored record is copied, and with no record at k an empty list is written. One sector
   write either way, so an interrupted load leaves the old pool or the new one, never a mix.
 - **A write to record 0 from DNX** refills the DSP's pool, as a write to the store does today
   (`wr_store.changes`). A write to any other record changes only the +Drive.
-- **While record 0 follows the store** (or is absent), a store write refills the pool as today.
+- **While record 0 follows the store**, a store write refills the pool as today. While it is
+  absent or an explicit list, a store write changes nothing that plays.
 - **Editing the pool on the instrument** while record 0 follows the store first writes it out as an
-  explicit record (what plays now), then applies the edit.
+  explicit record (what plays now), then applies the edit; with no record it starts from an empty
+  list.
 - **The instrument's edits can change several entries in one write** (since 2026-10-07, the
   stock-style lists; `wt_pool_add_many`, `wt_pool_clear_many`), so one generation step may cover
   a batch:
@@ -229,8 +232,9 @@ belonging to whatever project now sits in that slot, and say so when it can tell
 
 ## 3. What changes for the pool you see today
 
-Nothing, until something writes a record. A project with no record (every project saved so far,
-by stock firmware or by DNX) follows the store-order pool, so it plays what it plays today. A
+**Revision 5 changes this**: every project with no record (every project saved so far, by stock
+firmware or by DNX) has an empty pool from the build that carries it. Tracks that played a pool
+table play Prim. until a table is put in the project's pool; no migration is written. A
 project DNX writes to slot k plays from the moment it loads; the pool write is not a second
 step that has to happen with it. There is no first-boot migration: record 0 absent is the
 ordinary case.
@@ -252,8 +256,9 @@ is DNX's to add; the pool makes it matter more than the store alone did. So does
 3. **A and B are 256 sectors apart** (`0x600800 + p`, `0x600900 + p`), not neighbours.
 4. **Entries in use** is defined: the count of entries that are not `0xFFFF`. It is now a u16,
    with a flags u16 beside it.
-5. **No valid record means the store-order pool**, not an empty one. The follows-store flag makes that
-   state writable in one sector, and replaces the first-boot migration.
+5. ~~**No valid record means the store-order pool**, not an empty one.~~ **Reversed in revision 5
+   (2026-10-13): no valid record means an empty pool.** The follows-store flag stays, as the one
+   sector write that makes a project play the store's order on purpose.
 6. **The file form** is stated: the transfer container, kind `0x50`, raw, a 512-byte payload.
 7. **Two blind spots documented**: a reused store slot, and the store-order pool's order.
 
@@ -370,3 +375,24 @@ The owner: a pool of 128 tables, beside the 128-sound pool. Built on
   read cases (the v1 compatibility path's regression).
 - Not added: a hash per referenced table (128 of them don't fit in the reserved bytes); the
   reused-store-slot blind spot stays documented.
+
+## Revision 5 (2026-10-13; owner's call): a project with no pool plays no wavetable
+
+The owner opened a project on the +Drive that predates the records and saw every stored table in
+its pool. He read it as a bug: "A project with no pool should not play any wavetable and the pool
+should show empty." So:
+
+- **No valid record** is an empty pool. A read of such a slot returns generation 0, flags 0,
+  count 0, all 128 entries `0xFFFF`, a correct hash. The container and the 512 bytes are as
+  before; only the values differ.
+- **The follows-store flag stays** (bit 0), as a deliberate opt-in, and records that already carry it
+  keep their meaning. Reading one still fills the entries; writing one back with entries is
+  still refused.
+- Writing back a read of an empty slot stores an empty explicit list. That read-then-write case
+  is harmless now.
+- SAVE AS and LOAD of a project with no record copy "empty" (an empty list), not a follows-store
+  record. CREATE NEW is unchanged (an empty list).
+- **Existing projects go silent** on their pool, with no migration. Tracks that played pool tables
+  play Prim. (TBL 2 and up) until a table is put in a pool.
+- The erase control (`docs/for-dnx-waverider-erase.md`) is unaffected; after it, every project reads
+  as empty.

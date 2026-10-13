@@ -1,7 +1,7 @@
 """Waverider's pool on the ColdFire, in digikit's Rust emulator: the store on the
 +Drive in, the loader's frames out.
 
-    python scripts/emu_waverider_pool.py SYX [--record [--full]] [--panel-drive EXE] [--out DIR]
+    python scripts/emu_waverider_pool.py SYX [--record [--full] | --no-record] [--panel-drive EXE] [--out DIR]
 
 The build's own layout (`src/dnfw/mods/waverider_code.json`) says where to look. The
 +Drive is zeros but for a store, written here with `dnfw.waverider.store`: slot 0 the
@@ -9,8 +9,10 @@ pool test table (`testtable.pool_table`), slot 3 the baked test table, slot 5 a 
 the pool cannot play (frames of 96 points: not a power of two), and slot 7 one of 5
 frames of 1024 points. The image boots from reset with `panel_drive --card-extent`.
 
-With no pool list on the card the working project follows the store-order pool: pool
-entries 0, 1 and 2 are slots 0, 3 and 7. `--record` also places a pool list for the working
+By default the working project has a stored pool list with the follows-store flag: the
+store-order pool, pool entries 0, 1 and 2 being slots 0, 3 and 7. `--no-record` leaves the
+card with no pool list at all: since 2026-10-13 that is an empty pool (nothing plays from the
+store until a table is put in it), and the run checks that and stops. `--record` places an explicit pool list for the working
 project (record 0, `dnfw.waverider.poolrecord`) naming slots [3, 5, 0]: entry 0 is
 slot 3, entry 1 is empty (slot 5 is stored but not playable), entry 2 is slot 0, and
 the count is 3 (docs/for-dnx-waverider-pool.md). `--full` makes that list all 128
@@ -75,7 +77,8 @@ FULL_LIST = [0, 3] * (LF.dsp.POOL_SLOTS // 2)   # --full: every entry, each slot
 CLEARED = (b"\x7f" * 96 + b"\x81" * 96) * 16   # an empty entry's spans
 
 
-def store_extents(work: pathlib.Path, record: bool = False, full: bool = False) -> tuple[list[str], dict]:
+def store_extents(work: pathlib.Path, record: bool = False, full: bool = False,
+                  follows: bool = False) -> tuple[list[str], dict]:
     """-> panel_drive's --card-extent arguments, and what was stored."""
     five = [[int(round(20000 * math.sin(2 * math.pi * (f + 1) * k / 1024))) for k in range(1024)] for f in range(5)]
     tables = {0: ("Pulse narrowing", testtable.pool_table()), 3: ("Saw to sine", testtable.table()),
@@ -93,6 +96,8 @@ def store_extents(work: pathlib.Path, record: bool = False, full: bool = False) 
     files.update({ST.REGION + ST.slot_start(n): p for n, p in payloads.items()})
     if record:
         files[PR.sector_a(0)] = PR.Record(0, FULL_LIST if full else RECORD_LIST, generation=1).to_bytes()
+    elif follows:
+        files[PR.sector_a(0)] = PR.Record(0, [], follows_store=True, generation=1).to_bytes()
     args = []
     for sector, data in files.items():
         f = work / f"s{sector:x}.bin"
@@ -147,6 +152,7 @@ def main(argv=None) -> int:
     ap.add_argument("--wait", default="1200M", help="instructions past the UI (the pool starts at 5 s)")
     ap.add_argument("--record", action="store_true", help="a pool list for the working project")
     ap.add_argument("--full", action="store_true", help="with --record: all 128 entries, slots 0 and 3 in turn")
+    ap.add_argument("--no-record", action="store_true", help="no pool list on the card: an empty pool")
     a = ap.parse_args(argv)
     layout = json.loads((ROOT / "src/dnfw/mods/waverider_code.json").read_text())["layout"]
     pool_at, load_at, store_at = layout["wr_pool"], layout["wr_load"], layout["wr_store"]
@@ -155,8 +161,28 @@ def main(argv=None) -> int:
     status = [f"peek:{pool_at:#x}:{pool_bytes}", f"peek:{load_at:#x}:{4 * len(LOAD_FIELDS)}",
               f"peek:{store_at:#x}:{4 * len(STORE_FIELDS)}"]
 
+    if a.no_record:
+        with tempfile.TemporaryDirectory() as tmp:
+            extents, _ = store_extents(pathlib.Path(tmp))
+            run = drive(a, extents, layout, [f"wait:{a.wait}", *status], tmp)
+        res = [r for r in run["results"] if "hex" in r]
+        pool, st = fields(res[0]["hex"], POOL_FIELDS), fields(res[2]["hex"], STORE_FIELDS)
+        praw = bytes.fromhex(res[0]["hex"])
+        slot_of = praw[4 * len(POOL_FIELDS):4 * len(POOL_FIELDS) + LF.dsp.POOL_SLOTS]
+        checks = {
+            "the run ran to its end": run.get("outcome") == "done",
+            "the store holds its tables: generation 1, no read errors": st["generation"] == 1 and st["read_errors"] == 0,
+            "no pool list: the fill ran and the pool is empty (count 0, no entry maps to a slot)":
+                pool["fills"] >= 1 and pool["count"] == 0 and not any(b not in (0, 0xFF) for b in slot_of[:8]),
+        }
+        for k, v in checks.items():
+            print(f"  {'ok  ' if v else 'FAIL'} {k}")
+        print(json.dumps({"pool": pool}))
+        print("PASS" if all(checks.values()) else "FAIL", f"{sum(checks.values())}/{len(checks)}")
+        return 0 if all(checks.values()) else 1
+
     with tempfile.TemporaryDirectory() as tmp:
-        extents, stored = store_extents(pathlib.Path(tmp), a.record, a.full)
+        extents, stored = store_extents(pathlib.Path(tmp), a.record, a.full, follows=not a.record)
         plan = (FULL_LIST if a.full else RECORD_PLAN) if a.record else AUTO_PLAN
         want = expected_frames(stored, plan)
         # the queue's address, from a first look

@@ -90,11 +90,18 @@ void wr_record_follows_store(u32 p, u8 *rec)
     rehash(rec);
 }
 
+void wr_record_empty(u32 p, u8 *rec)
+{
+    wr_record_follows_store(p, rec);
+    wr_put16(rec + R_FLAGS, 0);
+    rehash(rec);
+}
+
 u32 wr_record_resolve(u32 p, u8 *rec, const u8 *index)
 {
     u32 generation = wr_record_read(p, rec), used = 0;
     if (!generation)
-        wr_record_follows_store(p, rec);
+        wr_record_empty(p, rec);         /* no record: an empty pool (owner, 2026-10-13) */
     if (!(be16(rec + R_FLAGS) & RF_FOLLOWS_STORE))
         return generation;
     for (u32 n = 0; index && n < SLOTS && used < POOL_ENTRIES; n++)

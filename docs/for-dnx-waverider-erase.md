@@ -52,7 +52,7 @@ numbers, ask again.
 
 1. **Zeroes the metadata:** both groups' superblock and index (sectors 0..64 of each), both
    sets of pool records (129 sectors each). From this write on the store reads as empty and every
-   project follows the store again.
+   project reads as an empty pool again.
 2. **TRIMs the whole region**, sectors `0x600000` for `0x41000` sectors (256 slots of 512 KiB and
    the metadata), with the driver's own TRIM, the call FORMAT +DRIVE makes for its slots.
 3. Makes Waverider refill its pool: tracks that played a table play Prim. until a table is back.
@@ -67,7 +67,7 @@ answered. DNX proves the result the way it proves a delete:
 
 - list `/waverider`: no entry used;
 - list `/wavepool`: no entry used;
-- read `/wavepool/0`: generation 0, flag bit 0 (follows the store) set, no entries.
+- read `/wavepool/0`: generation 0, flags 0, no entries (an empty pool).
 
 If the lists still show what was there, the request was refused: a stale count, a bad hash, or
 the +Drive write failed. The probe (`wp_write.last`, `wp_erase`) says which: `last` 4 erased, 5 the

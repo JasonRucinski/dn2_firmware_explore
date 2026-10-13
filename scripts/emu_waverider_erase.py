@@ -11,8 +11,8 @@ Through digikit's sysex_bridge, DNX's own frames (docs/for-dnx-waverider-erase.m
    container (a project's pool list) written to 129 with the right project number, and
    a table container (kind 0x57);
 4. the request with the counts the store holds: /waverider lists none used, /wavepool
-   none used, and project 0 reads as the store-order pool again (generation 0, following
-   the store, no entries);
+   none used, and project 0 reads as an empty pool again (generation 0, no flag, no
+   entries);
 5. the driver's TRIM ran once, over the region's last sector (0x640FFF).
 
 The bridge counts the executions of a PC over the session, so the TRIM count and its
@@ -124,8 +124,8 @@ def main() -> int:
     raw = b"".join(answer(f"r0:chunk{k}")[22:] for k in range(1, PIECES))
     at = raw.find(bytes.fromhex("ac11d303"))
     r0 = parse_record(raw[at + 31:at + 31 + 512]) if at >= 0 else None
-    check("project 0 reads as the store-order pool again: generation 0, following the store, no entries",
-          r0 and r0["generation"] == 0 and r0["flags"] == 1 and r0["entries"] == [] and r0["hash_ok"], r0)
+    check("project 0 reads as an empty pool again: generation 0, no flag, no entries",
+          r0 and r0["generation"] == 0 and r0["flags"] == 0 and r0["entries"] == [] and r0["hash_ok"], r0)
     counts = tail.get("counts", {})
     trims = counts.get(hex(TRIM_ENTRY), counts.get(str(TRIM_ENTRY)))
     check("the driver's TRIM ran once", trims == 1, counts)

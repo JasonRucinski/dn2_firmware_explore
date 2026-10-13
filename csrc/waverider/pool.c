@@ -5,8 +5,9 @@
  * whenever the store has changed (wr_store.changes: the /waverider route commits a
  * write or a delete), it fills the pool:
  * 1. reads the store's current index, and the working project's pool list (record 0,
- *    csrc/wrstore/records.c): its stored record, or with none (or the follows-store
- *    flag) the store-order pool, every playable slot in slot order, up to POOL_SLOTS;
+ *    csrc/wrstore/records.c): its stored record; with none, an empty pool (nothing from
+ *    the store plays until a table is put in it); with the follows-store flag, the
+ *    store-order pool, every playable slot in slot order, up to POOL_SLOTS;
  * 2. pool entry j is the list's entry j, when that store slot holds a table the DSP
  *    plays (wr_store_playable: 1..64 waves of 64..4096 int16); otherwise entry j is
  *    empty and plays Prim. (pool.asm), as a slot past the count does;

@@ -81,7 +81,9 @@ features that come next and **do not change the sound yet**. You can set and p-l
 - **Tables:** 1 to 64 frames of 64 to 4096 points each, in powers of two.
 - **Names:** the header names the table as you turn TBL, as "T:004 name".
 - **Adding and removing:** with DNX, or from the wavetable page (press PRESET/KIT twice) on
-  the unit. A project keeps its own pool; CREATE NEW starts with an empty one.
+  the unit. A project keeps its own pool. A project with no pool plays no wavetable, and its
+  pool shows empty: CREATE NEW starts that way, and so does a project saved before pools
+  existed, whose Waverider tracks play Prim. until you add tables.
 - **While you play:** a table that is being loaded or rebuilt is replaced by Prim. for a moment
   at worst. A reload fades from the old table to the new one over the DCLK time.
 

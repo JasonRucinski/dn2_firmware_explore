@@ -3,8 +3,8 @@
  * Project slot p (0 the working project, 1..128 as /projects numbers them) has two
  * sectors, A at REGION + 0x800 + p and B at REGION + 0x900 + p, written alternately.
  * The current record is the valid one with the higher generation (a tie keeps A).
- * None valid, or the follows-store flag, means the store-order pool: every playable stored
- * table in store-slot order, the first 127. Shared by the /wavepool route (route.c)
+ * None valid means an empty pool (owner, 2026-10-13); the follows-store flag means the
+ * store-order pool: every playable stored table in store-slot order, the first 128. Shared by the /wavepool route (route.c)
  * and Waverider's pool fill (csrc/waverider/pool.c). UI task only. */
 
 #ifndef WRSTORE_RECORDS_H
@@ -46,9 +46,9 @@ u32 wr_record_check(u8 *rec, u32 p);
 u32 wr_record_read(u32 p, u8 *rec);
 
 /* What project slot P plays, into REC, always well-formed: the stored record, or with
- * none generation 0 and the follows-store flag. A follows-store one comes back with its
- * entries filled from INDEX (the current store index, or 0 for an empty store) and
- * the count to match. -> the generation. */
+ * none generation 0, no flag and no entries (an empty pool). A follows-store one comes back
+ * with its entries filled from INDEX (the current store index, or 0 for an empty store)
+ * and the count to match. -> the generation. */
 u32 wr_record_resolve(u32 p, u8 *rec, const u8 *index);
 
 /* REC (checked) as project slot P's next record: generation = current + 1, the hash
@@ -58,6 +58,10 @@ u32 wr_record_write(u32 p, u8 *rec);
 
 /* A follows-store record for P (entries cleared, count 0, generation 0), hashed. */
 void wr_record_follows_store(u32 p, u8 *rec);
+
+/* An empty list for P: no entries, count 0, no flag, generation 0, hashed. What a project
+ * with no record plays (nothing from the store) and what CREATE NEW stores. */
+void wr_record_empty(u32 p, u8 *rec);
 
 enum { WP_OK = 0, WP_MAGIC = 1, WP_VERSION, WP_PROJECT, WP_FLAGS, WP_ENTRY, WP_COUNT,
        WP_RESERVED, WP_HASH, WP_STORE_ENTRIES, WP_STALE };
