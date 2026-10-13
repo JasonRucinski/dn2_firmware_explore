@@ -116,6 +116,15 @@ drew its borrowed record's own name (the owner saw 3A Sub Level as SYN PITCH). `
 `0x400c267c` and answers from the same label table. `0x4010758a` did not run in the DEST flow (a hit count)
 and is not hooked. Measured on `waverider-destlist5`: 3A SYN SUB, 1A SYN TUNE, 3E SYN NOIS.
 
+**The cell tells the oscillators apart (2026-10-13, owner: "do all of them").** Osc1 and Osc2 each have
+their own page, so a page's label is the same on both (LEV, POS, TBL, RATE, MPOS, MLEV, MOVE) and the cell,
+which has no page, read the same for 1D Osc1 Table and 2D Osc2 Table (SYN TBL). `MINI_LABELS` gives the cell
+its own four-character label for the 14 shared ids: LEV1/LEV2, POS1/POS2, TBL1/TBL2, RAT1/RAT2, MPO1/MPO2,
+MLV1/MLV2, MOV1/MOV2 (the pattern of SYN1/SMT1). `wr_minilabel` looks in `mini_labels` first and then in
+`labels`, so the pages keep their labels and every other destination is as before. Measured in the emulator,
+all 16 oscillator destinations on pages 1 and 2 render inside the cell; the WaveTone and FM Tone list and
+cell frames are byte-identical to destlist5. Not on an instrument yet.
+
 **Not yet relabelled:** the header's parameter line (`Osc1 Waveform=20` while POS turns) is the record's long name, `+0x28`. A later milestone hooks that, or relabels the long names with the same test.
 
 ## M8: the wave [E]

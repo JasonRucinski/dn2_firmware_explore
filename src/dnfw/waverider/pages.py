@@ -119,6 +119,13 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # page 5: the shape (reserved)
           **SHAPE_LABELS,
           TRIM_ID: "TRIM"}
+# record id -> the DEST cell's label where the page's own label is the same for both
+# oscillators (each oscillator has its own page, so the pages cannot tell; the cell can):
+# the stem and the oscillator, four characters like SYN1/SMT1. The pages keep LABELS
+# (owner, 2026-10-13: "do all of them").
+MINI_LABELS = {241: "LEV1", 245: "LEV2", 239: "POS1", 243: "POS2", 247: "TBL1", 251: "TBL2",
+               240: "RAT1", 244: "RAT2", 246: "MPO1", 250: "MPO2", 252: "MLV1", 256: "MLV2",
+               253: "MOV1", 257: "MOV2"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -271,6 +278,8 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     the active track's SYNC (count 0: RATE's own number), and a third that names SMTH."""
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
+    mini_table = "\n".join(f"    .long {rid}, mini_{rid}" for rid in MINI_LABELS)
+    mini_strings = "\n".join(f'mini_{rid}: .asciz "{name}"' for rid, name in MINI_LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
     long_strings = "\n".join(f'long_{rid}: .asciz "{name}"' for rid, name in LONG_NAMES.items())
     # record id -> position on the pages (page x 8 + knob): the destination list's order and its numbers
@@ -404,7 +413,14 @@ wr_minilabel:
     beq.s   8f
     move.l  %sp@(8),%d0
     lsr.l   #2,%d0
-    lea     labels,%a0
+    lea     mini_labels,%a0
+3:  move.l  %a0@+,%d1
+    beq.s   4f
+    cmp.l   %d0,%d1
+    beq.s   2f
+    addq.l  #4,%a0
+    bra.s   3b
+4:  lea     labels,%a0
 1:  move.l  %a0@+,%d1
     beq.s   8f
     cmp.l   %d0,%d1
@@ -792,6 +808,9 @@ range_table:
 labels:
 {table}
     .long 0
+mini_labels:
+{mini_table}
+    .long 0
 long_names:
 {long_table}
     .long 0
@@ -806,6 +825,7 @@ descriptors:
 {_rep("subtitle", SUBTITLE)}
 {chr(10).join(_rep(f"title_{k}", t) for k, t in enumerate(TITLES))}
 {strings}
+{mini_strings}
 {long_strings}
 {name_strings}
     .align 2
