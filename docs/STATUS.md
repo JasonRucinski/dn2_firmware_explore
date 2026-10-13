@@ -44,6 +44,7 @@ Rules that keep it honest:
 | **Arpeggiator on MIDI tracks** | **DELIVERED 2026-09-17** — `arp-on-midi_DN2_1.11.syx`, **one byte**. Asks the instrument whether the documented restriction is a UI gate or an engine gate; audio tracks are the control | `docs/ideas-backlog.md` §10 |
 | **The LFO shape bench** | **DELIVERED as a tool** — https://claude.ai/artifact/VWYjJZE3z1FQaEEHe7wTwC. Previews every slot on a simulated 128×64 one-bit panel, designs shapes from templates or a formula, reads a de-packed MAIN OS, and exports a wavetable. The firmware half is not built | `docs/ideas-backlog.md` §14 |
 | **Sample transfer / RPC** | **IN PROGRESS** | what dispatches an opcode | `docs/midi-rpc-dispatch.md` |
+| **Arp offsets in scale (`arpscale`)** | **NOT YET TESTED BY THE REPOSITORY OWNER.** External reports from w-winter's Digitone II in `docs/flashing.md`, the latest on this build (the item toggles, trigs and live notes move in scale, the setting survives a power cycle). SETTINGS > PERSONALIZE > ARP OFS IN SCALE: the arp's step offsets count degrees of the track's KEYBOARD SETUP scale from its root. Ten emulator runs against stock and a Python reference, four of them held live on the KEYBOARD page; combines with every mod | a flash by the repository owner, and the written hardware test in `docs/mods.md` | `docs/mods.md` (`arpscale`), `scripts/build_arpscale.py`, `scripts/build_scale_degrees.py`, `scripts/emu_arpscale.py` |
 
 ### LFO4 — the pieces, and which are real
 

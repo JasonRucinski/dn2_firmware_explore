@@ -644,6 +644,47 @@ pairs. As always, that is a statement about bytes. With `midiarp`, a MIDI
 track's arp runs the same step, so SHUF and RAND should reach MIDI tracks too.
 That has not been run.
 
+## Mod: `arpscale` (arp offsets in scale)
+
+**Status: not yet tested by the repository owner.** External reports from w-winter's Digitone II are in `docs/flashing.md`. On this build (`arpscale3_DN2_1.11.syx`, the code at `0x467a8000`), the item appears and toggles, notes from trigs and notes held live on the KEYBOARD page move in scale, and the setting survives a power cycle. Earlier builds placed the code at `0x467e8000`: the first moved only notes from trigs, and the rebuild that also moves notes held live worked, as did the arp's RANGE above 0. The emulator checks below are on this build.
+
+Stock 1.11 adds each arp step's OFFSET in semitones, after KEYBOARD SETUP's SCALE and ROOT have chosen the held notes, so an offset leaves the scale: in C major, E plus 2 plays F#. This mod adds **SETTINGS > PERSONALIZE > ARP OFS IN SCALE**. Off, the default and what a fresh instrument reads, the arp is stock. On, an offset counts degrees of the track's scale from its root: in C major, E plus 2 plays G, and plus 7 plays the octave above.
+
+![PERSONALIZE in the emulator, with arpscale and reloadconfirm: ARP OFS IN SCALE on, RELOAD CONFIRM after it](img/emu-arpscale-personalize.png)
+
+- An offset of 0 plays the held note unchanged, even a note outside the scale.
+- A held note outside the scale moves to the nearest scale note first (the lower one on a tie, the firmware's own order), then by degrees.
+- A scale's octave is its length in degrees: 7 in a major scale, 5 in a pentatonic one, 6 in whole tone.
+- RANGE still adds whole octaves. SCALE CHROMATIC and MODE CHORD MEMORY keep stock's offsets in semitones.
+- SCALE and ROOT come from the playing pattern, per track or per pattern as KEYBOARD SETUP's CONFIG says, for notes from trigs and for notes held live on the KEYBOARD page, with the sequencer playing or stopped.
+
+**What changes:** two hooks in section 3 and a platform `CODE` chunk.
+- `0x4002a390`, the arp step's common tail, where every mode adds the octave and the offset: 6 bytes become `jmp arp`. arpmodes' SHUF and RAND enter the same tail, so they pass through it.
+- `0x40098630`, PERSONALIZE's constructor after its last stock item: 6 bytes become `jmp menu_hook`, which replays them and appends the item. reloadconfirm hooks the constructor's epilogue, so with both, RELOAD CONFIRM follows this item. Both build their item from `scripts/build_personalize_toggle.py`, each into its own chunk.
+- 996 B of code at `0x467a8000`, between arpmodes' RAM (`0x467a0000`) and `0x467b0000`. The toggle is the byte `0x405cd8af` of the settings block, after reloadconfirm's `0x405cd8ae`, saved and restored with the block and written only through the stock setter. No stock instruction addresses it (`scripts/build_reload_confirm.py`, "Where the toggle lives").
+
+**Where the scale comes from.** The step's two callers are in the frame ISR, whose voice record (`-36(%fp)`) points at the track's part of the **playback copy** of the pattern (`+44`). The copy keeps the stored pattern's KEYBOARD SETUP fields at the same offsets: SCALE, MODE and ROOT at `+1170..1172` of each track, and in the pattern header (`+0x1dd40`) at `+29..31`, with the per-track switch at `+33` (DNX's `+0x21`). A note held live has a record whose `+44` is zero; for it the code takes the current playback copy, `*0x42c5a9a0` (the pointer the firmware passes when it builds a trig's record), plus the track's part, `1701 x` the record's track (`+16`). The copy is double-buffered, and a pattern change makes the cued copy current, so a live note follows the pattern playing now, and a trig's note the pattern it came from. A layered copy (TRACK WILL TRIGGER) keeps its source track's `+44`, so for it the code finds the copy's start through the source track (`+92`) and takes the destination track's part. This also names three header bytes DNX lists as UNKNOWN (`docs/dn2-pattern-format.md` §6, `+0x1D..0x1F`): the per-pattern SCALE, MODE and ROOT, which read `ff 00 00` (chromatic, C) across its corpus. `scripts/build_scale_degrees.py` has the lookup and the move by degrees, and `scripts/build_arpscale.py` the arp step; every address they rely on is asserted as a guard.
+
+**Generator:** `scripts/gen_arpscale_code.py` composes `build_arpscale.compose` on stock and writes `arpscale_code.json`. It refuses to write unless the JSON, replayed on stock, is the build byte for byte. `test/test_arpscale_mod.py` checks the shipped bytes, the hooks, the refusals and the RAM.
+
+**Checks** (2026-10-13, OS 1.11, on `arpscale3_DN2_1.11.syx` unless another build is named):
+- `scripts/emu_arpscale.py`, through `scripts/emu_seqplay.py` and digikit's `panel_drive`: a C major chord through the arp, UP, with sixteen step offsets, a scale and a root written into RAM before PLAY. The same writes go to stock, which is the control. Six cases, 42 notes each over 15 of the 16 offsets: C major; Hirajoshi on A (G is outside it and moves to F first); the track's Pentatonic Minor on D over the pattern's C major; CHORD MEMORY, the toggle off and CHROMATIC, each equal to stock. Every note number of the mod equals the rule computed in Python from the firmware's scale tables.
+- The same script holds a chord live on the KEYBOARD page (TRIG 9, 11 and 13) on track 3, about 24 arp steps: C major and the track's Pentatonic Minor on D with the sequencer stopped, C major with it playing, and the toggle off (equal to stock). All ten runs pass.
+- `scripts/emu_seqplay_sweep.py`: with the toggle off, the build plays the sweep's two-track pattern as stock does, event for event and to the instruction.
+- The PERSONALIZE item, drawn in the emulator (`panel_drive`'s `frame:`, the picture above) on a build with reloadconfirm: ARP OFS IN SCALE follows NOTE EDIT MENU, the last stock item, and RELOAD CONFIRM follows it. Pressing each flips only its own byte: `0x405cd8ae..af` read `00 00`, then `00 01`, then `01 01`.
+- One build with arpmodes and reloadconfirm: four of the runs pass (C major and the per-track scale from a trig, the toggle off, C major held live).
+- reloadconfirm, built with the shared item code, gives the same `reloadconfirm_code.json` and `site/js/mods/reloadconfirm-code.js`, byte for byte.
+- `dnfw mods matrix`: `yes` with every other mod, in both orders.
+- Integrity 21/21. The code disassembled as `m68k:cfv4e` with `m68k-elf-objdump` has no scale-8 indexing; `check_coldfire.py` looks for objdump only next to an m68k GCC, which the machine these checks ran on lacks.
+
+**Not run:** SHUF and RAND (arpmodes) through the hook, a MIDI track's arp (midiarp), an arp p-lock (arpplocks), a pattern change while the arp plays, and the arp on a layered copy (TRACK WILL TRIGGER).
+
+**Transposes come after it.** The frame ISR adds two transposes when it voices a note (`0x40026980`), after the arp step: the pattern's transpose, set from header `+32` when a pattern loads (`0x4003fb7a` -> `0x4002583a`, stored at `0x80005380`, applied to the tracks in the mask at `0x8000537e`), and a per-track byte at `0x80005381 + track` (setter `0x40025846`, reached only indirectly). Both are semitones, so either moves this mod's in-scale notes to another key, as it moves stock's held notes. They are the manual's TRACK TRANSPOSE and PATTERN TRANSPOSE, and both are offsets, not edits of the trigs: in the emulator (stock 1.11, four trigs on track 1), `[FUNC]` + `[+]` twice set `0x80005381` to 2, and `[PTN]` + `[+]` twice set `0x80005380` to 2 with the mask `0xffff`; each time the trigs played D4 instead of C4, and the playback copy's trig bytes did not change.
+
+**Hardware test.** One audio track, an FM synth sound, the arp on UP, RANGE 0, LEN 4, offsets `0 +2 +2 -1`; KEYBOARD SETUP SCALE IONIAN, ROOT C; hold C4 E4 G4.
+- Pass: with ARP OFS IN SCALE off, the arp plays C4 F#4 A4 B3 (stock); on, it plays C4 G4 B4 B3, both from a trig and held live on the KEYBOARD page, with the sequencer stopped and playing; with SCALE CHROMATIC, on or off, it plays the stock notes; the switch keeps its state across a power cycle without SAVE PROJECT.
+- Fail: anything else, a crash, or the PERSONALIZE menu missing an item.
+
 ## Mod 10: `songguard` -- old projects open instead of halting
 
 Not a feature: a guard on a **stock 1.11 bug**. The song `LOAD` (`0x400dea6a`)

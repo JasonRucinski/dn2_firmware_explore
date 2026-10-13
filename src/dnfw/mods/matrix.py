@@ -36,6 +36,18 @@ NOTES: dict[frozenset, str] = {
         "(0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks "
         "DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone "
         "(scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.",
+    frozenset(("arpmodes", "arpscale")):
+        "emulator, 2026-10-13, one build with arpscale, arpmodes and reloadconfirm: four of "
+        "scripts/emu_arpscale.py's runs pass as with arpscale alone (C major and a per-track "
+        "Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). "
+        "arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at "
+        "0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.",
+    frozenset(("arpscale", "reloadconfirm")):
+        "emulator, 2026-10-13: each appends a PERSONALIZE item from its own site in the "
+        "constructor (arpscale after the last stock item, 0x40098630; reloadconfirm at the "
+        "epilogue, 0x4009863e), both built from scripts/build_personalize_toggle.py. With "
+        "both, the menu ends ARP OFS IN SCALE, RELOAD CONFIRM, and pressing each flips only "
+        "its own byte (0x405cd8af, 0x405cd8ae).",
     frozenset(("arpmodes", "midiarp")):
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",
