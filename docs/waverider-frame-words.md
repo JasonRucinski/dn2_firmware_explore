@@ -168,6 +168,37 @@ stays at `0xa18` and `0x9a8`. What bounds that:
 - The tail `0xa80..0xabb` stays the fallback: it is read by nothing in 3,285 blocks, and using it needs
   a DSP read of the receive buffer (above).
 
+### Compared with naturarum's census (2026-10-13)
+
+Their notes (`notes/T6.0-fx-params-room.md` section 1.2, OS 1.12, read 2026-10-13, cited by file and in our own
+words) describe 2,247 blocks of the stock DSP: 247 recorded captures; 400 with the global block and header words
+random; 400 with per-voice slots, owners, note words and tail random; 1,200 with all 16 voices on each machine
+type 0 to 4 and filter 0 to 5, a note on in the first block and random slot values. Ours has the same four
+kinds: a recorded corpus as sent, `--augment fx`, `--augment voices`, and the random machine by filter grid.
+The copy loops they name (`0x1c287d`, `0x1c3030`) and their five direct readers are the same instructions on
+1.11. What agrees and what does not, by word:
+
+| word | theirs (1.12) | ours (1.11, 3,285 blocks) | |
+|---|---|---|---|
+| tail `0xa80..0xabb` | never read, not copied | never read, in no block | agrees |
+| `0x22`, `0xa54`, `0xa56`, `0xa7a`, `0xa7c`, `0xa7e` | read straight from the receive buffer at `0x1c2cd6`, `0x1c3084`, `0x1c3052`, `0x1c3069`, `0x1c309c` | the same readers, the same words | agrees |
+| `0x2a` | never read | read by the byte loop at `0x1c2545` (machine type 4, filter 0, and in the corpus replay); flipping it changed 59 DSP memory words | **differs** |
+| `0xa18` | never read | read by `0x1c1fda` and, in the copy, `0x1c2545`, in 2 and 4 augmented blocks; flipping it changed nothing | **differs** |
+| slot `+0x50`, k 65 (`0x9a8` on track 15) | never read ("inferred beyond that") | read by `0x1c1fe3` in 12 augmented reads; flipping it changed nothing | **differs** |
+| other direct readers | five words | 1,128 words in all: `0x94..0xb2` at `0x1c31c2`, `0x154..0x160` and their per-voice repeats at `0x1c31ed`, `0x1c31fb`, `0x1c3207`, `0x1c31c0`, `0xa5a..0xa78` at `0x1c31bb`, and wide sweeps by `0x1c1fca..0x1c1fe3` and `0x1c2535..0x1c254e` | **ours finds more** |
+
+The sweeps are the reason for most of the differences: in augmented variants (header flags, FX block, owners or
+tail randomised) a group of byte loops at `0x1c1fca..0x1c1fe3` and `0x1c2535..0x1c254e` reads nearly the whole
+receive page, so every word in it has a "direct reader" in some variant. What the sweeps are for, and which
+header value selects them, was not traced. Why their census did not see them is open too: it may be that 1.12
+differs from 1.11 there (the addresses match, which argues against it), or that their random model stays inside
+values our fully random words leave. **For anyone using `0x2a` on OS 1.12** (their plan names it as unused on
+both sides): on 1.11 it is read in machine type 4, so it is worth one check on a 1.12 image before relying on it.
+
+What this does for the claim: coverage of the same kinds and a larger count, with every word of the payload
+read by something; and **no conclusion that any word is free beyond what the flip tests show** (the tail, and
+`0x9a8` and `0xa18` for the cases flipped).
+
 ### The earlier narrow check
 
 `scripts/sharc_frame_word_readers.py` (reads of one word) and `sharc_frame_word_check.py` (a
