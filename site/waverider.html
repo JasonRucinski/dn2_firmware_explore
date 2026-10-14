@@ -293,7 +293,7 @@
 
   <h2>Going back to stock</h2>
   <ol>
-    <li>In DNX, back up the device, then use Remove all Waverider data in Settings. It removes every stored table and every pool list from the +Drive, and saves each table as a file first.</li>
+    <li>In DNX, back up the device, then open Settings and press <strong>Erase…</strong> under Erase the wavetable region, then <strong>Erase the region</strong>. It removes every stored table and every pool from the +Drive, and saves each table as a file in your DNX folder first. To put a table back later, drag its file onto a free slot in DNX's Wavetables tab.</li>
     <li>Flash the stock 1.11 file.</li>
   </ol>
   <p>Do step 1 first: stock 1.11 cannot reach the wavetable region, so once it is on, the data
@@ -319,10 +319,13 @@
   <div class="scroll"><table>
     <thead><tr><th>What</th><th>Where</th><th>Result</th><th>Date</th></tr></thead>
     <tbody>
+      <tr><td>A project with no pool of its own shows an empty pool; one added table survives SAVE and LOAD; CREATE NEW is empty</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
+      <tr><td>DNX stores a table, deletes one, and changes the working project's pool, on the file this page builds</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
+      <tr><td>Erase the wavetable region from DNX: no tables and an empty pool on the unit; a saved table written back plays</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
       <tr><td>The page builds the same file as the command line, and the file boots from reset with no fault</td><td>browser and emulator</td><td>identical, 21 of 21 integrity checks</td><td class="num">2026-10-14</td></tr>
       <tr><td>Stock 1.11 loads a project saved with a Waverider track</td><td>emulator</td><td>loads, no fault; the track comes up as FM Tone</td><td class="num">2026-10-14</td></tr>
       <tr><td>One second of the DSP code's output, every block against the model (48,000 samples)</td><td>emulator (SHARC)</td><td>0 samples differ</td><td class="num">2026-10-14</td></tr>
-      <tr><td>Remove all Waverider data: tables and pool lists gone, wrong requests refused</td><td>emulator</td><td>11 of 11 checks</td><td class="num">2026-10-13</td></tr>
+      <tr><td>The erase: tables and pools gone, wrong requests refused</td><td>emulator</td><td>11 of 11 checks</td><td class="num">2026-10-13</td></tr>
       <tr><td>LFO DEST list: order and cell labels for every control</td><td>instrument</td><td>passed</td><td class="num">2026-10-13</td></tr>
       <tr><td>Ten minutes of a 16-note chord on a 64x2048 table</td><td>instrument</td><td>0 overruns in 600 s</td><td class="num">2026-10-12</td></tr>
       <tr><td>High notes on Prim. without aliasing (mip-maps), pool tables</td><td>instrument</td><td>passed</td><td class="num">2026-10-09</td></tr>
@@ -337,7 +340,7 @@
   <ul>
     <li>Waverider together with other mods on an instrument (checked in the emulator only).</li>
     <li>Stock 1.11 loading a Waverider project on an instrument.</li>
-    <li>Remove all Waverider data on the unit, then stock 1.11 reflashed.</li>
+    <li>Stock 1.11 reflashed after the erase.</li>
     <li>4096-point tables on the unit.</li>
     <li>A click during a pool reload while a note plays.</li>
     <li>Any OS other than 1.11.</li>
