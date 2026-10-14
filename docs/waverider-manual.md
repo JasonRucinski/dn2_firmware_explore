@@ -103,7 +103,8 @@ features that come next and **do not change the sound yet**. You can set and p-l
   existed, whose Waverider tracks play Prim. until you add tables.
 - **Your project file stays a normal project:** the pool is kept beside the project on the
   +Drive, not inside it, so stock firmware can still load a project you saved. Its Waverider
-  tracks will not play as Waverider there. Not yet tried on an instrument.
+  tracks come up as FM Tone, with their settings read as FM Tone's, so they sound different.
+  Checked in the emulator; not yet on an instrument.
 - **A deleted table:** its pool slots read MISSING and play Prim. They keep the slot until you
   CLEAR SLOT it, so a sound set to that slot never jumps to another table on its own.
 - **Replacing a table while it plays:** the old table keeps playing until the new one is ready,
