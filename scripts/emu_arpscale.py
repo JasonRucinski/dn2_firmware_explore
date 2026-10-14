@@ -24,6 +24,14 @@ with the sequencer stopped or, for one, playing an empty pattern. The keys follo
 record has no playback copy (`+44` is zero), so this checks the cave's other
 way to the scale, and track 3 checks that it finds the right track.
 
+The run in `LAYERED` lays track 1's trig onto track 2 (TRACK WILL TRIGGER), with
+track 1's arp off and track 2's arp UP. The copy is a copy of the trig, so
+track 2 arpeggiates the chord, and its voice record keeps track 1's playback
+copy (`+44`) while naming track 2 (`+16`). Track 1 is C Ionian and track 2
+Pentatonic Minor on D, each from its own KEYBOARD SETUP, so a lookup that took
+the wrong track's part would play C Ionian. Track 1's chord, played as entered
+at each trig, is set aside before the comparison.
+
 For every case the same pokes go to stock and to BUILD. Stock is the control:
 its notes must be the held note plus the offset in semitones, which also yields
 the held note of each step (`stock - offset`). BUILD's notes must equal the rule
@@ -40,6 +48,8 @@ interrupts and takes a literal `--capture` length (digikit #65 and #66; the
 from __future__ import annotations
 
 import argparse
+import collections
+import itertools
 import json
 import pathlib
 import subprocess
@@ -56,19 +66,23 @@ from dnfw import seqframes as SF  # noqa: E402
 from dnfw.cli.files import read_image  # noqa: E402
 from dnfw.firmware.load import load  # noqa: E402
 
-STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11.syx"
+STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist/Digitone_II_OS1.11.syx"
 
 PLAYBACK = 0x42C5A9A0          # -> L, the playback copy of the pattern
 SOUNDS = 0x800052A0            # -> the live sounds: + 52 + 1163 x track
 SOUND_FIRST, SOUND_STRIDE, OFFSETS = 52, 1163, 358
 ARP_LEN, ARP_MASK = 355, 356   # the arp's LEN (steps - 1) and its u16 step mask
 TRACK = 0
+C4 = 60                        # a fresh trig's note
 CHORD = [4, 3]                 # C4, then +4 (E4), then +3 (G4)
+TRIG_CHORD = tuple(itertools.accumulate([C4, *CHORD]))   # the chord as entered
 CHORD_LEN = 60                 # units of the chord's note length: about 14 arp steps a trig
 KEYBOARD = 18                  # panel code of [KEYBOARD]
 LIVE_KEYS = (33, 35, 37)       # TRIG 9, 11, 13 on the KEYBOARD page: C4 E4 G4 in C major
 LIVE_TRACK = 2                 # track 3: not track 1, so a wrong track index shows
 LIVE_HOLD = "400M"             # how long the keys are held: about 24 arp steps
+LAYER_DESTINATION = 1          # track 2
+KIT_LAYERS = 0x5CE0            # [0x800052a0] + this: track 1's layer destinations, a u16 mask
 STEP = 16.5e6                  # a sixteenth at 120 BPM, in instructions
 RUN_GAP = 1.5 * STEP           # a longer gap between note-ons starts the next trig's run
 OFFS = [0, 2, 2, -1, 3, -2, 7, -7, 1, 4, -3, 5, 0, -8, 9, -1]
@@ -83,16 +97,19 @@ CASES = {
     "chromatic":       (1, 0xFF, 0, 0, 0x00, None, None, None, True),
 }
 
-# How a run plays its chord: a trig on track 1, or held on the KEYBOARD page with the
-# sequencer stopped or playing.
-Source = Literal["trig", "stopped", "playing"]
+# How a run plays its chord: a trig on track 1, held on the KEYBOARD page with the
+# sequencer stopped or playing, or a trig on track 1 layered onto track 2, whose arp plays it.
+Source = Literal["trig", "stopped", "playing", "layered"]
+ARP_TRACK: dict[Source, int] = {"trig": TRACK, "stopped": LIVE_TRACK, "playing": LIVE_TRACK,
+                                "layered": LAYER_DESTINATION}
 LIVE: dict[str, tuple[str, Source]] = {
     "live-ionian-c": ("ionian-c", "stopped"),
     "live-per-track": ("per-track", "stopped"),
     "live-toggle-off": ("toggle-off", "stopped"),
     "live-playing-ionian-c": ("ionian-c", "playing"),
 }
-RUNS: dict[str, tuple[str, Source]] = {name: (name, "trig") for name in CASES} | LIVE
+LAYERED: dict[str, tuple[str, Source]] = {"layered-per-track": ("per-track", "layered")}
+RUNS: dict[str, tuple[str, Source]] = {name: (name, "trig") for name in CASES} | LIVE | LAYERED
 
 
 def reference(held: int, offset: int, semis: list[int], root: int) -> int:
@@ -115,17 +132,21 @@ def reference(held: int, offset: int, semis: list[int], root: int) -> int:
     return root + 12 * (octave + octaves) + semis[degree]
 
 
+def select(track_index: int) -> list[str]:
+    """The panel steps that make TRACK_INDEX the active track: TRK held, its trig key."""
+    return [f"press:{sp.TRK}", "wait:10M", f"tap:{sp.TRIG1 + track_index}",
+            f"release:{sp.TRK}", "wait:30M"]
+
+
 def live_script(extra: list[str], playing: bool) -> list[str]:
     """Select LIVE_TRACK, set its arp to UP, run EXTRA, then hold LIVE_KEYS on the
     KEYBOARD page, with the sequencer stopped or PLAYING."""
-    select = [f"press:{sp.TRK}", "wait:10M", f"tap:{sp.TRIG1 + LIVE_TRACK}",
-              f"release:{sp.TRK}", "wait:30M"]
     arp = sp.arp_steps("UP")
     hold = ([f"tap:{KEYBOARD}", "wait:40M"] + [f"press:{k}" for k in LIVE_KEYS]
             + [f"wait:{LIVE_HOLD}"] + [f"release:{k}" for k in LIVE_KEYS] + ["wait:20M"])
     if playing:
         hold = [f"tap:{sp.PLAY}", "wait:30M"] + hold + [f"tap:{sp.STOP}", "wait:20M"]
-    return ["wait:1500M", f"tap:{sp.NO}", "wait:60M"] + select + arp + extra + hold
+    return ["wait:1500M", f"tap:{sp.NO}", "wait:60M"] + select(LIVE_TRACK) + arp + extra + hold
 
 
 def runs(found: list[SF.NoteEvent]) -> list[list[SF.NoteEvent]]:
@@ -139,12 +160,26 @@ def runs(found: list[SF.NoteEvent]) -> list[list[SF.NoteEvent]]:
     return grouped
 
 
+def without_trig_chord(image: pathlib.Path, notes: list[int]) -> list[int]:
+    """A layered run's first event, less track 1's chord as entered: the copy's first arp note."""
+    present, chord = collections.Counter(notes), collections.Counter(TRIG_CHORD)
+    rest = list((present - chord).elements())
+    if chord - present or len(rest) != 1:
+        raise SystemExit(f"{image.name}: a layered trig played {notes}, not track 1's chord "
+                         f"{list(TRIG_CHORD)} and one arp note")
+    return rest
+
+
 def run(image: pathlib.Path, extra: list[str], source: Source) -> tuple[list, dict]:
     """-> ([(step, note), ...] in play order, {address: bytes peeked})."""
-    if source != "trig":
+    if source in ("stopped", "playing"):
         steps = live_script(extra, source == "playing")
     else:
-        steps = sp.script({1: [1]}, "700M", chord=CHORD, chord_length=CHORD_LEN, arp="UP")
+        layered = source == "layered"
+        steps = sp.script({1: [1]}, "700M", chord=CHORD, chord_length=CHORD_LEN,
+                          arp=None if layered else "UP")
+        if layered:     # track 1's arp stays off; track 2's plays the copies
+            extra = select(LAYER_DESTINATION) + sp.arp_steps("UP") + extra
         at = steps.index(f"tap:{sp.PLAY}")
         steps[at:at] = extra
     cmd = [str(sp.panel_drive()), str(image), "--ssi-hz", "96000",
@@ -154,8 +189,14 @@ def run(image: pathlib.Path, extra: list[str], source: Source) -> tuple[list, di
     if result["outcome"] != "done":
         raise SystemExit(f"{image.name}: fault {result['fault']}")
     peeks = {int(r["peek"], 16): bytes.fromhex(r["hex"]) for r in result["results"] if "peek" in r}
-    played = [(k, int(e.notes[0])) for group in runs(SF.events(result["captures"]))
-              for k, e in enumerate(group) if e.notes]
+    played = []
+    for group in runs(SF.events(result["captures"])):
+        for k, event in enumerate(group):
+            notes = [int(n) for n in event.notes]
+            if source == "layered" and k == 0:
+                notes = without_trig_chord(image, notes)
+            if notes:
+                played.append((k, notes[0]))
     return played, peeks
 
 
@@ -184,6 +225,14 @@ def pokes(lo: int, first_sound: int, case: tuple, track_index: int) -> list[str]
     return out
 
 
+def layer_pokes(lo: int, first_sound: int) -> list[str]:
+    """Track 1's own SCALE, MODE and ROOT set to C Ionian, which the layered case's scale
+    on LAYER_DESTINATION differs from, and track 1 layered onto LAYER_DESTINATION."""
+    kit = first_sound - SOUND_FIRST
+    return [f"poke:{lo + sd.T_SCALE:#x}:000000",
+            f"poke:{kit + KIT_LAYERS:#x}:{1 << LAYER_DESTINATION:04x}"]
+
+
 def expected(case: tuple, stock_played: list, tables: list[list[int]]) -> list[int] | None:
     """-> the notes BUILD must play, or None when stock is not a valid control: each of
     stock's notes must be a note of a three-note chord, taken UP, plus its step's
@@ -204,9 +253,12 @@ def expected(case: tuple, stock_played: list, tables: list[list[int]]) -> list[i
 
 def check(name: str, case: tuple, images: dict, places: dict, tables, source: Source) -> bool:
     """Play CASE on stock and on the build, print both, and compare the build with the rule."""
-    track_index = TRACK if source == "trig" else LIVE_TRACK
-    played = {who: run(images[who], pokes(*places[who][:2], case, track_index), source)[0]
-              for who in images}
+    def setup(who: str) -> list[str]:
+        lo, first_sound = places[who][:2]
+        out = pokes(lo, first_sound, case, ARP_TRACK[source])
+        return (out + layer_pokes(lo, first_sound)) if source == "layered" else out
+
+    played = {who: run(images[who], setup(who), source)[0] for who in images}
     built = [note for _, note in played["build"]]
     print(f"\n{name}: stock  {[note for _, note in played['stock']]}")
     print(f"{' ' * len(name)}  build  {built}")
