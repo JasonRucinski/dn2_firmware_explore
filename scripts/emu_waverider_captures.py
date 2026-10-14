@@ -123,10 +123,13 @@ def main() -> int:
         s += frame(f"page{n}")
     s += ["tap:2", "wait:160M"]                                    # back on page 1
     # modulation on osc 1's POS: none (the control), slow, medium, fast
-    s += redraw() + frame("mod_none")
-    s += modulation(POS1, 40 << 8, 0x1400) + frame("mod_slow") + clear_modulation(POS1, 40 << 8)
-    s += modulation(POS1, 40 << 8, 0x1400, lfo=(0x3000, 5)) + frame("mod_medium") + clear_modulation(POS1, 40 << 8)
-    s += modulation(POS1, 40 << 8, 0x1400, lfo=(0x3000, 7)) + frame("mod_fast") + clear_modulation(POS1, 40 << 8)
+    # POS at 60 swept +-50 (frames 10 to 110, a saw to a sine), so the two frames drawn at
+    # the medium and fast speeds are plainly different (owner, 2026-10-14)
+    knob, swing = 60 << 8, 50 << 8
+    s += [put(POS1, knob)] + redraw() + frame("mod_none")
+    s += modulation(POS1, knob, swing) + frame("mod_slow") + clear_modulation(POS1, knob)
+    s += modulation(POS1, knob, swing, lfo=(0x3000, 5)) + frame("mod_medium") + clear_modulation(POS1, knob)
+    s += modulation(POS1, knob, swing, lfo=(0x3000, 7)) + frame("mod_fast") + clear_modulation(POS1, knob)
     # on TBL: two tables either side of Prim.
     s += modulation(TBL1, 0x0000, 0x0100, final=0x0100) + frame("mod_tbl") + clear_modulation(TBL1, 0x0000)
     s += redraw() + frame("mod_after")
