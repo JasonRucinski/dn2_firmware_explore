@@ -30,16 +30,15 @@ project, back up the +Drive first, and keep the stock 1.11 firmware file for rec
 3. Back up the +Drive with DNX.
 4. Open Elektron Transfer, connect the Digitone II over USB, and drop the patched file onto
    it. The unit updates and restarts.
-5. To check it: press FUNC + SYN on a track. MACHINE SEL lists WAVERIDER.
+5. To check it: MACHINE SEL lists WAVERIDER, after SWARMER.
 
 Nothing else needs setting up. The +Drive has no wavetables until you add one with DNX; the
 first table you add sets up the storage.
 
 ## Choosing it
 
-Press FUNC + SYN to open MACHINE SEL. WAVERIDER is the fifth entry, after SWARMER. Choose it
-and press YES. The SYN key then steps through five pages: the header reads Waverider (1/5) to
-(5/5).
+WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages; the header
+reads Waverider (1/5) to (5/5).
 
 ## Page 1 and page 2: the oscillators
 
@@ -102,15 +101,19 @@ features that come next and **do not change the sound yet**. You can set and p-l
   the unit. A project keeps its own pool. A project with no pool plays no wavetable, and its
   pool shows empty: CREATE NEW starts that way, and so does a project saved before pools
   existed, whose Waverider tracks play Prim. until you add tables.
+- **Your project file stays a normal project:** the pool is kept beside the project on the
+  +Drive, not inside it, so stock firmware can still load a project you saved. Its Waverider
+  tracks will not play as Waverider there. Not yet tried on an instrument.
 - **A deleted table:** its pool slots read MISSING and play Prim. They keep the slot until you
   CLEAR SLOT it, so a sound set to that slot never jumps to another table on its own.
-- **While you play:** a table that is being loaded or rebuilt is replaced by Prim. for a moment
-  at worst. A reload fades from the old table to the new one over the DCLK time.
+- **Replacing a table while it plays:** the old table keeps playing until the new one is ready,
+  then it crossfades into the new one over the DCLK time. A slot whose first table is still
+  loading plays Prim. until it is ready.
 
 ## P-locks, LFOs and saving
 
 - **P-locks:** every control on pages 1 to 5 can be p-locked, and the locks stay through a
-  reboot and through SAVE and reload. A locked value is shown inverted while you hold its trig.
+  reboot and through SAVE and reload.
 - **LFO destinations:** every control except Shape's TYPE, AMT and P1 appears in the LFO's
   DEST list, in two groups both headed SYN.
 
