@@ -7,7 +7,7 @@
         --page site/arp-modes.html --page site/arp.html --page site/boot.html \
         --page site/destinations.html --page site/fx.html --page site/lfo.html \
         --page site/lfo4.html --page site/transients.html \
-        --boots out/mod-pairs
+        --page site/waverider.html --boots out/mod-pairs
 
 (the tool pages each carry their own mod's row, `<!-- dnfw:matrix-row ID -->`,
 and the index carries the whole table at the top), which tries **every pair of mods, in both orders**, on stock 1.11 (`src/dnfw/mods/matrix.py`).
@@ -131,31 +131,32 @@ Two checks came out of the failure:
 ## The table
 
 <!-- dnfw:matrix -->
-| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfowaves` | `midiarp` | `moddest` | `songguard` | `transients` | `usbprobe` | `waverider` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `bootscreen` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `fxmod` | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | **NO** |
-| `layermidi` | yes | yes | yes | yes | - | yes | yes | **NO** | yes | yes | yes | yes | yes |
-| `lfo4` | yes | yes | yes | order | yes | - | order | yes | order | yes | yes | yes | **NO** |
-| `lfowaves` | yes | yes | yes | yes | yes | order | - | yes | yes | yes | yes | yes | yes |
-| `midiarp` | yes | yes | yes | yes | **NO** | yes | yes | - | yes | yes | yes | yes | yes |
-| `moddest` | yes | yes | yes | yes | yes | order | yes | yes | - | yes | yes | yes | yes |
-| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
-| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
-| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
-| `waverider` | yes | yes | yes | **NO** | yes | **NO** | yes | yes | yes | yes | **NO** | yes | - |
+| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `bootscreen` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `fxmod` | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | **NO** |
+| `layermidi` | yes | yes | yes | yes | - | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
+| `lfo4` | yes | yes | yes | order | yes | - | order | yes | order | yes | yes | yes | yes | **NO** |
+| `lfowaves` | yes | yes | yes | yes | yes | order | - | yes | yes | yes | yes | yes | yes | yes |
+| `midiarp` | yes | yes | yes | yes | **NO** | yes | yes | - | yes | yes | yes | yes | yes | yes |
+| `moddest` | yes | yes | yes | yes | yes | order | yes | yes | - | yes | yes | yes | yes | yes |
+| `reloadconfirm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes |
+| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
+| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
+| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| `waverider` | yes | yes | yes | **NO** | yes | **NO** | yes | yes | yes | yes | yes | **NO** | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
 - **arpmodes + midiarp: yes**: disjoint bytes. *Note:* a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; not run.
 - **bootscreen + layermidi: yes**: disjoint bytes. *Note:* on the instrument, 2026-10-02, with layermidi's cave build (layer-midi6): flashed together (a static tunnel mark), the intro plays the mark and layering onto a MIDI track plays over MIDI; the boot check from reset passed for the tunnel, ascii and spin animations each combined with it. With layermidi on the platform (2026-10-03): the boot check from reset passes with a static tunnel mark, and the loader puts both chunks where the platform predicts (scripts/emu_platform_check.py), and on the instrument, 2026-10-03, flashed with usbprobe as well: works.
 - **fxmod + lfo4: order**: fxmod refuses after lfo4: the parameter table has been moved (expected 53 site(s) holding 0x401f7f94 (table - 60 + 8), found 0); lfo4 does that, and fxmod opens records in the stock table, which nothing reads once it has moved: apply fxmod first, then lfo4. *Note:* emulator, 2026-09-26: the LFO4 slot harness and a turn of all eight LFO4 dials match lfo4 alone; fxmod's DEST checks and names match fxmod alone; every LFO page, LFO4's included, gains the same 24 FX destinations. The hooks are on different paths (fxmod's slot lookup at 0x400dc02a is asked above slot 100 only while the DEST list is built). Not exercised: LFO4 aimed at an FX destination. fxmod's own helper at 0x4028ea02 keeps the stock table bounds, so it would answer LFO4's own entries with -1; it is only ever called with destination entries.
-- **fxmod + waverider: NO**: waverider refuses after fxmod: 0x400dc02a (slot_to_id: saves d2, d1 = 100, a0 = slot) is not stock; this mod is for unmodified Digitone II 1.11.
+- **fxmod + waverider: NO**: fxmod and waverider both write section 3 0x000dbc2a..0x000dbc32 (8 bytes).
 - **layermidi + midiarp: NO**: refused by hand: they fight over one feature (see the note). *Note:* refused by hand, not by bytes (both run from the platform, at 0x467d8000 and 0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, from the inline note fields a sequencer trig never fills (random notes and lengths on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own track's arp is on and playing it. Checked in the emulator with the refusal bypassed (the maintainer, 2026-10-03, on emu_midiarp_layered.py's rig): a layered copy that is an arp step, on a MIDI track with its arp on, is sent twice -- midiarp sends the arp's note and layermidi sends it again; an arp step that is not a copy is sent once; with the arp off, or the arp without layering, the pair behaves. So the one clash is layering onto a MIDI track whose arp is on, and the pair stays refused until layermidi leaves those copies to midiarp.
 - **lfo4 + lfowaves: order**: lfowaves refuses after lfo4: 0x400372da is not stock (202f00080c800000014b...); lfo4 widens this bound: apply lfowaves first, then lfo4.
 - **lfo4 + moddest: order**: moddest refuses after lfo4: found 2 candidate parameter tables, expected 1; this image's layout is not the one this mod was measured against. *Note:* measured: with moddest applied first, all 13 masks it opens are in lfo4's relocated table (test/test_lfo4_mod.py).
-- **lfo4 + waverider: NO**: lfo4 and waverider both write section 3 0x000dce86..0x000dce88 (2 bytes).
+- **lfo4 + waverider: NO**: lfo4 and waverider both write section 3 0x000db8f1..0x000db8f2 (1 bytes).
 - **transients + waverider: NO**: transients and waverider both write section 7 0x000795d4..0x00084f24 (47,440 bytes).
 <!-- /dnfw:matrix -->
 
@@ -171,22 +172,34 @@ the init, so only pairs that include a loader mod are booted; the rest say why t
 - `arpplocks` + `bootscreen`: booted and drew its UI (1 frame(s), control 1).
 - `arpplocks` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `arpplocks` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
+- `arpplocks` + `midiarp`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `arpplocks` + `moddest`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `arpplocks` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `bootscreen` + `fxmod`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `songguard`: booted and drew its UI (1 frame(s), control 1).
+- `bootscreen` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `bootscreen` + `waverider`: booted and drew its UI (1 frame(s), control 1).
 - `fxmod` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `fxmod` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
+- `fxmod` + `midiarp`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `fxmod` + `moddest`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `fxmod` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `lfo4` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
 - `lfo4` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
 - `lfo4` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `lfo4` + `songguard`: booted and drew its UI (1 frame(s), control 1).
+- `lfo4` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `lfowaves` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `songguard`: booted and drew its UI (1 frame(s), control 1).
+- `lfowaves` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `lfowaves` + `waverider`: booted and drew its UI (1 frame(s), control 1).
+- `midiarp` + `moddest`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `midiarp` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `midiarp` + `usbprobe`: booted and drew its UI (1 frame(s), control 1).
+- `moddest` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 <!-- /dnfw:boots -->
