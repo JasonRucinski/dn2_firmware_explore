@@ -102,6 +102,8 @@ features that come next and **do not change the sound yet**. You can set and p-l
   the unit. A project keeps its own pool. A project with no pool plays no wavetable, and its
   pool shows empty: CREATE NEW starts that way, and so does a project saved before pools
   existed, whose Waverider tracks play Prim. until you add tables.
+- **A deleted table:** its pool slots read MISSING and play Prim. They keep the slot until you
+  CLEAR SLOT it, so a sound set to that slot never jumps to another table on its own.
 - **While you play:** a table that is being loaded or rebuilt is replaced by Prim. for a moment
   at worst. A reload fades from the old table to the new one over the DCLK time.
 

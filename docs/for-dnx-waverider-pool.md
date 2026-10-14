@@ -225,6 +225,47 @@ Every project's list is readable, not only the working project's. That is what l
     aren't added; the title says how many were.
   - **CLEAR SLOT** empties every ticked entry; the others don't move.
 
+### A pool entry whose table is gone (asked by DNX, 2026-10-14)
+
+A pool entry holds a **store slot number**, and a sound's TBL holds a **pool position** (TBL 2
+is pool entry 0, shown as T:001). The two are never checked against each other except when the
+pool fills. Read from the code (`csrc/waverider/pool.c`, `wtedit.c`, `wtlist.c`,
+`csrc/wrstore/route.c`); where something ran, it says so.
+
+1. **What plays.** When the pool fills, entry j becomes a table only if store slot n holds a
+   table the DSP can play (`wr_store_playable`: in use, 1 to 64 waves of 64 to 4096 points, a
+   power of two, in its own extent). Otherwise entry j is empty, and a sound whose TBL points at
+   it **plays Prim.**, exactly as a TBL past the pool's count does. The page lists that entry as
+   **MISSING**, and LOAD on it says ITS TABLE WAS DELETED. The pool's count is the last entry
+   that holds a table, plus one, so a missing entry at the end shortens the range TBL can be
+   turned through; a sound already pointing past it keeps its value and plays Prim. On the
+   instrument: step 10 of the `waverider-wtpool1-usbprobe` test (2026-10-06) was a delete
+   followed by MISSING and Prim.; the owner reported "all programmed tests pass", but that step
+   was marked optional and whether it ran is not recorded.
+2. **The entry survives untouched.** Neither delete touches any pool list: the instrument's
+   DELETE (`wt_store_delete`) and DNX's delete over USB (`0x5c`, `wr_commit_fill`) both write a
+   free index entry for slot n and nothing else. Every project's list keeps naming slot n until
+   CLEAR SLOT empties that entry, or DNX writes the list without it.
+3. **ADD TO POOL treats it as occupied.** It fills the first entry holding no slot number
+   (`0xFFFF`); an entry naming an empty store slot is not that, so it is never reused by an add.
+   And adding slot n itself while an entry still names it says ALREADY IN THE POOL and adds
+   nothing.
+4. **A new table written to the same store slot plays there.** Yes: the next fill finds slot n
+   playable again, and every pool entry naming n, in every project, plays the new table, however
+   unrelated, under its new name. The instrument never writes a table into a slot (only DNX
+   does, choosing the slot number), so whether this happens is up to the writer: writing new
+   tables to free slots that no pool list names avoids it. This is why neither side clears
+   entries on anyone's behalf: clearing would free the entry, the next ADD TO POOL would fill it,
+   and every sound still pointing at that position would play the added table instead.
+5. **A region erase is different.** `/wavepool/129` (`docs/for-dnx-waverider-erase.md`) zeroes
+   the store's index **and both sets of pool records** for every project. Afterwards no entry
+   names any slot: there is nothing MISSING, every project's pool is empty, and every sound with
+   TBL at T:001 or above plays Prim. (count 0). A table written later to any slot plays nowhere
+   until it is added to a pool. Then it lands in the first empty entry, T:001 on an empty pool,
+   so a sound still set to T:001 plays it: a sound follows its pool position, not a table. In the
+   emulator (`scripts/emu_waverider_erase.py`, 11 of 11, 2026-10-13): after the erase, project 0
+   reads as an empty pool (generation 0, no flag, no entries) and neither listing has anything.
+
 **Not covered yet (it needs the stock project operations hooked):** copying, moving, clearing or
 deleting a project from the instrument's own project manager doesn't carry its pool list along. The
 pool record stays at the old project slot. Until that is built, DNX should treat a pool record as
