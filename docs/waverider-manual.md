@@ -132,6 +132,10 @@ after the movement stops.
 - **Fast, over 12 Hz:** the band and the two frames, no dot, and ≈ beside POS.
 - **TBL:** the wave shows the table you hear; the label stays on the table you set.
 
+Why 3 and 12 Hz: the page redraws up to 24 times a second. A dot moves smoothly up to an eighth
+of that, 3 Hz, and jerkily up to half, 12 Hz. Faster than half the redraw rate, a moving dot
+would show a false, slower motion, so past 12 Hz the page shows only the range.
+
 ## Going back to stock
 
 To return the unit to what Elektron shipped:
