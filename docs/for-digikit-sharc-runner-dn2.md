@@ -402,6 +402,6 @@ at 0x171b60`); the Python runner, handed the same state, ran the block from its 
 nothing had happened. The native behaviour is the right one. Our harness is fixed
 (`unpack_call` in `scripts/sharc_waverider_m4.py`).
 
-So section 7, fixed in `tools/sharc_core`, would let a patched DN2 image run its
+Section 7's fix is m-dwyer/digikit#109 (2026-10-14). With it in `tools/sharc_core`, a patched DN2 image could run its
 block path natively with no host help. Our side of it is `scripts/sharc_native.py` and
 `scripts/sharc_native_check.py`.
