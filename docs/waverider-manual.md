@@ -55,6 +55,9 @@ Both pages have the same controls. Page 1 is oscillator 1, page 2 is oscillator 
 | G | MPOS | How far MOVE moves the position, 0 to 100. 50 is none |
 | H | MOVE | The shape MOVE follows (eleven, below) |
 
+The wave shows one voice at a time, not all of them: usually the newest note, otherwise the first
+voice it picked. Every voice is still computed and heard.
+
 MOVE shapes: Ramp Up, Ramp Down, Exp Up, Exp Down, Tri Once, Up Loop, Down Loop, Tri Loop,
 Square, Rnd Hold, Rnd Glide. The first five stop at their end; the rest repeat.
 
