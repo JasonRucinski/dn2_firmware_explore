@@ -19,10 +19,13 @@ project, back up the +Drive first, and keep the stock 1.11 firmware file for rec
 
 ## Installing
 
-1. Back up the +Drive with DNX.
-2. Open Elektron Transfer, connect the Digitone II over USB, and drop the Waverider `.syx`
-   file onto it. The unit updates and restarts.
-3. To check it: press FUNC + SYN on a track. MACHINE SEL lists WAVERIDER.
+1. Download Elektron's Digitone II OS 1.11 file from elektron.se.
+2. Open the Waverider page, load that file, and download the patched file the page makes.
+   The patching happens in your browser; nothing is uploaded.
+3. Back up the +Drive with DNX.
+4. Open Elektron Transfer, connect the Digitone II over USB, and drop the patched file onto
+   it. The unit updates and restarts.
+5. To check it: press FUNC + SYN on a track. MACHINE SEL lists WAVERIDER.
 
 Nothing else needs setting up. The +Drive has no wavetables until you add one with DNX; the
 first table you add sets up the storage.
