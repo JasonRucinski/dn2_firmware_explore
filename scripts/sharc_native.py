@@ -186,7 +186,9 @@ class Engine:
         """`m4.unpack_call` on this engine: a fresh call of sw 0x1c2712 with FRAME in the
         frame source it copies from."""
         idx = self.native_word(m4.RX_INDEX) or 0
-        i7 = self.native_reg(fx.UREG_CODES["I7"])
+        # the caller's stack pointer, the same at every call (see m4.unpack_call)
+        at_return = self.core._lib.sharc_native_get_pc(self.core._handle) == m4.UNPACK_RETURN
+        i7 = self.native_reg(fx.UREG_CODES["I6" if at_return else "I7"])
         rx = m4.RX_BASE + (idx << 8)
         self.core.fresh_call(m4.UNPACK, m4.UNPACK_CALLER)
         for name, v in {"R4": 0x268438, "R8": m4.UNPACK_LOCAL, "R12": rx, "I6": i7, "I7": i7 - 16}.items():

@@ -379,6 +379,15 @@ inputs and the instruction counts (1,867,934 and 1,934,523) are identical; with 
 the amp's output differs. Speed here: 10.8 s a block in the Python runner, 0.57 s stepping
 the native engine from Python, 0.036 s when the engine runs the block in one call.
 
+**The two engines differ on code that data writes reach.** The native engine re-reads an
+instruction's words before it runs a cached decode; the Python `Runner` keeps its decode
+cache by address and never looks again. A bug in our own harness showed it: each block
+call started 288 bytes lower on the stack than the one before, and in block 404 the stack
+reached our code. The native engine ran what was then in memory and stopped on it (`stop
+at 0x171b60`); the Python runner, handed the same state, ran the block from its cache as if
+nothing had happened. The native behaviour is the right one. Our harness is fixed
+(`unpack_call` in `scripts/sharc_waverider_m4.py`).
+
 So sections 7 and 8, fixed in `tools/sharc_core`, would let a patched DN2 image run its
 block path natively with no host help. Our side of it is `scripts/sharc_native.py` and
 `scripts/sharc_native_check.py`.
