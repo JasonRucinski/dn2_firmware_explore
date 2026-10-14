@@ -126,6 +126,11 @@ The first is at `0x1c45f1`, in a peak search over the sine table. Its load
 reads Unknown, the loop's running max goes Unknown with it, and the run forks
 at `0x1c4610`.
 
+**Correction, 2026-10-14.** The Type 4b half of this section was our misreading:
+Type 4b has no (LW), and 277760a's `TYPE4B_ACCESS_WIDTHS` handles those accesses as
+normal words. What was true on 6f812e9 is only that the access read Unknown. See
+section 22. The Type 3b half is unchanged and not re-checked.
+
 ## 9. L1 normal-word addresses read as byte addresses (PR candidate)
 
 The math library (`sw 0x1c0efe`, `sw 0x1c10e3`, ...) loads coefficient
@@ -363,19 +368,28 @@ Our library was generated for the stock DN2 image (`sharc_native_info` gives its
 so the coupled path is not affected. **Candidate:** set it in `to_native`, or have
 `sharc_native_create` compare the image's hash with the generated one and turn it on.
 
-**On 277760a only sections 7 and 8 still change this path's output.** With our fix-ups for
+**On 277760a only section 7 still changes this path's output.** With our fix-ups for
 section 6 (the SIMD two-pass) switched off for one form at a time (4a, 3a, 15b, 2a, 5a_move,
 3c, 5b_move, 7a) and then for all of them, every track buffer at the end of the block is the
 same word for word. The control: with section 7's fix-up off, 31 of 512 words differ. In one
-block the fix-ups fire 5,810 times for section 6, 24 times for section 7 and 120 times for
+block the fix-ups fired 5,810 times for section 6, 24 times for section 7 and 120 times for
 section 8. We have not checked init this way, only the block call, so read "no longer needed"
 as bounded by that.
 
-**With sections 7 and 8 applied from the host, the native engine equals the Python runner.**
-Both are a write after the step (Sn, or the pair's registers or words), so we step one
-instruction at a time and write them through `sharc_native_set_reg` and `sharc_native_poke`.
+**Section 8 was wrong about Type 4b, and you had already fixed it.** All 120 of those firings
+were Type 4b with (l, x, w) = (1, 1, 1), which `TYPE4B_ACCESS_WIDTHS` reads as the plain normal
+word. The DN2 agrees with your DT2 evidence: the 19 sites in the block call are all
+post-modify, with strides of 2, 5, 7, 9, 13, 24 and 31 words, and at the odd strides half the
+accesses would be misaligned as 64 bits. Our fix-up wrote the pair's other half on top of
+your correct step (the neighbour register on a load, the next word on a store). It is now off
+for a core that has `TYPE4B_ACCESS_WIDTHS`, and no recorded output of the block call changes
+with it off. Section 8 stands for Type 3b only, which did not run here.
+
+**With section 7 applied from the host, the native engine equals the Python runner.**
+It is a write after the step (Sn), so we step one instruction at a time and write it through
+`sharc_native_set_reg`.
 Over 12 blocks and two frame series, every buffer, the amp's input and output, the unpacked
-inputs and the instruction counts (1,867,934 and 1,934,523) are identical; with the two writes left out,
+inputs and the instruction counts (1,867,934 and 1,934,523) are identical; with the write left out,
 the amp's output differs. Speed here: 10.8 s a block in the Python runner, 0.57 s stepping
 the native engine from Python, 0.036 s when the engine runs the block in one call.
 
@@ -388,6 +402,6 @@ at 0x171b60`); the Python runner, handed the same state, ran the block from its 
 nothing had happened. The native behaviour is the right one. Our harness is fixed
 (`unpack_call` in `scripts/sharc_waverider_m4.py`).
 
-So sections 7 and 8, fixed in `tools/sharc_core`, would let a patched DN2 image run its
+So section 7, fixed in `tools/sharc_core`, would let a patched DN2 image run its
 block path natively with no host help. Our side of it is `scripts/sharc_native.py` and
 `scripts/sharc_native_check.py`.

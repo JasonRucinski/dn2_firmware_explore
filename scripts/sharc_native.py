@@ -8,14 +8,14 @@
 digikit's `native/sharc` is its Python core (`tools/sharc_core`) transpiled to Rust, so it
 has the Python core's gaps and none of `sharc_dn2_fixups.py`. Measured on 277760a
 (2026-10-14) over the Waverider block call: of the fix-ups that fire there, the SIMD
-two-pass (G1) no longer changes any output word, form by form or all off together; two
-still do, and both are a register or memory write after the step, so they are applied
-here from the host:
+two-pass (G1) no longer changes any output word, form by form or all off together, and
+G3 on Type 4b was our own mistake (Type 4b has no long word; see sharc_dn2_fixups.py).
+One still does, a register write after the step, so it is applied here from the host:
 
   G2  `Rn = data32` in SIMD also sets Sn
-  G3  long-word register pairs in Types 4b and 3b
-  G4, G11  carried the same way (an NW address into an I register; FEXT (SE) unmasked);
-           neither fired in the frames checked, so these two are untested here
+  G3 (Type 3b's long-word pairs), G4, G11  carried the same way (an NW address into an
+      I register; FEXT (SE) unmasked); none fired in the frames checked, so these three
+      are untested here
 
 Not carried: G5 (two addresses the core decodes at the wrong width: refused here), G6/G8
 (a conditional form the core stops on: the engine stops too, and the run says so), G12 to
@@ -29,7 +29,7 @@ runs both engines over the same blocks, bit for bit, with a control; the Waverid
 compare the machine's output with the model whichever engine ran.
 
 The engine steps one instruction per call (the fix-ups need the address before each
-step), about 0.6 s a block against 11 s. With G2 and G3 in digikit's core it could run a
+step), about 0.6 s a block against 11 s. With G2 in digikit's core it could run a
 block in one call, about 0.04 s.
 """
 
@@ -92,7 +92,7 @@ class Engine:
         t, f, F = insn.type_name, insn.fields, fx.F
         if t in ("17a", "17b"):
             return self._imm(t, f)
-        if t in ("4b", "3b") and fx.Fixups.is_long(t, f):
+        if t == "3b" and fx.Fixups.is_long(t, f):
             return self._long_word(t, f, pc)
         if t in fx.FEXT_SE_FORMS:
             got = fx.fext_se_fields(f)

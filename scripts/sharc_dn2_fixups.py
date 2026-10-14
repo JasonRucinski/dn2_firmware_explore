@@ -25,6 +25,14 @@ post-fix), or replaces the step outright:
       out right only with it).                                   ("simd 17a")
   G3  (LW) register-pair transfers in Types 4b and 3b read Unknown and write
       nothing; Types 3a, 14a, 15a and 15b already do the pair.   ("lw ...")
+      **Type 4b has no (LW)** (found 2026-10-14): 277760a reads its (l, x, w) =
+      (1, 1, 1) as the plain normal word, from the PRM's own Type 4b table, and the
+      DN2's 19 such sites in the block call agree (all post-modify, strides of 5,
+      7 and 13 words, so half the accesses would be misaligned as 64 bits). On
+      6f812e9 the fix-up got the named register or word right and was wrong in
+      the pair's other half (the neighbour register on a load, the next word on a
+      store). On a core with its own Type 4b table it is off; no recorded output
+      of the block call changes with it off (12 blocks, every field).
   G4  L1 normal-word addresses (0x90000..0xe7fff) are used as byte
       addresses, so the math library's coefficient tables read as zero and
       sinf(x) returns x. An immediate NW address loaded into an I register
@@ -102,6 +110,7 @@ import sys
 
 sr = st = fm = seq = None
 ACCESS_WIDTHS = UREG_CODES = None
+TYPE4B_OWN_WIDTHS = False       # the bound core reads Type 4b's widths from its own table (277760a)
 _dm_read = _dm_write = _simd_active = None
 Const = _signed = None
 
@@ -109,7 +118,7 @@ Const = _signed = None
 def bind(tools_dir: str) -> None:
     """Import digikit's runner from TOOLS_DIR (a checkout's tools/)."""
     global sr, st, fm, seq, ACCESS_WIDTHS, UREG_CODES, _dm_read, _dm_write, _simd_active
-    global Const, _signed
+    global Const, _signed, TYPE4B_OWN_WIDTHS
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
     import sharc_run as _sr  # noqa: PLC0415
@@ -122,6 +131,8 @@ def bind(tools_dir: str) -> None:
     from sharc_core.values import Const as _c, _signed as _s  # noqa: PLC0415
     sr, st, fm, seq = _sr, _st, _fm, _seq
     ACCESS_WIDTHS, UREG_CODES = _aw, _uc
+    from sharc_core import encoding as _enc  # noqa: PLC0415
+    TYPE4B_OWN_WIDTHS = hasattr(_enc, "TYPE4B_ACCESS_WIDTHS")
     _dm_read, _dm_write, _simd_active = _r, _w, _sa
     Const, _signed = _c, _s
     from sharc_core import compute_alu as _ca  # noqa: PLC0415
@@ -271,6 +282,8 @@ class Fixups:
 
     @staticmethod
     def is_long(t, f) -> bool:
+        # for Type 4b this is its (1, 1, 1) row, which is the plain normal word, not a long
+        # word (G3): `pre` still keeps those out of the SIMD two-pass, as it always has
         if t in ("4b", "3b"):
             return ACCESS_WIDTHS.get((F(f, "l"), F(f, "x"), F(f, "w"))) == "long-word"
         if t in ("3a", "15b"):
@@ -361,6 +374,8 @@ class Fixups:
     def long_word(self, t, f, s, pc):
         if not self.is_long(t, f):
             return None
+        if t == "4b" and TYPE4B_OWN_WIDTHS:
+            return None                 # the core's own normal-word access is right; no pair
         if cond_of(f) != 31 and seq._predicate(s, cond_of(f)) is not True:
             return None
         if F(f, "g"):
