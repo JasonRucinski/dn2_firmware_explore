@@ -146,7 +146,7 @@ To return the unit to what Elektron shipped:
 1. In DNX, back up the device, then open Settings and press **Erase…** under **Erase the
    wavetable region**, then **Erase the region**. It removes every stored table and every pool
    from the +Drive, and saves each table as a file in your DNX folder first. To put a table back
-   later, drag its file onto a free slot in DNX's Wavetables tab.
+   later, drag its file onto a free slot in DNX's Wavetables list.
 2. Flash the stock 1.11 file over MIDI, as in "Before you start".
 
 Do step 1 first. Stock 1.11 cannot reach the wavetable region, so once it is on, the data stays
