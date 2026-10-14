@@ -58,6 +58,7 @@ UNPUBLISHED = _first("0.1.0", "Not published on the site yet.")
 HISTORY: dict[str, tuple[Release, ...]] = {
     "arpmodes": PUBLISHED,
     "arpplocks": UNPUBLISHED,
+    "arpscale": UNPUBLISHED,
     "bootscreen": PUBLISHED,
     "fxmod": PUBLISHED,
     "layermidi": PUBLISHED,

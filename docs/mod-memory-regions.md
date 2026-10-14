@@ -32,8 +32,9 @@ From each mod's own declaration (`ram()`), 2026-10-11:
 | arpmodes | 2,320 | `0x467a0000` |
 | usbprobe | 2,304 | `0x46f00000` |
 | reloadconfirm, midiarp, lfolength, layermidi, bootscreen | 2,801 | `0x46708000`, `0x467d0000..0x467f8000` |
+| arpscale (2026-10-13) | 997 | `0x467a8000`, and one byte of the settings block |
 | the platform's data window | 196,608 | `0x46710000` |
-| **all** | **702,661** | 0.67 MiB of the 25.0 MB |
+| **all** | **703,658** | 0.67 MiB of the 25.0 MB |
 
 ## Region A: `0x46701340..0x48000000`
 

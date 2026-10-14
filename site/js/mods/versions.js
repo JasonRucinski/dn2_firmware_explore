@@ -2,6 +2,7 @@
 export const VERSIONS = {
   arpmodes: "1.0.0",
   arpplocks: "0.1.0",
+  arpscale: "0.1.0",
   bootscreen: "1.0.0",
   fxmod: "1.0.0",
   layermidi: "1.0.0",

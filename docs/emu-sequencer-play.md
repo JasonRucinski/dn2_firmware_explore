@@ -45,8 +45,16 @@ sixteenth), the voice number going up by one each note. Step period 16.50 M inst
 - The note is the u16 at byte `2 + 2 * voice` of the frame, `note << 8 | fine`
   (`dnfw.waverider.frame.NOTE`). It is written in the note-on's frame and stays after it, so
   the decoder reads it at the note-on. Every trig of a fresh pattern reads 60.0 (C4).
-- **Not yet: a trig's note cannot be changed from the panel in the emulator.** Measured
-  (2026-10-11), cause not found:
+- **A trig's note, a chord and the arp's mode** (2026-10-13): `--note STEP:SEMITONES`,
+  `--chord INTERVALS` with `--chord-length`, and `--arp MODE`. A note is set with the TRIG page
+  open and GRID RECORDING on, holding the trig while encoder A turns; a chord through NOTE
+  EDIT (the trig held, then STACK, code 53); the mode in the ARP menu (code 51). A turn moves
+  a value one unit per 28 counts, sent 10 at a time. These were found with
+  angellinares/digikit's `tools/seqplay.py` (digikit #69, #70, #72). On stock 1.11: trigs on
+  1, 5, 9, 13 with `--note 5:4 --note 9:7 --note 13:-5` play 60, 64, 67, 55; `--chord 4,3`
+  plays one note-on of three voices, 60, 64, 67; with `--chord-length 60 --arp UP` it plays
+  60, 64, 67 over and over, a sixteenth apart.
+- Earlier, a trig's note could not be changed from the panel (2026-10-11), cause not found:
   - Holding a trig key plays a preview note, which is an extra note-on in the frames. With
     the preview counted out the pattern's spacing is unchanged: trigs on 1, 5, 9, 13 stay 4.0
     steps apart whether or not a trig key was held first.
@@ -54,9 +62,8 @@ sixteenth), the voice number going up by one each note. Step period 16.50 M inst
     screen; push-and-turn changes nothing on the screen at all; with a trig key held, nothing
     changes whether the turn is plain or pushed. The body of the page never moves, and every
     trig still plays 60.0.
-  So the encoder edit is not reaching a value in this setup. Why is open (the push code, the
-  turn packet and the page are the candidates; none is tested). Different notes need the
-  pattern's trig data written directly.
+  So the encoder edit was not reaching a value in that setup. Why, against the sequence
+  above that works, was not isolated.
 
 ## Mod regression sweep
 
