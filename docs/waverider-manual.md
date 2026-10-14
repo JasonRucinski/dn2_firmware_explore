@@ -118,6 +118,20 @@ features that come next and **do not change the sound yet**. You can set and p-l
 - **LFO destinations:** every control except Shape's TYPE, AMT and P1 appears in the LFO's
   DEST list, in two groups both headed SYN.
 
+## Modulation on the page
+
+When an LFO or MOVE moves POS or TBL, the page shows the value you hear beside the value you set.
+Only POS and TBL, on both oscillators, show it; every other control shows the value you set.
+Nothing extra is drawn while a control is not moving, and the range fades about two seconds
+after the movement stops.
+
+- **Slow, under 3 Hz:** a dot under POS at the value heard, a dotted line over the range it
+  sweeps, and a dotted cursor under the position bar. The wave is the frame you hear.
+- **Medium, 3 to 12 Hz:** the dot over a grey band. The wave shows the two frames at the ends of
+  the sweep.
+- **Fast, over 12 Hz:** the band and the two frames, no dot, and ≈ beside POS.
+- **TBL:** the wave shows the table you hear; the label stays on the table you set.
+
 ## Going back to stock
 
 To return the unit to what Elektron shipped:
