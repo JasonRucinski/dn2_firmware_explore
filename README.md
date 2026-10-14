@@ -28,7 +28,7 @@ produce the same file, byte for byte; that is tested.
 | `arpplocks` | MODE, SPEED, RANGE and N.LEN lockable per trig | confirmed on hardware; changed since, emulator-checked | no |
 | `bootscreen` | Your own mark in the start-up animation | confirmed on hardware | yes |
 | `reloadconfirm` | FUNC + NO can ask before it reloads the pattern (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware | yes |
-| `arpscale` | The arp's step offsets move by degrees of the track's scale and root, not semitones (a switch in SETTINGS > PERSONALIZE) | not yet tested by the repository owner; external reports in `docs/flashing.md` | no |
+| `arpscale` | The arp's step offsets move by degrees of the track's scale and root, not semitones (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware (2026-10-14) | no |
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
 | `lfolength` | The LFO ONE/HALF fix: TRIG MODE ONE and HALF run one cycle / half a cycle from the start phase and hold the value they reached, on audio and MIDI tracks (two stock bugs; supersedes `lfohold`) | confirmed on hardware (2026-10-09, audio track); MIDI tracks in the emulator | yes |
@@ -176,7 +176,8 @@ and the ColdFire disassembly findings from
 SHARC emulators are [m-dwyer/digikit](https://github.com/m-dwyer/digikit)'s
 (GPL-2.0-or-later), used as external tools; our own SHARC code is assembled with
 [js216/selache](https://github.com/js216/selache) (GPL-3.0). The Digitone data
-formats come from the sibling project DNX. What was taken from each, and where
+formats come from the sibling project DNX. The `arpscale` mod is
+[w-winter](https://github.com/w-winter)'s (pull request #212). What was taken from each, and where
 this project deliberately diverges, is in `docs/references.md`.
 
 None of them is affiliated with Elektron, and neither is this. Everything in
