@@ -10,8 +10,13 @@ project, back up the +Drive first, and keep the stock 1.11 firmware file for rec
 ## Before you start
 
 - **Firmware:** Digitone II OS 1.11 only.
-- **Combining:** Waverider does not combine with the LFO modulation of the FX, the fourth LFO
-  or the FM drum transients mods.
+- **Combining:** Waverider combines with the other mods, except the LFO modulation of the FX,
+  the fourth LFO and the FM drum transients, which the pages refuse. You can patch a file
+  another mod page made. Combinations have been checked in the emulator, not on an
+  instrument.
+- **Try it alone first:** a file patched with Waverider only. If something goes wrong, that
+  tells us it is the new machine and not a combination. When you report a problem, say
+  which mods your file has.
 - **Wavetables:** two tables are built in (Prim. and Harm.). More come from DNX, which writes
   them to the +Drive; each project has a pool of up to 128 of them.
 - **Recovery:** if the unit does not boot, hold FUNC at power on, open the Early Start-up Menu

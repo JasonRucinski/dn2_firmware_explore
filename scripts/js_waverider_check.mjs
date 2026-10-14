@@ -6,12 +6,14 @@
  *
  * `MAIN.bin` and `DSP.bin` are sections 3 and 7 as `dnfw.mods.waverider.apply` produces
  * them. Checks: the same two sections, and the rebuilt image verifies. With
- * `--refusals-out`, also applies the mod to its own output and records the refusal;
+ * `--refusals-out`, also applies the mod to its own output, and the transients mod to it, and records
+ * both refusals;
  * `--syx-out` writes the browser's image, for the boot gate.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { build, load, replacement, verify } from "../site/js/firmware.js";
 import { apply } from "../site/js/mods/waverider.js";
+import * as transients from "../site/js/mods/transients.js";
 
 const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : null; };
 const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
@@ -34,7 +36,9 @@ checks.push(["the rebuilt image depacks to the same sections",
 if (arg("refusals-out")) {
   let twice = null;
   try { await apply(rebuilt); } catch (e) { twice = e.message; }
-  writeFileSync(arg("refusals-out"), JSON.stringify({ waverider_twice: twice }));
+  let tr = null;
+  try { transients.apply(rebuilt, new Map()); } catch (e) { tr = e.message; }
+  writeFileSync(arg("refusals-out"), JSON.stringify({ waverider_twice: twice, transients_after: tr }));
 }
 
 for (const [name, ok] of checks) console.log(`${ok ? "OK" : "FAIL"}  ${name}`);
