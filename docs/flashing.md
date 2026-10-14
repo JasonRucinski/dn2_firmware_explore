@@ -242,6 +242,7 @@ bound — just an array that happens to be three long.
 | 2026-10-12 | **`arpscale-degreetranspose_DN2_1.11.syx`** = `dnfw mods apply --mod arpscale --mod degreetranspose` (sha256 `18b33dc9…7ea215`, base **1.11**), on w-winter's Digitone II | **External report. Works** for arpscale: notes held live on the KEYBOARD page move by degrees. |
 | 2026-10-13 | **`arpscale-degreetranspose5_DN2_1.11.syx`** = `dnfw mods apply --mod arpscale --mod degreetranspose` (sha256 `59a557c9…3de7d`, base **1.11**), on w-winter's Digitone II | **External report. Works** for arpscale with the arp's RANGE above 0. |
 | 2026-10-13 | **`arpscale3_DN2_1.11.syx`** = `dnfw mods apply --mod arpscale` (sha256 `a2c5dea4…c91c`, base **1.11**), the code at `0x467a8000`, on w-winter's Digitone II | **External report. Works.** ARP OFS IN SCALE appears in SETTINGS > PERSONALIZE and toggles; with it on, notes from trigs and notes held live on the KEYBOARD page move in scale; the setting survives a power cycle. |
+| 2026-10-14 | **`arpscale-pr212_DN2_1.11.syx`** = pull request #212 at 665b02d (sha256 `a2c5dea4…`, the same bytes as `arpscale3`, base **1.11**), on the repository owner's Digitone II | **PASS.** The written hardware test in `docs/mods.md` passes. Owner: *"it works"*. |
 
 **This row exists because the gap above bit twice in one day.** This log records
 what was *sent*, never what is *resident*, and nothing writes a row when the
