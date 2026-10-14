@@ -17,6 +17,16 @@ project, back up the +Drive first, and keep the stock 1.11 firmware file for rec
 - **Recovery:** if the unit does not boot, hold FUNC at power on, open the Early Start-up Menu
   and upgrade with the stock 1.11 file over MIDI DIN.
 
+## Installing
+
+1. Back up the +Drive with DNX.
+2. Open Elektron Transfer, connect the Digitone II over USB, and drop the Waverider `.syx`
+   file onto it. The unit updates and restarts.
+3. To check it: press FUNC + SYN on a track. MACHINE SEL lists WAVERIDER.
+
+Nothing else needs setting up. The +Drive has no wavetables until you add one with DNX; the
+first table you add sets up the storage.
+
 ## Choosing it
 
 Press FUNC + SYN to open MACHINE SEL. WAVERIDER is the fifth entry, after SWARMER. Choose it

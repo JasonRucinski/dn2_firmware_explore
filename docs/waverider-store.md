@@ -67,8 +67,11 @@ with the same generation, **group A wins**. If neither is valid, the store is em
 | 60 | superblock hash: xxHash32, seed 0, over bytes 0..59 |
 
 The magic is in the first 16 bytes of the region's sector 0, so a single short read
-finds it. **DNX writes only after reading a valid superblock**: the route name says
-where to look, and the magic is what authorises the write. The index hash sits inside
+finds it. **A store with no valid superblock is empty, and the first write creates it**:
+the firmware's writer starts from a blank index and writes group A with generation 1
+(`csrc/wrstore/route.c`, `wr_store_commit_entry`). On the instrument, 2026-10-05: the
+region had never been written, and DNX's first table was stored, listed, read back
+identical and played. No separate set-up step exists or is needed. The index hash sits inside
 the superblock hash's range, so a torn superblock can't point at a stale index. Keep
 it there if the fields are ever reordered.
 
@@ -160,7 +163,7 @@ off-by-one between the path and the index entry. Each entry is long form:
   the window, so `/waverider` can't declare the directory's total on a page. A
   caller that pages should go on until a page comes back empty, or list unpaged as
   DNX does. Unpaged, all 256 arrive in one reply (3,853 bytes with empty names).
-- the `/` reply that lists `waverider`: `waverider `, kind `01`, layout `01`, child
+- the `/` reply that lists `waverider`: `waverider\0`, kind `01`, layout `01`, child
   count 256. The stock `/` lists `projects` (128), `soundbanks` (8) and `kits` (8): the
   count is whatever the next level down holds.
 
