@@ -134,6 +134,5 @@ saved with Waverider tracks stays on the unit.
 - A pool reload while a note plays on a pool table may click. It has not been measured on the unit; tell us if you hear it.
 - 4096-point tables have not been measured on the unit.
 - A sound made before page 5 existed shows FOLD, WARP, FM and NPOS at 64.
-- The wavetable page in DNX may call a 64x2048 table unplayable. It plays.
 - The load on the DSP with a 16-note chord, both oscillators, sub and noise is about 65 %. See
   `docs/waverider-performance.md`.
