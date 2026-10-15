@@ -1,0 +1,112 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LFO Hold</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<meta name="description" content="LFO hold, the first Digitone II fix for LFO trig modes ONE and HALF: what it did, and why the LFO ONE/HALF fix supersedes it.">
+<link rel="stylesheet" href="css/base.css">
+<style>
+  .step { margin: 2.5rem 0; }
+  .step-head { display: flex; align-items: baseline; gap: .75rem; margin-bottom: .4rem; }
+  .step-num {
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .1em;
+    color: var(--accent); border: 1px solid currentColor;
+    border-radius: 3px; padding: .1rem .4rem; flex: none;
+  }
+  .step h2 { margin: 0; border: 0; padding: 0; font-size: 1.2rem; }
+  .step > p { margin-top: .3rem; color: var(--ink-soft); }
+
+  .drop {
+    border: 2px dashed var(--rule); border-radius: 10px;
+    padding: 2rem 1.5rem; text-align: center; background: var(--panel);
+    transition: border-color .15s, background .15s;
+  }
+  .drop.over { border-color: var(--accent); background: var(--accent-dim); }
+  .drop p { margin: 0 auto; max-width: none; }
+  .drop .hint { color: var(--ink-soft); font-size: .88rem; margin-top: .5rem; }
+
+  button, .filebtn {
+    font: inherit; font-size: .9rem; cursor: pointer;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--rule); border-radius: 6px;
+    padding: .4rem .9rem; display: inline-block;
+  }
+  button:hover, .filebtn:hover { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    font-weight: 600; padding: .6rem 1.4rem;
+  }
+  :root[data-theme="dark"] button.primary,
+  :root:not([data-theme="light"]) button.primary { color: #16181c; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .verdict { display: grid; gap: .3rem; margin-top: 1rem; font-size: .9rem; }
+  .verdict div { display: flex; gap: .6rem; align-items: baseline; }
+  .verdict .mark { font-family: var(--mono); flex: none; width: 1.2rem; }
+  .pass .mark { color: var(--ok); }
+  .fail .mark, .fail { color: #c33; }
+
+  .scroll { overflow-x: auto; }
+
+  .bar {
+    position: sticky; bottom: 0; background: var(--bg);
+    border-top: 1px solid var(--rule); padding: 1rem 0;
+    display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+    margin-top: 2rem;
+  }
+  .bar .status { color: var(--ink-soft); font-size: .88rem; flex: 1 1 14rem; }
+  .hidden { display: none; }
+  .busy { color: var(--accent); }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / bug fixes / LFO hold (superseded)</p>
+  <h1>LFO Hold</h1>
+  <p class="lede">
+    The first fix for LFO TRIG MODE ONE and HALF. It is kept here as a record: what it did,
+    how it was tested, and why it was replaced. It is no longer offered as a download.
+  </p>
+</header>
+
+<div class="note">
+  <p><strong>Superseded on 2026-10-09 by the <a href="lfo-fix.html">LFO ONE/HALF fix</a>.</strong>
+  Two things came to light after this fix was published:</p>
+  <ul>
+    <li>The MIDI tracks&rsquo; LFOs run through a second copy of the LFO code, which this fix did
+    not touch. On a MIDI track, ONE and HALF still jumped when they stopped.</li>
+    <li>A second community report: with the start phase (SPH) moved, ONE and HALF end too early,
+    or in HALF too late. The firmware stops them at fixed points of the cycle, not one cycle (or
+    half) after the trig.
+    <a href="https://discord.com/channels/772159427486023730/772160179386580993/1557769845855092747">Source</a></li>
+  </ul>
+  <p>The LFO ONE/HALF fix does what this one did, on both copies, and fixes the length too.
+  The two write the same bytes, so they were never meant to be combined.</p>
+</div>
+
+<section>
+  <h2>What it did</h2>
+  <dl class="facts">
+    <dt>Fixed</dt><dd>LFO TRIG MODE ONE and HALF jumping to the centre when they stop, instead of holding the value they reached</dd>
+    <dt>ONE</dt><dd>After one cycle the LFO stayed at the value its waveform ended on. A square on the filter ended closed and stayed closed</dd>
+    <dt>HALF</dt><dd>After half a cycle the LFO stayed at the waveform&rsquo;s middle value. A square stayed open; a triangle stayed at its peak</dd>
+    <dt>Why</dt><dd>The firmware stops these modes by writing a fixed value per waveform into the LFO&rsquo;s output, the centre for nearly all of them. The fix removed those two writes (audio tracks)</dd>
+    <dt>Changes</dt><dd>2 in-place edits of 4&nbsp;B in section 3, nothing appended</dd>
+    <dt>Tested</dt><dd>Flashed 2026-10-08 against factory 1.11 on the same patch (a square LFO on the filter): ONE and HALF held with the fix and jumped without it; TRIG and FREE unchanged; the click at a square&rsquo;s edges was the factory&rsquo;s, the same with and without the fix</dd>
+    <dt>Code</dt><dd><code>src/dnfw/mods/lfohold.py</code> and <code>site/js/mods/lfohold.js</code> in the repository, kept as published</dd>
+  </dl>
+  <p>Reported by the community on official 1.10 as well.
+  <a href="https://discord.com/channels/772159427486023730/772160179386580993/1557329020587090001">Source</a></p>
+</section>
+
+<footer>
+  <p>
+    Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
+    AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron.
+  </p>
+</footer>
+
+</div>

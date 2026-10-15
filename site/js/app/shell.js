@@ -23,6 +23,8 @@
  */
 
 import { build, load, verify } from "../firmware.js";
+import { guardDownload } from "./notice.js";
+import { VERSIONS } from "../mods/versions.js";
 
 export const $ = (id) => document.getElementById(id);
 
@@ -75,9 +77,11 @@ export function status(text, busy = false) {
  * it is a signed image that fully verifies.
  *
  * `extraFacts(firmware)` may return `[[term, value], ...]` for anything the
- * page wants beside the standard four.
+ * page wants beside the standard four. A page whose mod is withdrawn passes its
+ * `mods/availability.js` entry as `unavailable`, and the file is not read.
  */
-export async function openFirmware(file, { onReady, extraFacts = () => [] }) {
+export async function openFirmware(file, { onReady, extraFacts = () => [], unavailable = null }) {
+  if (unavailable) { status(unavailable.title); return null; }
   status("Reading…", true);
   const facts = $("facts");
   const verdict = $("verdict");
@@ -116,15 +120,25 @@ export async function openFirmware(file, { onReady, extraFacts = () => [] }) {
   }
 }
 
+/** The downloaded file's name: the firmware's, the mod's suffix, and the mod's version. */
+export function outputName(filename, suffix, mod = null, versions = VERSIONS) {
+  const version = mod && versions[mod] ? `_${versions[mod]}` : "";
+  return filename.replace(/\.syx$/i, "") + `_${suffix}${version}.syx`;
+}
+
 /**
  * Build with `replacements`, re-verify from the built bytes, and offer a
  * download only if every check passes.
  *
- * `suffix` names the output: `dn2_1.11.syx` -> `dn2_1.11_<suffix>.syx`.
+ * `suffix` names the output, and `mod` (the mod's id) adds its version:
+ * `dn2_1.11.syx` -> `dn2_1.11_<suffix>_<version>.syx`.
+ * A withdrawn mod's page passes its entry as `unavailable`: nothing is built.
  */
 export async function buildAndOffer(firmware, replacements, {
-  filename, suffix, into = $("buildVerdict"), button = $("buildBtn"), note = "",
+  filename, suffix, mod = null, into = $("buildVerdict"), button = $("buildBtn"), note = "",
+  unavailable = null,
 }) {
+  if (unavailable) { status(unavailable.title); return null; }
   if (button) button.disabled = true;
   status("Rebuilding…", true);
   // One frame, so the status paints before the main thread is taken by a
@@ -141,7 +155,7 @@ export async function buildAndOffer(firmware, replacements, {
       return null;
     }
 
-    const name = filename.replace(/\.syx$/i, "") + `_${suffix}.syx`;
+    const name = outputName(filename, suffix, mod);
     into.querySelector("a.filebtn")?.remove();
     const link = document.createElement("a");
     link.className = "filebtn";
@@ -149,6 +163,7 @@ export async function buildAndOffer(firmware, replacements, {
     link.download = name;
     link.textContent = `Download ${name}`;
     link.style.marginTop = ".8rem";
+    guardDownload(link);
     into.append(link);
     link.scrollIntoView({ behavior: "smooth", block: "nearest" });
     status(`${note}${note ? " — " : ""}${bytes.length.toLocaleString()} bytes.`);

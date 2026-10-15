@@ -19,10 +19,13 @@ from ..firmware.verify import verify
 from ..mods import ModError, check_compatible
 from ..mods import arpmodes as arpmodes_mod
 from ..mods import arpplocks as arpplocks_mod
+from ..mods import arpscale as arpscale_mod
 from ..mods import bootscreen as bootscreen_mod
 from ..mods import fxmod as fxmod_mod
+from ..mods import history
 from ..mods import layermidi as layermidi_mod
 from ..mods import lfo4 as lfo4_mod
+from ..mods import lfolength as lfolength_mod
 from ..mods import lfowaves as lfowaves_mod
 from ..mods import midiarp as midiarp_mod
 from ..mods import moddest as moddest_mod
@@ -36,6 +39,7 @@ from .files import read_image
 NAME = "mods"
 HELP = "list, extract and apply firmware mods"
 
+# Not here: superseded mods, kept in the tree for the record (lfohold -> lfolength, 2026-10-09).
 REGISTRY = {transients_mod.ID: transients_mod,
             moddest_mod.ID: moddest_mod,
             bootscreen_mod.ID: bootscreen_mod,
@@ -45,7 +49,9 @@ REGISTRY = {transients_mod.ID: transients_mod,
             fxmod_mod.ID: fxmod_mod,
             arpplocks_mod.ID: arpplocks_mod,
             arpmodes_mod.ID: arpmodes_mod,
+            arpscale_mod.ID: arpscale_mod,
             lfo4_mod.ID: lfo4_mod,
+            lfolength_mod.ID: lfolength_mod,
             songguard_mod.ID: songguard_mod,
             waverider_mod.ID: waverider_mod,
             reloadconfirm_mod.ID: reloadconfirm_mod,
@@ -56,6 +62,14 @@ def configure(parser) -> None:
     sub = parser.add_subparsers(dest="action", required=True)
 
     sub.add_parser("list", help="show available mods and what they touch")
+
+    cl = sub.add_parser("changelog", help="each mod's version and what changed in it")
+    cl.add_argument("--mod", action="append", choices=sorted(REGISTRY), help="only these mods")
+    cl.add_argument("--write", type=pathlib.Path, nargs="+", default=[], metavar="PAGE",
+                    help="fill the generated regions (<!-- dnfw:version ID --> and "
+                         "<!-- dnfw:changes ID -->) of these HTML files")
+    cl.add_argument("--js", type=pathlib.Path, metavar="FILE",
+                    help="write each mod's current version as a JS module (site/js/mods/versions.js)")
 
     ex = sub.add_parser("extract", help="write a mod's factory content out")
     ex.add_argument("image", type=pathlib.Path)
@@ -286,7 +300,7 @@ def _list() -> int:
     for mid, mod in sorted(REGISTRY.items()):
         sections = _sections(mod)
         label = "section" if len(sections) == 1 else "sections"
-        print(f"  {mid}")
+        print(f"  {mid}  v{history.version(mid)}")
         print(f"    {mod.SUMMARY}")
         print(f"    device 0x{mod.DEVICE:02x}, {label} {', '.join(map(str, sections))}")
     print("\nTwo mods can be applied together when the byte ranges they write")
@@ -538,9 +552,32 @@ def _matrix(args) -> int:
     return 0
 
 
+def _changelog(args) -> int:
+    wrong = history.problems(REGISTRY)
+    for line in wrong:
+        print(f"  {line}")
+    if wrong:
+        return 1
+    for mid in args.mod or sorted(REGISTRY):
+        print(f"{mid}  {getattr(REGISTRY[mid], 'NAME', mid)}")
+        print(history.changes_text(mid))
+    for page in args.write:
+        text = page.read_text(encoding="utf-8")
+        new = history.rewrite(text)
+        if new != text:
+            page.write_text(new, encoding="utf-8", newline=chr(10))
+            print(f"  rewrote the version and changes regions of {page}")
+    if args.js:
+        args.js.write_text(history.versions_js(), encoding="utf-8", newline=chr(10))
+        print(f"  wrote {args.js}")
+    return 0
+
+
 def run(args) -> int:
     if args.action == "list":
         return _list()
+    if args.action == "changelog":
+        return _changelog(args)
     if args.action == "matrix":
         return _matrix(args)
     if args.action == "extract":

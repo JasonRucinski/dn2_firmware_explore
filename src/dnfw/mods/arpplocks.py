@@ -112,5 +112,7 @@ def ram() -> list[Extent]:
 
 # Bytes that only look like RAM above BSS (`dnfw.mods.ramcheck`): `lea 0x40054690,%a4 ;
 # rts` (49 f9 40 05 46 90 4e 75) straddles into 0x46904e75. It was at 0x4028d214 in its
-# cave; in the chunk it is at 0x467c8794.
-NOT_RAM = (0x467C8794,)
+# cave; in the chunk it was at 0x467c8794 and, since efec5d7 (a lock trig with arp locks
+# can be removed again) moved the code, it is at 0x467c87bc: disassembled at 0x467c87b8.
+# The place shifts with the code, so a change to the chunk needs this checked again.
+NOT_RAM = (0x467C87BC,)

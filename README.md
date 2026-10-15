@@ -27,8 +27,12 @@ produce the same file, byte for byte; that is tested.
 | `layermidi` | TRACK WILL TRIGGER onto a MIDI track plays it over MIDI: notes, chords, releases | confirmed on hardware | yes |
 | `arpplocks` | MODE, SPEED, RANGE and N.LEN lockable per trig | confirmed on hardware; changed since, emulator-checked | no |
 | `bootscreen` | Your own mark in the start-up animation | confirmed on hardware | yes |
+| `reloadconfirm` | FUNC + NO can ask before it reloads the pattern (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware | yes |
+| `arpscale` | The arp's step offsets move by degrees of the track's scale and root, not semitones (a switch in SETTINGS > PERSONALIZE) | confirmed on hardware (2026-10-14) | no |
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
+| `lfolength` | The LFO ONE/HALF fix: TRIG MODE ONE and HALF run one cycle / half a cycle from the start phase and hold the value they reached, on audio and MIDI tracks (two stock bugs; supersedes `lfohold`) | confirmed on hardware (2026-10-09, audio track); MIDI tracks in the emulator | yes |
+| ~~`lfohold`~~ | Superseded by `lfolength` (2026-10-09): the hold, audio tracks only. Kept in the tree for the record, not offered | confirmed on hardware (2026-10-08) | no |
 
 **Combining them.** `dnfw mods matrix` tries every pair in both orders and
 writes the result into `docs/mods-compatibility.md` and the site. Most pairs
@@ -187,7 +191,8 @@ formats come from the sibling project DNX. The USB SysEx probe adapts
 (GPL-2.0-or-later). The frame-word census follows the method of
 [naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw)'s OS 1.12 notes
 (GPL-2.0; method only, no code taken), and its report on words 0xa54 and 0xa56
-(issue #49) is what moved Waverider's song position. What was taken from each,
+(issue #49) is what moved Waverider's song position. The `arpscale` mod is
+[w-winter](https://github.com/w-winter)'s (pull request #212). What was taken from each,
 and where this project deliberately diverges, is in `docs/references.md`.
 
 None of them is affiliated with Elektron, and neither is this. Everything in
