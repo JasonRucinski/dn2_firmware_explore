@@ -81,6 +81,12 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.1.1", "2026-10-15", (
+            "Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 "
+            "POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.",
+            "The page has a Technical tab: the table formats, the files that DNX accepts, how the reader "
+            "plays a table, DCLK, SLW and SYN, and the noise.",
+        )),
         Release("0.1.0", "2026-10-15", (
             "The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a "
             "sub-oscillator, noise, sound options and wavetable pools from the +Drive. Page 5 is for "

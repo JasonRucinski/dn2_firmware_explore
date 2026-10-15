@@ -1,5 +1,5 @@
 /**
- * The Waverider page: four tabs, and the patcher in the first.
+ * The Waverider page: five tabs, and the patcher in the first.
  * Loading, verifying, building and the download live in `shell.js`.
  */
 
@@ -7,10 +7,10 @@ import { $, buildAndOffer, openFirmware, status, wireDrop } from "./shell.js";
 import { replacement } from "../firmware.js";
 import { apply, CODE_SUMMARY } from "../mods/waverider.js";
 
-const TABS = ["try", "manual", "tests", "inside"];
+const TABS = ["try", "manual", "tests", "inside", "tech"];
 let state = { firmware: null, filename: "firmware.syx", built: null };
 
-// ---- tabs: one panel shown; #try, #manual, #tests and #inside open their tab
+// ---- tabs: one panel shown; #try, #manual, #tests, #inside and #tech open their tab
 function show(id, focus = false) {
   if (!TABS.includes(id)) id = "try";
   for (const t of TABS) {
