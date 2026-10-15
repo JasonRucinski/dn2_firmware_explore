@@ -162,7 +162,7 @@ Before you start, check these three conditions in DNX:
 
 Then:
 
-1. In DNX, click **settings** in the tool row. Settings work from every tool except the probe.
+1. In DNX, click **settings** in the tool row. Back up and Erase work from every tool except the probe.
 2. Under **Back up the +Drive**, click **Back up…**. This backup holds your projects, sounds and
    kits. It does not hold the wavetables.
 3. Under **Erase the wavetable region**, click **Erase…**.
