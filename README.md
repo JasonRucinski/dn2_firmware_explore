@@ -1,20 +1,20 @@
 # dn_firmware
 
-Tools for inspecting, modifying and rebuilding **Elektron Digitone** firmware —
-the Digitone II (DN2) and the original Digitone / Digitone Keys (DN1) — and a
-set of mods for the Digitone II built with them.
+Tools to inspect, modify and rebuild **Elektron Digitone** firmware, and a set of
+mods for the Digitone II that we built with them. The tools cover the Digitone II
+(DN2) and the original Digitone and Digitone Keys (DN1).
 
 **This repository holds code and documentation only.** It contains no Elektron
-firmware, original or modified, and never will. Bring your own OS file — the
-one Elektron publish for your instrument. Every mod applies to *your* copy of
-it, and checks that copy is the one it was measured against before it writes.
+firmware, original or modified, and it never will. Bring your own OS file: the one
+that Elektron publish for your instrument. Each mod applies to *your* copy of that
+file. Before a mod writes, it checks that your copy is the one we measured it against.
 
 ## Mods for the Digitone II 1.11
 
-Applied with `dnfw mods apply`, or in the browser on the project site,
-**<https://angellinares.github.io/dn2_firmware_explore/>**, which runs entirely
-in your browser, with nothing uploaded. The browser and the command line
-produce the same file, byte for byte; that is tested.
+Apply them with `dnfw mods apply`, or in the browser on the project site,
+**<https://angellinares.github.io/dn2_firmware_explore/>**. The site runs entirely
+in your browser and uploads nothing. The browser and the command line make the same
+file, byte for byte. A test checks this.
 
 | Mod | What it does | Status | In the browser |
 |---|---|---|---|
@@ -32,31 +32,39 @@ produce the same file, byte for byte; that is tested.
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
 | `lfolength` | The LFO ONE/HALF fix: TRIG MODE ONE and HALF run one cycle / half a cycle from the start phase and hold the value they reached, on audio and MIDI tracks (two stock bugs; supersedes `lfohold`) | confirmed on hardware (2026-10-09, audio track); MIDI tracks in the emulator | yes |
+| `waverider` | A sixth synth machine: two wavetable oscillators with MOVE, a sub-oscillator and noise, with tables from the +Drive (alpha) | alpha, confirmed on hardware (2026-10-14) | yes |
 | ~~`lfohold`~~ | Superseded by `lfolength` (2026-10-09): the hold, audio tracks only. Kept in the tree for the record, not offered | confirmed on hardware (2026-10-08) | no |
 
-**Combining them.** `dnfw mods matrix` tries every pair in both orders and
-writes the result into `docs/mods-compatibility.md` and the site. Most pairs
-combine freely; a few need an order (`dnfw mods apply` applies them in it), and
-`lfo4`, `lfowaves` and `bootscreen` exclude each other because each needs the
-start-up hook. One pair has been flashed together and confirmed on the
-instrument: `bootscreen` + `layermidi` (2026-10-02, `docs/flashing.md`).
+**Combining them.** `dnfw mods matrix` tries each pair in both orders. The command
+writes the result into `docs/mods-compatibility.md` and the site. Most pairs combine
+freely. A few pairs need an order, and `dnfw mods apply` applies them in that order.
 
-**Old projects that halt on load:** a project with a damaged song row count
-halts even stock 1.11 on load (`EXCEPTION DS0059`). The `songguard` mod bounds
-the count, and it is confirmed on the instrument (`docs/old-project-load.md`).
+Some pairs cannot combine, and the table gives the reason for each. Three combinations
+passed on the instrument:
 
-**In development: Waverider**, a wavetable machine for the Digitone II modelled
-on Tonverk's Wavefinder (`docs/waverider-feasibility.md`). It is a sixth machine
-in MACHINE SEL: two wavetable oscillators, a sub-oscillator, noise, a shaper and
-its own modulator, with our own SHARC reader running inside a real DN2 voice and
-its tables in the project's wavetable pool on the +Drive. Alpha builds run on the
-instrument (`docs/waverider-manual.md`, `docs/waverider-performance.md`). It is
-not released: it is not in the table above and has no browser tool, and its
-builds are made locally with `dnfw mods apply ... --mod waverider`.
+- `lfowaves`, `bootscreen` and `lfo4` (2026-09-30)
+- `bootscreen` and `layermidi` (2026-10-02)
+- `bootscreen`, `layermidi` and `usbprobe` (2026-10-03)
 
-## Install and run
+`docs/flashing.md` has the details.
 
-Python 3.11+, no dependencies.
+**Old projects that halt on load:** a project with a damaged song row count halts
+even stock 1.11 on load (`EXCEPTION DS0059`). The `songguard` mod limits the count.
+It passed on the instrument (`docs/old-project-load.md`).
+
+**Waverider is an alpha.** It is a wavetable machine for the Digitone II, after the
+Wavefinder of Tonverk (`docs/waverider-feasibility.md`). It is a sixth machine in MACHINE
+SEL. It has two wavetable oscillators, a sub-oscillator, noise and its own modulator. Page 5
+(Shape) does not change the sound yet. Our own SHARC reader runs inside a real DN2 voice.
+
+Its tables are in the wavetable pool of the project, on the +Drive. You put them there with
+DNX. The manual is `docs/waverider-manual.md`, and the measurements are in
+`docs/waverider-performance.md`. Sounds that you save may not load the same way in a later
+version. On the command line, use `dnfw mods apply ... --mod waverider`.
+
+## Installation
+
+You need Python 3.11 or later. There are no dependencies.
 
 ```
 pip install -e .
@@ -64,9 +72,9 @@ dnfw inspect 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip
 dnfw mods apply Digitone_II_OS1.11.syx --mod lfo4 -o modded.syx
 ```
 
-Or without installing: `PYTHONPATH=src python -m dnfw.cli.main ...`
+To run without an install, use `PYTHONPATH=src python -m dnfw.cli.main ...`.
 
-A `.zip` as Elektron ship it is accepted anywhere a `.syx` is.
+Each command that takes a `.syx` file also takes the `.zip` that Elektron ship.
 
 ### Commands
 
@@ -88,48 +96,48 @@ A `.zip` as Elektron ship it is accepted anywhere a `.syx` is.
 | `dnfw ldr <image>` | walk the SHARC program (section 7) as an ADI boot stream |
 | `dnfw waverider ...` | Waverider's tables: scan and reduce WAVs, bake, render a reference, build a frame |
 
-`build`, `patch apply` and `mods apply` re-load and re-verify their own output
-before writing it. Nothing leaves this tool that it cannot check.
+Before they write a file, `build`, `patch apply` and `mods apply` load it again for a
+check. This tool writes no file that it cannot check.
 
-## How a change is checked before it reaches an instrument
+## How we check a change before it reaches an instrument
 
-- **Integrity:** every checksum and the HMAC-SHA256 signature are recomputed and
-  re-verified on the rebuilt file.
-- **Boot from reset in an emulator:** digikit's `boot_gate` boots the image from
-  reset (about 30 s) and watches the firmware's fault reporter and the uploader's
-  refusal; both must see zero hits. `scripts/emu_boot_check.py` is the older
-  route, against a stock control. A snapshot of a machine that has already
-  booted does not count (`docs/emulator.md`).
-- **The engine and save/load:** `scripts/emu_boot_engine.py` runs the audio
-  engine's evaluator and a stored sound through LOAD and SAVE.
-- **ColdFire encodings:** `scripts/check_coldfire.py` rejects an addressing mode
+- **Integrity:** the tool calculates every checksum and the HMAC-SHA256 signature
+  again, and checks them on the rebuilt file.
+- **Boot from reset in an emulator:** the `boot_gate` of digikit boots the image from reset
+  (about 11 s on our computer). It watches the fault reporter of the firmware and the refusal
+  of the uploader, and both must see zero hits. `scripts/emu_boot_check.py` is the older route,
+  against a stock control. A snapshot of a machine that has already booted does not count
+  (`docs/emulator.md`).
+- **The engine and save/load:** `scripts/emu_boot_engine.py` runs the evaluator of
+  the audio engine. It also takes a stored sound through LOAD and SAVE.
+- **ColdFire encodings:** `scripts/check_coldfire.py` rejects an addressing mode that
   the chip refuses and generic emulators run.
 - **Per-mod harnesses** under `scripts/emu_*.py`, each with a stock control.
-- **DSP code** runs offline in digikit's SHARC runner and is compared with a
-  Python reference (`scripts/sharc_waverider_*.py`).
-- **Frame words:** before a mod puts data in a word of the ColdFire-to-DSP frame,
-  `scripts/sharc_frame_census.py` and `sharc_frame_word_check.py` run the stock
-  DSP over recorded and random frames and name every instruction that reads that
-  word (`docs/waverider-frame-words.md`).
-- **On the instrument:** each hardware test has a written pass and fail in the
-  project's test plan before anything is flashed. The recovery route (stock
-  through the Early Start-up Menu) is proven; send it over a clean MIDI link
+- **DSP code** runs offline in the SHARC runner of digikit. A script compares it with
+  a Python reference (`scripts/sharc_waverider_*.py`).
+- **Frame words:** a mod can put data in a word of the ColdFire-to-DSP frame. Before it
+  does, two scripts run the stock DSP over recorded and random frames:
+  `scripts/sharc_frame_census.py` and `sharc_frame_word_check.py`. They name every instruction that reads that word
+  (`docs/waverider-frame-words.md`).
+- **On the instrument:** before we flash anything, the project's test plan gives a
+  written pass and fail for each hardware test. The recovery route (stock through the
+  Early Start-up Menu) works on the instrument. Send it over a clean MIDI link
   (`docs/flashing.md`).
 
 ## What the firmware is
 
-Measured from the images. Evidence in `docs/ele3-format.md` and
+We measured this from the images. The evidence is in `docs/ele3-format.md` and
 `docs/mainos-image.md`.
 
 - An `ELE3` container inside a block-streaming SysEx transport.
-- Sections compressed with an aPLib variant. `MAIN OS` loads at `0x40000400`:
-  big-endian **ColdFire V4e** code, built with GCC and still carrying its **C++
-  RTTI names**. Section 7 is the **SHARC+ DSP** program, as an ADI boot stream.
-- The DN2 container is signed with **HMAC-SHA256**, keyed from material in the
-  image itself, so a modified image can be signed correctly. The DN1 container
-  is **unsigned**: its trailer is 32 zero bytes.
-- The +Drive is a 32 GB eMMC with no filesystem: fixed slots for projects,
-  presets and kits, and about 21 GiB the stock firmware never touches
+- The sections use an aPLib variant for compression. `MAIN OS` loads at `0x40000400`.
+  `MAIN OS` is big-endian **ColdFire V4e** code, built with GCC, and it still carries its
+  **C++ RTTI names**. Section 7 is the **SHARC+ DSP** program, as an ADI boot stream.
+- An **HMAC-SHA256** signature seals the DN2 container. The key comes from material in
+  the image itself, so a tool can sign a modified image correctly. The DN1 container
+  has **no signature**: its trailer is 32 zero bytes.
+- The +Drive is a 32 GB eMMC with no filesystem. The +Drive has fixed slots for projects,
+  presets and kits, and about 21 GiB that the stock firmware never touches
   (`docs/drive-storage-research.md`).
 
 ## Testing
@@ -139,11 +147,10 @@ pytest -m "not slow"     # the fast set
 pytest                   # everything, a few minutes
 ```
 
-Gate F needs an m68k objdump; on Windows,
-`wsl -u root apt-get install -y binutils-m68k-linux-gnu`. The browser parity
-tests need Node. The emulator gates need digikit (`docs/emulator.md`). Tests
-that need something absent — the OS images in `00_Resources/`, objdump, Node —
-skip and say so.
+Gate F needs an m68k objdump. On Windows, install it with
+`wsl -u root apt-get install -y binutils-m68k-linux-gnu`. The browser parity tests
+need Node. The emulator gates need digikit (`docs/emulator.md`). A test that needs
+something absent (the OS images in `00_Resources/`, objdump or Node) skips, and says so.
 
 ## Documentation
 
@@ -168,33 +175,37 @@ skip and say so.
 
 ## Licence
 
-**[GNU AGPL-3.0-or-later](LICENSE).** Use it, fork it, change it; keep the
-notices and pass on the same freedoms. A modified version you distribute — or
-run as a service — stays open. Same licence as DNX, for the same reasons.
+**[GNU AGPL-3.0-or-later](LICENSE).** Use it, fork it and change it. Keep the notices,
+and pass on the same freedoms. If you distribute a modified version, or run it as a
+service, it stays open. DNX has the same licence, for the same reasons.
 
-Parts of it derive from MIT projects, whose notices are carried in
-[THIRD-PARTY.md](THIRD-PARTY.md).
+Some parts come from MIT projects. [THIRD-PARTY.md](THIRD-PARTY.md) carries their
+notices.
 
 ## Credit
 
 The container, transport, codec and integrity work stands on
 [mischa85/elektron-firmware-tool](https://github.com/mischa85/elektron-firmware-tool)
 (MIT). The patch model comes from
-[bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) (MIT),
-and the ColdFire disassembly findings from
-[sambanks/octabam](https://github.com/sambanks/octabam) (MIT). The ColdFire and
-SHARC emulators are [m-dwyer/digikit](https://github.com/m-dwyer/digikit)'s
-(GPL-2.0-or-later), used as external tools; our own SHARC code is assembled with
-[js216/selache](https://github.com/js216/selache) (GPL-3.0). The Digitone data
-formats come from the sibling project DNX. The USB SysEx probe adapts
-[irpina/digihealth](https://github.com/irpina/digihealth)'s design
-(GPL-2.0-or-later). The frame-word census follows the method of
-[naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw)'s OS 1.12 notes
-(GPL-2.0; method only, no code taken), and its report on words 0xa54 and 0xa56
-(issue #49) is what moved Waverider's song position. The `arpscale` mod is
-[w-winter](https://github.com/w-winter)'s (pull request #212). What was taken from each,
-and where this project deliberately diverges, is in `docs/references.md`.
+[bryantysinger/octa-bt-pt](https://github.com/bryantysinger/octa-bt-pt) (MIT), and the
+ColdFire disassembly findings come from [sambanks/octabam](https://github.com/sambanks/octabam)
+(MIT).
 
-None of them is affiliated with Elektron, and neither is this. Everything in
-`docs/` was measured from OS files Elektron publish; no Elektron code has been
-copied into this repository and no firmware is redistributed by it.
+The ColdFire and SHARC emulators are from
+[m-dwyer/digikit](https://github.com/m-dwyer/digikit) (GPL-2.0-or-later). We use them as
+external tools. We assemble our own SHARC code with
+[js216/selache](https://github.com/js216/selache) (GPL-3.0). The Digitone data formats
+come from the sibling project DNX.
+
+The USB SysEx probe adapts the design of
+[irpina/digihealth](https://github.com/irpina/digihealth) (GPL-2.0-or-later). The
+frame-word census follows the method of the OS 1.12 notes of
+[naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw) (GPL-2.0, method only, no code
+taken). Its report on words 0xa54 and 0xa56 (issue #49) moved the song position of
+Waverider. The `arpscale` mod is the work of
+[w-winter](https://github.com/w-winter) (pull request #212). `docs/references.md` says
+what we took from each, and where this project does it differently on purpose.
+
+None of them is affiliated with Elektron, and neither is this project. We measured
+everything in `docs/` from OS files that Elektron publish. This repository contains no
+copied Elektron code, and it redistributes no firmware.

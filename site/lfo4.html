@@ -28,33 +28,32 @@
   <p class="lede">
     The Digitone&nbsp;II has three LFOs per track and an empty fourth page under
     <code>[MOD]</code>. This fills it with a fourth LFO that behaves like the other
-    three. Pick your firmware, download a signed image.
+    three. Select your firmware file. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
+  <p><strong>This tab does all the work in your browser.</strong> The page does not upload your firmware
+  file, because the page has no server. The page is a set of static files on GitHub Pages. You can
+  read all of its code in the
   <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
 
 <div class="note">
-  <p><strong>Apply LFO4 last.</strong> It copies the instrument's parameter table into
-  a new place with room for ten more records, and from then on the firmware reads the
-  copy. A mod that edits that table has to be in the image <em>before</em> the copy is
-  made, or its edit lands on a table nothing reads.</p>
+  <p><strong>Apply LFO4 last.</strong> LFO4 copies the parameter table of the instrument to a
+  new place with room for ten more records. From then on, the firmware reads the copy. A mod that
+  edits that table must be in the image <em>before</em> LFO4 makes the copy. If not, the edit
+  goes into a table that nothing reads.</p>
   <p><strong>Combines with</strong> <a href="fx.html">FX Modulation</a>,
   <a href="destinations.html">Modulation Destinations</a>, the
-  <a href="arp.html">MIDI Arpeggiator</a> and Arpeggiator p-locks (command line): build
-  those first, then load their download here. <a href="lfo.html">LFO Waves</a> too, which
-  must also come first, and the <a href="boot.html">Boot Screen</a>, in either order: all
-  of them share one start-up loader and one appended area, and this page adds LFO4 to
-  whatever that area already holds.</p>
+  <a href="arp.html">MIDI Arpeggiator</a> and Arpeggiator p-locks (command line). Build those
+  first. Then load their download here. LFO4 also combines with <a href="lfo.html">LFO Waves</a>,
+  which must also come first, and with the <a href="boot.html">Boot Screen</a>, in either order.
+  All of them share one start-up loader and one appended area. This page adds LFO4 to the data
+  that the area already holds.</p>
 </div>
 
 <section class="changes">
@@ -73,27 +72,29 @@
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. No combined image has been
-  flashed yet.</p>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
+  <p>One combination with this mod passed on an instrument: lfowaves, bootscreen and lfo4
+  (2026-09-30).</p>
 <!-- dnfw:matrix-row lfo4 -->
 <div class="scroll">
 <table class="matrix">
   <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">A fourth LFO <code>lfo4</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="fxmod must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="lfowaves refuses after lfo4: 0x400372da is not stock (202f00080c800000014b...); lfo4 widens this bound: apply lfowaves first, then lfo4">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td></tr>
+    <tr><th scope="row">A fourth LFO <code>lfo4</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="fxmod must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="lfowaves must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines lfo4 -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, Layering onto MIDI tracks, LFO ONE/HALF fix, Arpeggiator on MIDI tracks, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic); in one order only with LFO modulation of the FX (fxmod must be applied first); New LFO waveforms (lfowaves refuses after lfo4: 0x400372da is not stock (202f00080c800000014b...); lfo4 widens this bound: apply lfowaves first, then lfo4); More modulation destinations (moddest must be applied first); <strong>not</strong> with Waverider, a sixth machine (both use the same code cave). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines lfo4 -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, Layering onto MIDI tracks, LFO ONE/HALF fix, Arpeggiator on MIDI tracks, Reload confirm, Song guard, FM drum transients and USB SysEx probe (diagnostic). This mod combines in one order only with LFO modulation of the FX (fxmod must be applied first), New LFO waveforms (lfowaves must be applied first) and More modulation destinations (moddest must be applied first). This mod does <strong>not</strong> combine with Waverider, a sixth machine (both use the same code cave). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
   <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
-  <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron &mdash; or an image
-  FX Modulation, Modulation Destinations or the MIDI Arpeggiator has already built.</p>
+  <p>Use a Digitone&nbsp;II OS 1.11 <code>.syx</code> file from Elektron. You can also use an image
+  that FX Modulation, Modulation Destinations or the MIDI Arpeggiator built.</p>
 
   <div class="drop" id="drop">
     <p><label class="filebtn" for="syx">Choose a .syx file</label>
@@ -110,9 +111,9 @@
 <section class="step hidden" id="step2">
   <div class="step-head"><span class="step-num">2</span><h2>What it adds</h2></div>
   <p>
-    A fourth page under <code>[MOD]</code>, with the controls LFO1-3 have. Every
-    address this mod writes is checked to hold its stock bytes first; an image that
-    differs anywhere is refused rather than written somewhere plausible.
+    A fourth page under <code>[MOD]</code>, with the controls of LFO1-3. Before it writes, the
+    page checks that each address this mod changes holds its stock bytes. If an image is different
+    anywhere, the page refuses it. It does not write the change in a place that only looks correct.
   </p>
   <div class="params" id="params"></div>
 
@@ -126,13 +127,13 @@
 
   <div class="note">
     <p><strong>Confirmed on a Digitone&nbsp;II.</strong> The page opens with the stock LFO
-    controls, its <code>DEST</code> browser works, it modulates on every voice, and its
-    settings are kept by an explicit SAVE PROJECT and survive a power-cycle without one.
-    This page applies exactly the bytes of that build, checked byte for byte when it is
-    packaged.</p>
-    <p><strong>None of Elektron's data ships with it.</strong> The copied parameter table —
-    the 320 stock records and LFO4's ten, which are LFO3's with five fields rewritten — is
-    rebuilt from <em>your</em> file when you press Build.</p>
+    controls, and its <code>DEST</code> browser works. LFO4 modulates on every voice. An explicit
+    SAVE PROJECT keeps its settings, and the settings stay after a power-cycle without a save.
+    This page applies exactly the bytes of that build. A byte-for-byte check runs when we package
+    the page.</p>
+    <p><strong>None of Elektron's data ships with it.</strong> The copied parameter table has the
+    320 stock records and the ten records of LFO4, which are the LFO3 records with five fields
+    changed. The page builds this table from <em>your</em> file when you push Build.</p>
   </div>
 </section>
 
@@ -159,19 +160,19 @@
   section&nbsp;3 and appends 23.7&nbsp;KB to it.
 </p>
 <ul>
-  <li><strong><a href="fx.html">FX Modulation</a></strong> &mdash; combines, applied first. Its ten Chorus record masks are carried into LFO4's copy of the table. In the emulator every LFO page, LFO4's included, lists the 24 FX destinations; LFO4 actually aimed at one has not been tried. The FX page refuses an image this page has built.</li>
-  <li><strong><a href="destinations.html">Modulation Destinations</a></strong> &mdash; combines, applied first. Its thirteen opened destinations are carried into the copy. That page refuses an image this page has built.</li>
-  <li><strong><a href="arp.html">MIDI Arpeggiator</a></strong> &mdash; combines, in either order. No shared bytes.</li>
-  <li><strong>Arpeggiator p-locks</strong> &mdash; combines; command line only, <code>dnfw mods apply firmware.syx --mod arpplocks --mod lfo4</code>.</li>
-  <li><strong><a href="transients.html">Transient Swapper</a></strong> &mdash; combines; it only writes the DSP image.</li>
-  <li><strong><a href="lfo.html">LFO Waves</a></strong> &mdash; combines; build LFO Waves first, then load its download here. Its SPH-label hook moved the parameter table's bound check, and LFO4 widens that bound, so the order matters.</li>
-  <li><strong><a href="boot.html">Boot Screen</a></strong> &mdash; combines, in either order. Both add to the one appended area.</li>
+  <li><strong><a href="fx.html">FX Modulation</a></strong>: combines, applied first. LFO4 carries its ten Chorus record masks into the copy of the table. In the emulator, every LFO page, LFO4 included, lists the 24 FX destinations. Nobody has aimed LFO4 at one yet. The FX page refuses an image that this page built.</li>
+  <li><strong><a href="destinations.html">Modulation Destinations</a></strong>: combines, applied first. Its thirteen opened destinations are carried into the copy. That page refuses an image this page has built.</li>
+  <li><strong><a href="arp.html">MIDI Arpeggiator</a></strong>: combines, in either order. No shared bytes.</li>
+  <li><strong>Arpeggiator p-locks</strong>: combines, from the command line only: <code>dnfw mods apply firmware.syx --mod arpplocks --mod lfo4</code>.</li>
+  <li><strong><a href="transients.html">Transient Swapper</a></strong>: combines. It only writes the DSP image.</li>
+  <li><strong><a href="lfo.html">LFO Waves</a></strong>: combines. Build LFO Waves first. Then load its download here. The SPH-label hook of LFO Waves moved the bound check of the parameter table, and LFO4 widens that bound. So the order matters.</li>
+  <li><strong><a href="boot.html">Boot Screen</a></strong>: combines, in either order. Both add to the one appended area.</li>
 </ul>
 <div class="note">
-  <p><strong>What "combines" means here.</strong> The bytes each mod writes are checked
-  not to overlap, and this page's output is checked byte for byte against the command
-  line's, alone and after FX Modulation. LFO4 was tested on hardware on its own; a
-  combined image has not been flashed.</p>
+  <p><strong>What "combines" means here.</strong> A check makes sure that the bytes of the two
+  mods do not overlap. A test compares the output of this page with the output of the command line,
+  byte for byte, alone and after FX Modulation. LFO4 passed on hardware alone. It also passed on
+  2026-09-30 in one combination: LFO Waves, Boot Screen and LFO4.</p>
 </div>
 
 <footer>

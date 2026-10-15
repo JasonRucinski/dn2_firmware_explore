@@ -73,20 +73,18 @@
   <h1>MIDI Arpeggiator</h1>
   <p class="lede">
     Use the Digitone&nbsp;II arpeggiator on MIDI tracks. The ARPEGGIATOR menu opens,
-    and the arp plays your external gear over MIDI. Pick your firmware, download a
-    signed image.
+    and the arp plays your external gear over MIDI. Select your firmware file. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
+  <p><strong>This tab does all the work in your browser.</strong> The page does not upload your firmware
+  file, because the page has no server. The page is a set of static files on GitHub Pages. You can
+  read all of its code in the
   <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
 
 <section class="changes">
@@ -103,10 +101,11 @@
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. No combined image has been
-  flashed yet.</p>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
+  <p>Nobody has flashed a combined image with this mod yet.</p>
 <!-- dnfw:matrix-row midiarp -->
 <div class="scroll">
 <table class="matrix">
@@ -117,13 +116,13 @@
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines midiarp -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; <strong>not</strong> with Layering onto MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines midiarp -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. This mod does <strong>not</strong> combine with Layering onto MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
   <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
-  <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron &mdash; or an image
-  another page here has already built, to combine mods (see below).</p>
+  <p>Use a Digitone&nbsp;II OS 1.11 <code>.syx</code> file from Elektron. To combine mods, you can
+  also use an image that a different page here built (refer to the text below).</p>
 
   <div class="drop" id="drop">
     <p><label class="filebtn" for="syx">Choose a .syx file</label>
@@ -142,9 +141,9 @@
   <dl class="facts">
     <dt>Menu</dt><dd>[FUNC]+[ARP] opens the ARPEGGIATOR menu on a MIDI track, and its knobs stay on it</dd>
     <dt>Playback</dt><dd>With the arp on, the track's trigs and held keys arpeggiate and go out on the track's MIDI channel</dd>
-    <dt>Follows</dt><dd>MODE, SPD, RNG, N.LEN, LEN, the step mask and note offsets &mdash; the settings a synth track uses</dd>
-    <dt>Arp off</dt><dd>The MIDI track behaves as stock; synth tracks are untouched</dd>
-    <dt>Layering</dt><dd>A track layered onto a MIDI track (TRACK WILL TRIGGER) plays there only through that track's own arp; with the arp off it stays silent, as on stock. It never sends a wrong note</dd>
+    <dt>Follows</dt><dd>MODE, SPD, RNG, N.LEN, LEN, the step mask and note offsets: the settings that a synth track uses</dd>
+    <dt>Arp off</dt><dd>The MIDI track behaves as stock. The synth tracks do not change</dd>
+    <dt>Layering</dt><dd>A track layered onto a MIDI track (TRACK WILL TRIGGER) plays there only through the arp of that MIDI track. With the arp off, it stays silent, as on stock. It never sends a wrong note</dd>
     <dt>Busy MIDI</dt><dd>If the MIDI task's 64 note records run short, an arp note is dropped rather than risk the instrument freezing</dd>
     <dt>Writes</dt><dd id="writes">&mdash;</dd>
   </dl>
@@ -160,13 +159,13 @@
       <tbody>
         <tr><td>1/32</td><td>62.5 ms</td><td>62.0 ms</td></tr>
         <tr><td>1/16</td><td>125 ms</td><td>125.0 ms</td></tr>
-        <tr><td>1/8</td><td>250 ms</td><td>250.0 or 265.1 ms &mdash; two settings both read 1/8</td></tr>
+        <tr><td>1/8</td><td>250 ms</td><td>250.0 or 265.1 ms: two settings both read 1/8</td></tr>
         <tr><td>1/4</td><td>500 ms</td><td>500 ms</td></tr>
       </tbody>
     </table>
     </div>
-    <p>The layering and MIDI-record fixes of 2026-10-03, and the move of the code to the
-    platform, were checked in the emulator and have not been flashed yet.</p>
+    <p>We checked two changes of 2026-10-03 in the emulator only: the layering and MIDI-record
+    fixes, and the move of the code to the platform. Nobody has flashed them yet.</p>
   </div>
 </section>
 
@@ -187,22 +186,22 @@
 
 <h2>Combining with other mods</h2>
 <p>
-  Each page applies one mod. To combine them, build here, then load the downloaded
-  file into the next page &mdash; in any order. This mod writes a few edits inside
-  section&nbsp;3, and its code goes into the platform's appended area (a 592&nbsp;byte
-  block copied to RAM at start-up), shared with the other mods that use it.
+  Each page applies one mod. To combine mods, build here. Then load the downloaded file into
+  the next page, in any order. This mod writes a few edits inside section&nbsp;3. Its code goes
+  into the appended area of the platform: a 592&nbsp;byte block that the start-up copies to RAM.
+  The other mods that use the platform share that area.
 </p>
 <ul>
-  <li><strong><a href="lfo.html">LFO Waves</a></strong> &mdash; combines. No shared bytes, and neither changes the other's code.</li>
-  <li><strong><a href="destinations.html">Modulation Destinations</a></strong> &mdash; combines.</li>
-  <li><strong><a href="transients.html">Transient Swapper</a></strong> &mdash; combines; it only writes the DSP image.</li>
-  <li><strong><a href="lfo4.html">A Fourth LFO</a></strong> &mdash; combines. Build it last, as it asks.</li>
+  <li><strong><a href="lfo.html">LFO Waves</a></strong>: combines. No shared bytes, and neither changes the other's code.</li>
+  <li><strong><a href="destinations.html">Modulation Destinations</a></strong>: combines.</li>
+  <li><strong><a href="transients.html">Transient Swapper</a></strong>: combines. It only writes the DSP image.</li>
+  <li><strong><a href="lfo4.html">A Fourth LFO</a></strong>: combines. Build it last, as it asks.</li>
 </ul>
 <div class="note">
-  <p><strong>What "combines" means here.</strong> The bytes each mod writes are checked
-  not to overlap, and chaining all three section&nbsp;3 mods rebuilds and verifies, with
-  the same result in the browser as on the command line. The arpeggiator on its own was
-  tested on hardware; a combined image has not been flashed yet.</p>
+  <p><strong>What "combines" means here.</strong> A check makes sure that the bytes of the two
+  mods do not overlap. A chain of all three section&nbsp;3 mods rebuilds and passes its checks,
+  with the same result in the browser as on the command line. The arpeggiator passed on hardware
+  alone. Nobody has flashed a combined image yet.</p>
 </div>
 
 <footer>

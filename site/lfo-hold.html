@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="LFO hold, the first Digitone II fix for LFO trig modes ONE and HALF: what it did, and why the LFO ONE/HALF fix supersedes it.">
+<meta name="description" content="LFO hold was the first Digitone II fix for the LFO trig modes ONE and HALF. This page tells what it did, and why the LFO ONE/HALF fix supersedes it.">
 <link rel="stylesheet" href="css/base.css">
 <style>
   .step { margin: 2.5rem 0; }
@@ -92,10 +92,10 @@
   <dl class="facts">
     <dt>Fixed</dt><dd>LFO TRIG MODE ONE and HALF jumping to the centre when they stop, instead of holding the value they reached</dd>
     <dt>ONE</dt><dd>After one cycle the LFO stayed at the value its waveform ended on. A square on the filter ended closed and stayed closed</dd>
-    <dt>HALF</dt><dd>After half a cycle the LFO stayed at the waveform&rsquo;s middle value. A square stayed open; a triangle stayed at its peak</dd>
+    <dt>HALF</dt><dd>After half a cycle the LFO stayed at the waveform&rsquo;s middle value. A square stayed open. A triangle stayed at its peak</dd>
     <dt>Why</dt><dd>The firmware stops these modes by writing a fixed value per waveform into the LFO&rsquo;s output, the centre for nearly all of them. The fix removed those two writes (audio tracks)</dd>
     <dt>Changes</dt><dd>2 in-place edits of 4&nbsp;B in section 3, nothing appended</dd>
-    <dt>Tested</dt><dd>Flashed 2026-10-08 against factory 1.11 on the same patch (a square LFO on the filter): ONE and HALF held with the fix and jumped without it; TRIG and FREE unchanged; the click at a square&rsquo;s edges was the factory&rsquo;s, the same with and without the fix</dd>
+    <dt>Tested</dt><dd>Flashed 2026-10-08 against factory 1.11 on the same patch (a square LFO on the filter). With the fix, ONE and HALF held. Without the fix, they jumped. TRIG and FREE did not change. The click at the edges of a square came from the factory firmware: it was the same with and without the fix</dd>
     <dt>Code</dt><dd><code>src/dnfw/mods/lfohold.py</code> and <code>site/js/mods/lfohold.js</code> in the repository, kept as published</dd>
   </dl>
   <p>Reported by the community on official 1.10 as well.

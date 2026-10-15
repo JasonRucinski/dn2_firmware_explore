@@ -69,19 +69,18 @@
   <p class="lede">
     FUNC + NO reloads the pattern at once, and one stray press loses the work since your
     last save. With this mod it can ask first. Switch it on in SETTINGS &gt; PERSONALIZE,
-    and off again when you perform. Pick your firmware, download a signed image.
+    and off again when you perform. Select your firmware file. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
+  <p><strong>This tab does all the work in your browser.</strong> The page does not upload your firmware
+  file, because the page has no server. The page is a set of static files on GitHub Pages. You can
+  read all of its code in the
   <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
 
 <section class="changes">
@@ -98,9 +97,10 @@
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason.</p>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
 <!-- dnfw:matrix-row reloadconfirm -->
 <div class="scroll">
 <table class="matrix">
@@ -111,13 +111,13 @@
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines reloadconfirm -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines reloadconfirm -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
   <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
-  <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron &mdash; or an image
-  another page here has already built, to combine mods (see the table above).</p>
+  <p>Use a Digitone&nbsp;II OS 1.11 <code>.syx</code> file from Elektron. To combine mods, you can
+  also use an image that a different page here built (refer to the table above).</p>
 
   <div class="drop" id="drop">
     <p><label class="filebtn" for="syx">Choose a .syx file</label>
@@ -135,7 +135,7 @@
   <div class="step-head"><span class="step-num">2</span><h2>What changes</h2></div>
   <dl class="facts">
     <dt>The switch</dt><dd>SETTINGS &gt; PERSONALIZE &gt; RELOAD CONFIRM, the last item. Off by default, so a freshly flashed instrument behaves as stock</dd>
-    <dt>On</dt><dd>FUNC + NO opens a prompt, <code>ARE YOU SURE YOU WANT TO / RELOAD THE PATTERN? Y/N</code>. YES reloads the pattern as FUNC + NO always does; NO keeps your edits</dd>
+    <dt>On</dt><dd>FUNC + NO opens a prompt, <code>ARE YOU SURE YOU WANT TO / RELOAD THE PATTERN? Y/N</code>. YES reloads the pattern, as FUNC + NO always does. NO keeps your edits</dd>
     <dt>Off</dt><dd>FUNC + NO reloads at once, as stock: for performing</dd>
     <dt>Kept</dt><dd>The switch is saved with your other PERSONALIZE settings and survives a power cycle, with or without SAVE PROJECT</dd>
     <dt>Not covered</dt><dd>The other reloads (PARAMETER + NO, TRK + TRIG + NO) and the pattern menu&rsquo;s own RELOAD, which already asks</dd>
@@ -143,10 +143,10 @@
   </dl>
 
   <div class="note">
-    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-04</strong>: off, FUNC + NO reloads at
-    once; on, the prompt appears, NO keeps the edits and YES reverts them; the switch is
-    still on after a power cycle without saving. Flashing stock firmware back is harmless:
-    stock never reads the switch.</p>
+    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-04.</strong> With the switch off, FUNC + NO
+    reloads at once. With the switch on, the prompt appears: NO keeps the edits and YES reverts
+    them. The switch stays on after a power cycle without a save. A flash of the stock firmware
+    back causes no problem: the stock firmware never reads the switch.</p>
   </div>
 </section>
 
