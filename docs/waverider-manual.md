@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.0, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).
+Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).
 
 Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
 oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each
@@ -124,6 +124,29 @@ p-lock them.
 - **When you replace a table that plays:** the old table continues to play until the new table is
   ready. Then the old table crossfades into the new table, in the DCLK time. If the first table of a
   slot is not ready, the slot plays Prim. until the table is ready.
+
+### The wavetable page
+
+Push PRESET/KIT two times. The left column has three lists: LOAD, MANAGE and POOL. The right
+column shows the pool of this project. IN POOL is the number of tables in the pool. FREE is the
+number of empty slots. +DRIVE is the number of tables on the +Drive. The site's manual has
+screen captures of the page and its lists.
+
+- **Move:** push UP or DOWN, or turn LEVEL/DATA. Hold FUNC and push UP or DOWN to move 7 rows.
+- **Open and close:** push YES to open a list. Push NO to go back. Push PRESET/KIT or NO on the
+  wavetable page to close it.
+- **Operations:** in a list, push RIGHT. Push UP or DOWN to select an operation, then push YES. An
+  operation applies to the ticked rows. If no row is ticked, it applies to the highlighted row.
+  Push NO or LEFT to close the operations.
+- **LOAD:** the slots of the pool. Select a slot and push YES. If the last SYN page that you saw is
+  page 2, the table goes to TBL2. If not, it goes to TBL1. RIGHT shows LOAD TO TBL1 and LOAD TO
+  TBL2. On a track that is not a Waverider track, LOAD changes nothing.
+- **MANAGE:** all the tables on the +Drive. A + shows a table that is in the pool. Push YES to tick
+  a table. ADD TO POOL puts the ticked tables in empty slots. DELETE removes the ticked tables from
+  the +Drive, after you confirm with YES.
+- **POOL:** the slots of the pool. CLEAR SLOT empties the ticked slots. A MISSING slot stays until
+  you clear it.
+- **Empty slots** show a line of slashes.
 
 ## P-locks, LFOs and SAVE
 
