@@ -140,7 +140,7 @@ Two checks came out of the failure:
 | `fxmod` | yes | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | yes | **NO** |
 | `layermidi` | yes | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
 | `lfo4` | yes | yes | yes | yes | order | yes | - | yes | order | yes | order | yes | yes | yes | yes | **NO** |
-| `lfolength` | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | **NO** |
+| `lfolength` | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
 | `lfowaves` | yes | yes | yes | yes | yes | yes | order | yes | - | yes | yes | yes | yes | yes | yes | yes |
 | `midiarp` | yes | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes | yes | yes | yes | yes | yes |
 | `moddest` | yes | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |
@@ -148,7 +148,7 @@ Two checks came out of the failure:
 | `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
 | `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
 | `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
-| `waverider` | yes | yes | yes | yes | **NO** | yes | **NO** | **NO** | yes | yes | yes | yes | yes | **NO** | yes | - |
+| `waverider` | yes | yes | yes | yes | **NO** | yes | **NO** | yes | yes | yes | yes | yes | yes | **NO** | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
 - **arpmodes + arpscale: yes**: disjoint bytes. *Note:* emulator, 2026-10-13, one build with arpscale, arpmodes and reloadconfirm: four of scripts/emu_arpscale.py's runs pass as with arpscale alone (C major and a per-track Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at 0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.
@@ -161,7 +161,6 @@ Two checks came out of the failure:
 - **lfo4 + lfowaves: order**: lfowaves refuses after lfo4: 0x400372da is not stock (202f00080c800000014b...); lfo4 widens this bound: apply lfowaves first, then lfo4.
 - **lfo4 + moddest: order**: moddest refuses after lfo4: found 2 candidate parameter tables, expected 1; this image's layout is not the one this mod was measured against. *Note:* measured: with moddest applied first, all 13 masks it opens are in lfo4's relocated table (test/test_lfo4_mod.py).
 - **lfo4 + waverider: NO**: lfo4 and waverider both write section 3 0x000db8f1..0x000db8f2 (1 bytes).
-- **lfolength + waverider: NO**: lfolength and waverider both use RAM 0x467f8000..0x467f8104 (260 bytes).
 - **transients + waverider: NO**: transients and waverider both write section 7 0x000795d4..0x00084f24 (47,440 bytes).
 <!-- /dnfw:matrix -->
 
@@ -174,25 +173,47 @@ the init, so only pairs that include a loader mod are booted; the rest say why t
 - `arpmodes` + `bootscreen`: booted and drew its UI (1 frame(s), control 1).
 - `arpmodes` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `arpmodes` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
+- `arpmodes` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
 - `arpplocks` + `bootscreen`: booted and drew its UI (1 frame(s), control 1).
 - `arpplocks` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `arpplocks` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
+- `arpplocks` + `midiarp`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `arpplocks` + `moddest`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `arpplocks` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
+- `arpplocks` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
+- `arpscale` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
 - `bootscreen` + `fxmod`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `bootscreen` + `songguard`: booted and drew its UI (1 frame(s), control 1).
+- `bootscreen` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `bootscreen` + `waverider`: booted and drew its UI (1 frame(s), control 1).
 - `fxmod` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
 - `fxmod` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
+- `fxmod` + `midiarp`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `fxmod` + `moddest`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `fxmod` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
+- `layermidi` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
 - `lfo4` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
 - `lfo4` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
 - `lfo4` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `lfo4` + `songguard`: booted and drew its UI (1 frame(s), control 1).
+- `lfo4` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
+- `lfolength` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
 - `lfowaves` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `moddest`: booted and drew its UI (1 frame(s), control 1).
 - `lfowaves` + `songguard`: booted and drew its UI (1 frame(s), control 1).
-- `lfowaves` + `waverider`: booted and drew its UI (1 frame(s), control 1).
+- `lfowaves` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
+- `lfowaves` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
+- `midiarp` + `moddest`: SKIPPED: no loader in this pair; a boot runs neither mod's code
+- `midiarp` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
 - `midiarp` + `usbprobe`: booted and drew its UI (1 frame(s), control 1).
+- `midiarp` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
+- `moddest` + `transients`: SKIPPED: transients writes section 7 only, so this MAIN OS is the other mod's alone
+- `moddest` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
+- `reloadconfirm` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
+- `songguard` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
+- `usbprobe` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-15)
 <!-- /dnfw:boots -->
