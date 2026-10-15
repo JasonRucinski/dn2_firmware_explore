@@ -299,7 +299,7 @@
   </div>
   <p class="small">The reason for 3 Hz and 12 Hz: the page updates the screen up to 24 times a
   second. Up to 3 Hz (1/8 of that rate), the dot moves smoothly. Up to 12 Hz (1/2 of that rate),
-  the dot moves in steps. Above 12 Hz, a dot that moves shows an incorrect, slower movement. For this
+  the dot moves in steps. Above 12 Hz, a dot that moves would show an incorrect, slower movement. For this
   reason, above 12 Hz the page shows only the range.</p>
   <p class="small">We made these captures in the emulator. The emulator does not run LFOs. For
   this reason, we wrote the value that you hear into the capture by hand. The emulator makes no
@@ -307,19 +307,43 @@
   outside the instrument.</p>
 
   <h2>Go back to the stock firmware</h2>
+  <p>Before you start, check these three conditions in DNX:</p>
+  <ul>
+    <li>You use Chrome or Edge. DNX needs one of them to save files into a folder.</li>
+    <li>A DNX folder is set. To set it, click <strong>settings</strong> in the tool row, then
+      <strong>DNX folder</strong>, then <strong>Choose…</strong>. DNX saves one file for each table
+      there. Without a folder, DNX does not start the erase.</li>
+    <li><strong>WRITE</strong> is on, in the tool row at the top.</li>
+  </ul>
   <ol>
-    <li>In DNX, back up the device.</li>
-    <li>In DNX, open Settings.</li>
-    <li>Under Erase the wavetable region, click <strong>Erase…</strong>.</li>
-    <li>Click <strong>Erase the region</strong>. DNX saves each table as a file in your DNX folder. Then DNX erases all the stored tables and all the pools from the +Drive.</li>
+    <li>In DNX, click <strong>settings</strong> in the tool row. Settings work from every tool
+      except the probe.</li>
+    <li>Under <strong>Back up the +Drive</strong>, click <strong>Back up…</strong>. This backup holds
+      your projects, sounds and kits. It does not hold the wavetables.</li>
+    <li>Under <strong>Erase the wavetable region</strong>, click <strong>Erase…</strong>.</li>
+    <li>DNX asks &ldquo;Save a copy of N wavetable(s) first?&rdquo;. Click
+      <strong>Save the copies</strong>. On an empty store, the button reads <strong>Carry on</strong>.</li>
+    <li>Wait while DNX saves each table as a file in the DNX folder. On a full store, this takes
+      minutes. These files are the backup of your wavetables.</li>
+    <li>DNX shows the counts and the names of what it will erase. Click
+      <strong>Erase the region</strong>. DNX erases all the stored tables and all the pools, then
+      reads the instrument again.</li>
     <li>Flash the stock 1.11 file.</li>
   </ol>
-  <p>Do steps 1 to 4 before step 5. The stock firmware 1.11 cannot get access to the wavetable
+  <p>Do steps 1 to 6 before step 7. The stock firmware 1.11 cannot get access to the wavetable
   region. If you flash the stock firmware first, the data stays on the +Drive. To remove it, flash
-  Waverider again, do steps 1 to 4, and then flash the stock firmware again.</p>
+  Waverider again, do steps 1 to 6, and then flash the stock firmware again.</p>
   <p>The erase does not change your projects, presets, kits and samples. A project that you saved
-  with Waverider tracks stays on the unit. To put a table back later, drag its file onto a free
-  slot in the Wavetables list of DNX.</p>
+  with Waverider tracks stays on the unit.</p>
+  <p>To put a saved table back later, with Waverider on the unit:</p>
+  <ol>
+    <li>In DNX, open the library.</li>
+    <li>In the list next to <strong>Browse</strong>, select <strong>Wavetables</strong>.</li>
+    <li>Drag the saved file onto a free slot in the <strong>+Drive wavetables</strong> list. This
+      only stages the table. DNX does not send it yet.</li>
+    <li>Make sure that <strong>WRITE</strong> is on.</li>
+    <li>Click <strong>Write staged tables</strong>.</li>
+  </ol>
 
   <h2>Known limits in this alpha</h2>
   <ul>
