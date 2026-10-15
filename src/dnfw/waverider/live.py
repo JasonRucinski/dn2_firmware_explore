@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import struct
 
-from . import render
+from . import mip, render
 
 RATE = 48000.0
 A4_NOTE, A4_HZ = 69, 440.0
@@ -148,7 +148,11 @@ SYNC_NOTES = (("4 bars D", 1, 2), ("4 bars", 3, 1), ("2 bars D", 1, 3), ("4 bars
               ("1/2 T", 9, 3), ("1/4", 3, 5), ("1/8 D", 1, 7), ("1/4 T", 9, 4),
               ("1/8", 3, 6), ("1/16 D", 1, 8), ("1/8 T", 9, 5), ("1/16", 3, 7),
               ("1/32 D", 1, 9), ("1/16 T", 9, 6), ("1/32", 3, 8), ("1/32 T", 9, 7))
-SYNC_POSITION = 2644               # frame bytes 2644..2647: the song position (sync.c)
+# The song position (sync.c) is a u32 split over two frame words the stock ColdFire copies
+# from parameters and the stock DSP never reads (docs/waverider-frame-words.md): the low
+# half at 0xa18 (FX setup k 40), the high half at 0x9a8 (track 15's slot offset 0x50, k 65).
+SYNC_POSITION_LO = 0xA18          # frame bytes 0xa18..0xa19
+SYNC_POSITION_HI = 0x9A8          # frame bytes 0x9a8..0x9a9
 SYNC_TEMPO = 0xD8                  # frame bytes: BPM x 120
 # a block's phase step per unit of tempo x multiplier: 2^32 / (SYNC_LOOP x 2,700,000),
 # where a sixteenth is 2,700,000 / tempo blocks (1500 a second)
@@ -414,10 +418,164 @@ def slot(tbl1: int, count: int) -> int:
     return s if s < count else 0
 
 
-def gain(lev1: int) -> float:
-    """The reader's gain for the frame's 16-bit LEV1 word (Milestone 9a): LEV1 x
-    f32(1/25600) in float32, as the loop computes it; exactly 1.0 at 100."""
-    return _f32(_f32(float(lev1 & 0xFFFF)) * _f32(GAIN_STEP))
+# The level trim (docs/waverider-trim.md): WaveTone's FINE record (parameter 49), a knob on page
+# 4. Its coarse byte >> 1 picks one of 64 factors, f32(10^(dB/20) / 25600): -15 dB at 0, -11 dB
+# at the centre 32 (the record's stock default 0x4000, so a sound that never had the knob lands
+# there), 0 dB at 63.
+TRIM_PARAM = 49
+TRIM_DEFAULT_WORD = 0x4000
+TRIM_MIN_DB, TRIM_CENTRE_DB, TRIM_MAX_DB = -15.0, -11.0, 0.0
+TRIM_STEPS = 64
+
+
+def trim_db(index: int) -> float:
+    """The trim's gain in dB at table INDEX 0..63: linear in dB, 4 dB over the lower 32
+    steps, 11 dB over the upper 31."""
+    i = max(0, min(TRIM_STEPS - 1, index))
+    if i <= 32:
+        return TRIM_MIN_DB + (TRIM_CENTRE_DB - TRIM_MIN_DB) * i / 32
+    return TRIM_CENTRE_DB + (TRIM_MAX_DB - TRIM_CENTRE_DB) * (i - 32) / 31
+
+
+def trim_table() -> list[float]:
+    """The 64 factors the DSP carries at TRIM_TABLE_DM, float32."""
+    return [_f32(10 ** (trim_db(i) / 20) / 25600) for i in range(TRIM_STEPS)]
+
+
+def trim_factor(word: int = TRIM_DEFAULT_WORD) -> float:
+    """The factor for the frame's 16-bit TRIM word (coarse << 8 | fine)."""
+    return trim_table()[min((word & 0xFFFF) >> 9, TRIM_STEPS - 1)]
+
+
+def gain(lev1: int, trim: int = TRIM_DEFAULT_WORD) -> float:
+    """A source's gain for its 16-bit level word (LEV1 in Milestone 9a, SUB and NOIS the same
+    way) and the sound's TRIM word: the level x the trim's factor in float32, as the loop
+    computes it. At LEV 100 and the default trim, 10^(-11/20) = 0.282."""
+    return _f32(_f32(float(lev1 & 0xFFFF)) * trim_factor(trim))
+
+
+# Page 3 (docs/waverider-pages34.md): the sub-oscillator, on FM Tone's records in slots
+# 50..53, which a WaveTone-type sound doesn't have. Its own phase steps at the followed
+# oscillator's increment >> (1 + OCT): OCT 0 is an octave down, 1 two, 2 three (owner,
+# 2026-10-07: a -3 was asked for). Its shapes need
+# no table, and each is the float32 arithmetic sub.asm does, in its order.
+SUB_SLOTS = (50, 51, 52, 53)           # SUB (level), OCT, WAVE, SRC
+SUB_OCTAVES = ("-1", "-2", "-3")      # OCT's values, as the page names them
+SUB_WAVES = ("SIN", "TRI", "SQR", "PLS")
+SUB_THIRD = -1.0 / 3.0                 # PLS's low level: a 25 % pulse with no DC
+
+
+def sub_value(phase: int, wave: int) -> float:
+    """The sub-oscillator's sample at u32 PHASE for WAVE (0 SIN, 1 TRI, 2 SQR, 3 PLS)."""
+    top = phase >> 31
+    h = _f32(float(((phase << 1) & 0xFFFFFFFF) >> 8) * 2.0 ** -25)     # x mod 0.5, exact
+    if wave == 0:                     # two parabolas: 16 h (0.5 - h), the second half negated
+        y = _f32(_f32(h * _f32(0.5 - h)) * 16.0)
+        return _f32(0.0 - y) if top else y
+    if wave == 1:                     # 4 |x - 0.5| - 1
+        a = h if top else _f32(0.5 - h)
+        return _f32(_f32(a * 4.0) - 1.0)
+    if wave == 2:
+        return -1.0 if top else 1.0
+    return 1.0 if phase < 0x40000000 else _f32(SUB_THIRD)
+
+
+def render_sub(phase: int, inc: int, sub: tuple, block: int) -> tuple[list[float], int]:
+    """One block of the sub-oscillator at gain SUB from PHASE: (its samples x gain, the
+    next phase). INC is the followed oscillator's own."""
+    lev, octave, wave = sub[0], sub[1], sub[2]
+    g = gain(lev)
+    step = inc >> (1 + min((octave & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
+    w = min((wave & 0xFFFF) >> 8, 3)
+    out = []
+    for _ in range(block):
+        out.append(_f32(g * sub_value(phase, w)))
+        phase = (phase + step) & 0xFFFFFFFF
+    return out, phase
+
+
+# Page 3's noise, on slots 54..57 (NOIS, TYPE, COLR, DEC), after the sub (noise.asm).
+# Per voice: a xorshift32 generator, the pink and brown filters' state, the tilt's
+# one-pole low-pass, and the decay envelope; each step is float32 in noise.asm's order.
+NOISE_SLOTS = (54, 55, 56, 57)         # NOIS (level), TYPE, COLR, DEC
+NOISE_TYPES = ("WHT", "PNK", "BRN", "DIG")
+NOISE_INF = 127                        # DEC Inf: no envelope
+NOISE_PINK = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))   # P. Kellet's economy pink
+NOISE_PINK_DIRECT, NOISE_PINK_SCALE = 0.1848, 0.25
+NOISE_BROWN = (0.98, 0.15)             # a leaky integrator
+NOISE_DIG = 0.5                        # DIG: the generator's top bit, +-0.5 (about WHT's loudness)
+NOISE_TILT = 0.125                     # the tilt's low-pass coefficient (about 1 kHz)
+NOISE_COLR_STEP = 1.0 / 64             # COLR -64..+63 -> -1 .. +0.98: out = n - c x lp
+
+
+def noise_tau(v: int) -> float:
+    """DEC v (0..126) -> the envelope's time constant in seconds: 5 ms at 0, 10 s at 126."""
+    return 0.005 * 2000.0 ** (v / 126)
+
+
+def noise_decay_table() -> tuple[float, ...]:
+    """The envelope's factor per sample for DEC 0..127, float32: e^(-1 / (48000 tau)),
+    1.0 at Inf (unused there: Inf skips the envelope)."""
+    return tuple(_f32(math.exp(-1.0 / (RATE * noise_tau(v)))) for v in range(NOISE_INF)) + (1.0,)
+
+
+def noise_seeds() -> tuple[int, ...]:
+    """Each voice's generator at boot: odd, distinct, never 0 (xorshift's fixed point)."""
+    return tuple(((0x9E3779B9 * (t + 1)) & 0xFFFFFFFF) | 1 for t in range(16))
+
+
+def xorshift32(x: int) -> int:
+    x ^= (x << 13) & 0xFFFFFFFF
+    x ^= x >> 17
+    x ^= (x << 5) & 0xFFFFFFFF
+    return x
+
+
+class NoiseVoice:
+    """One voice's noise state, as noise.asm keeps it at 0x2e2e00 + 32t: x, the three pink
+    filters, brown, the tilt's low-pass, the envelope (0 at boot: silent until a note,
+    unless DEC is Inf)."""
+
+    def __init__(self, seed: int):
+        self.x, self.pink, self.brown, self.lp, self.env = seed, [0.0, 0.0, 0.0], 0.0, 0.0, 0.0
+
+    def render(self, noise: tuple, triggered: bool, block: int) -> list[float] | None:
+        """One block at (NOIS, TYPE, COLR, DEC), the frame's words: the samples to add,
+        or None at NOIS 0. A note restarts the envelope, whatever NOIS is."""
+        nois, typ, colr, dec = (w & 0xFFFF for w in noise)
+        if triggered:
+            self.env = 1.0
+        if not nois:
+            return None
+        g = gain(nois)
+        typ = min(typ >> 8, 3)
+        c = _f32(_f32(float((colr >> 8) - 64)) * NOISE_COLR_STEP)
+        dec = min(dec >> 8, NOISE_INF)
+        k = noise_decay_table()[dec]
+        out = []
+        for _ in range(block):
+            self.x = xorshift32(self.x)
+            sx = self.x - (1 << 32) if self.x >> 31 else self.x
+            w = _f32(float(sx) * 2.0 ** -31)
+            if typ == 0:
+                n = w
+            elif typ == 1:
+                for i, (a, d) in enumerate(NOISE_PINK):
+                    self.pink[i] = _f32(_f32(self.pink[i] * _f32(a)) + _f32(w * _f32(d)))
+                n = _f32(_f32(_f32(self.pink[0] + self.pink[1]) + self.pink[2]) + _f32(w * _f32(NOISE_PINK_DIRECT)))
+                n = _f32(n * NOISE_PINK_SCALE)
+            elif typ == 2:
+                self.brown = _f32(_f32(self.brown * _f32(NOISE_BROWN[0])) + _f32(w * _f32(NOISE_BROWN[1])))
+                n = self.brown
+            else:
+                n = -NOISE_DIG if self.x >> 31 else NOISE_DIG
+            self.lp = _f32(self.lp + _f32(_f32(n - self.lp) * NOISE_TILT))
+            y = _f32(n - _f32(c * self.lp))
+            if dec < NOISE_INF:
+                y = _f32(y * self.env)
+                self.env = _f32(self.env * k)
+            out.append(_f32(g * y))
+        return out
 
 
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
@@ -432,14 +590,15 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
         tun1 = rest[0] if rest else TUN1_ZERO
         g = gain(rest[1] if len(rest) > 1 else LEV1_UNITY)
         tab = tables[slot(tbl1, len(tables))]
-        samples, phase = render.render(tab, phase, increment(tuned(note, tun1), table_t),
+        samples, phase = mip.read(tab, phase, increment(tuned(note, tun1), table_t),
                                        position(wav1),
                                        block, precision)
         out += [_f32(g * y) for y in samples] if precision == "float32" else [g * y for y in samples]
     return out, phase
 
 
-def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
+def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
+               noises=None) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -449,7 +608,11 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
     a detune from osc 1 (`tuned2`). Each oscillator keeps its own phase from block to
-    block."""
+    block. SUBS (page 3), one (SUB, OCT, WAVE, SRC) per block or None: the
+    sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
+    follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
+    skipped osc 2 has none). NOISES, one (NOIS, TYPE, COLR, DEC) per block or None: the
+    noise (`NoiseVoice`, voice 0's seed) adds in after the sub."""
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
@@ -458,7 +621,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
     fade: list = [None, None]                   # and its fade: [old (table, pos, gain), samples left]
     rnd = MoveRandom()
     table_t = increment_table()
-    for blk in blocks:
+    sub_phase = 0
+    noise = NoiseVoice(noise_seeds()[0])
+    for b, blk in enumerate(blocks):
+        incs = [None, None]
         note, oscs = blk[0], blk[1:3]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
@@ -492,16 +658,19 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
             n_fade = dclk_lengths()[min(dclk >> 8, 127)] if precision == "float32" else 0
             if triggered or not n_fade:
                 fade[k] = None
+            elif fade[k] is not None:           # a jump waits for the running fade: hold its target
+                tab, pos, g = cur = last[k]
             elif last[k] is not None and dclk_jump(last[k], cur):
                 fade[k] = [last[k], n_fade]
             last[k] = cur
             inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
+            incs[k] = inc
             phase0 = phase[k]
-            samples, phase[k] = render.render(tab, phase0, inc, pos, block, precision)
+            samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
             if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
                 (otab, opos, og), rem = fade[k]
-                old, _ = render.render(otab, phase0, inc, opos, block, precision)
+                old, _ = mip.read(otab, phase0, inc, opos, block, precision)
                 y = crossfade(y, [_f32(og * v) for v in old], rem, dclk_inverses()[min(dclk >> 8, 127)])
                 fade[k][1] = rem - block
                 if fade[k][1] <= 0:
@@ -511,6 +680,15 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> l
             else:
                 mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
                          else [a + b for a, b in zip(mixed, y)])
+        sub = subs[b] if subs else None
+        if sub and sub[0] & 0xFFFF:
+            src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
+            ys, sub_phase = render_sub(sub_phase, incs[src], sub, block)
+            mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
+        if noises:
+            ys = noise.render(noises[b], triggered, block)
+            if ys is not None:
+                mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
         out += mixed
     return out
 

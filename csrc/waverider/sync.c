@@ -19,8 +19,11 @@
  * - **The position** is a u32 in which 2^32 is SYNC_LOOP sixteenths, 24 bars: the
  *   least common multiple of every SYNC length, the triplets and the dotted ones
  *   included, so each length's phase is the position times a whole number and stays
- *   continuous where the position wraps. It goes in frame bytes 2644..2647, unused
- *   in the tail (out/tail_sweep.json), the low half first, as the DSP reads a word.
+ *   continuous where the position wraps. It goes in two frame words the stock ColdFire
+ *   copies from parameters and the stock DSP never reads (docs/waverider-frame-words.md,
+ *   a census over every machine type and filter): the low half at byte 0xa18 (FX setup
+ *   k 40) and the high half at byte 0x9a8 (track 15's slot offset 0x50, k 65). Each is a
+ *   big-endian 16-bit word, as the frame carries them.
  *
  * A chunk the loader sends in place of a frame carries no position: the DSP keeps the
  * last one for that block, so a synced MOVE stands still for 0.7 ms. */
@@ -30,7 +33,8 @@
 #define STEP_NOW    ((volatile const u8 *)0x446483D0u)   /* + track */
 #define STEP_NEXT   ((volatile const u8 *)0x446483E0u)
 #define TEMPO       0xD8                  /* frame bytes: BPM x 120, u16 */
-#define POSITION    2644                  /* frame bytes 2644..2647 */
+#define POSITION_LO 0xA18                 /* frame bytes 0xa18..0xa19: the low half */
+#define POSITION_HI 0x9A8                 /* frame bytes 0x9a8..0x9a9: the high half */
 #define SIXTEENTH   2700000u              /* tempo words summed over a sixteenth: 22500 x 120 */
 #define SYNC_LOOP   384u                  /* sixteenths in 2^32 of the position */
 #define STOP_FRAMES 8
@@ -74,8 +78,8 @@ void wr_sync_frame(u8 *frame)
     x = wr_sync.sixteenths << 16 | frac;
     p = 170u * x + 2u * x / 3u;                       /* x x 2^32 / (SYNC_LOOP x 2^16) */
     wr_sync.position = p;
-    frame[POSITION] = (u8)(p >> 8);
-    frame[POSITION + 1] = (u8)p;
-    frame[POSITION + 2] = (u8)(p >> 24);
-    frame[POSITION + 3] = (u8)(p >> 16);
+    frame[POSITION_LO] = (u8)(p >> 8);
+    frame[POSITION_LO + 1] = (u8)p;
+    frame[POSITION_HI] = (u8)(p >> 24);
+    frame[POSITION_HI + 1] = (u8)(p >> 16);
 }

@@ -38,7 +38,7 @@
 #define TIMEOUT       24                  /* frames, 16 ms: the reply trails by two or three */
 #define GIVE_UP       8                   /* timeouts in a row */
 #define SEQ_TAG       0x4C440000u         /* 'LD': no stock reply value looks like it */
-#define AREA_BYTES    0x200000u           /* the DSP's load area, 0x80800000.. */
+#define AREA_BYTES    0x4001000u          /* the DSP's load area, 0x807ff000..0x84800000: the request directory, then 128 tables of 512 KiB (dsp.LOAD_AREA) */
 
 #define REPLY   0x800053A4u               /* the stock reply copy, filled by the send */
 #define ANSWER  0x18                      /* reply word 6: load.asm's answer (the only free word) */
@@ -79,6 +79,7 @@ void *wr_frame_src(void *frame)
     u32 clear = quiet((const u8 *)frame);
 
     wr_note_seen((const u8 *)frame);      /* every frame, before it may be replaced */
+    wr_scope_feed();                      /* page 4's scope: the shown track's last block */
     wr_sync_frame((u8 *)frame);           /* MOVE's SYNC: the song position (sync.c) */
 
     if (in_flight) {

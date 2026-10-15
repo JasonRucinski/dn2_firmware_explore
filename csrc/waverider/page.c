@@ -25,19 +25,22 @@
 #define WAVERIDER_PAGE 1
 #include "pool.h"
 #include "events.h"
+#include "../ui/canvas.h"
+#include "../ui/noise_strip.h"
+#include "../ui/scope.h"
 
 typedef unsigned int u32;
 typedef unsigned char u8;
 typedef unsigned short u16;
 
 #define GET_VALUE  ((int (*)(void *, u32, u8 *))0x4006538E)   /* (view, id, &flag) */
-#define SET_PIXEL  ((void (*)(void *, int, int, int))0x40113B90)  /* (canvas, x, y, on) */
 #define TEXT       ((void (*)(void *, u32, int, int, int, const char *, ...))0x4011545C)
 #define PAGE_COUNT ((int (*)(void *))0x400173CA)
 #define PAGE_DOTS  ((void (*)(void *, void *, int, int, int))0x4006598A)
 #define IS_DIRTY   ((int (*)(void *))0x4011D2F4u)               /* screen: a redraw due? */
 #define FONT       0x44507ED8u                                  /* the grid's label font */
 #define CENTRED    2                                            /* TEXT flag: x is the centre */
+#define FILL       ((void (*)(void *, int, int, int, int, int))0x40114954u)   /* (canvas, x0, y0, x1, y1, mode): -1 inverts */
 
 /* a parameter record: +8 min, +12 max, +16 default (TUN1: 0x400, 0x7c00, 0x4000) */
 #define RECORD(id) ((const int *)(0x401F7F94u + 60u * (id)))
@@ -59,6 +62,17 @@ static u32 pool_count(void)
 {
     const struct wr_drive_head *h = WR_DRIVE_HEAD;
     return h->magic == WR_DRIVE_MAGIC ? h->pool->count : 0;
+}
+
+/* Does pool entry j hold a table? (a cleared slot, or one whose table was deleted, plays
+ * Prim., as the DSP does for an empty directory entry; the owner, wtpool1: the page drew
+ * an empty wave there) -1 or less: a built-in, which always does */
+static int pool_has(int j)
+{
+    const struct wr_drive_head *h = WR_DRIVE_HEAD;
+    if (j < 0)
+        return 1;
+    return h->magic == WR_DRIVE_MAGIC && j < POOL_SLOTS && h->pool->slot_of[j] != 0xFF;
 }
 
 /* the UI task, once a pass: the drive chunk's loader, then TBL's range and names */
@@ -120,11 +134,77 @@ static void dclk_text(char *buf, int value)
     ms_text(buf, wr_dclk_text[step_of(value, 127)]);
 }
 
+/* TBL's value text (owner, tbl128b on the instrument): the pool position, numbered as
+ * the counter numbers it (T:001 = pool entry 0), and the table's name; Prim. and Harm.
+ * by name. The header shows only this for TBL (wr_head drops "Osc1 Table="). The value
+ * comes sign-extended (0x8000 up: the pool's last tables), so it is read as a word. */
+static void tbl_text(char *buf, int value)
+{
+    u32 slot = ((u32)value & 0xFFFFu) >> 8;
+    if (slot < WR_TABLES) {
+        SPRINTF(buf, "%s", wr_tbl_names[slot]);
+        return;
+    }
+    const char *name = slot < WR_TABLES + POOL_SLOTS ? wr_tbl_names[slot] : dash;
+    u32 n = 0, at = 6;                                    /* "T:001 ": six characters */
+    SPRINTF(buf, "T:%03d ", (int)(slot - WR_TABLES + 1));
+    while (name[n])
+        n++;
+    /* the cut by hand: the firmware's printf is not known to take "%.*s" */
+    u32 keep = n > TBL_NAME_SHOWN ? TBL_NAME_SHOWN - 2 : n;
+    while (keep < n && keep > 0 && name[keep - 1] == ' ')
+        keep--;                                           /* "Doom Cymbal..", not "Doom Cymbal .." */
+    for (u32 i = 0; i < keep; i++)
+        buf[at++] = name[i];
+    if (keep < n) {
+        buf[at++] = '.';
+        buf[at++] = '.';
+    }
+    buf[at] = 0;
+}
+
+const void *wr_tbl_fmt[2] __attribute__((section(".data"))) = { (const void *)tbl_text, FORMATTER };
+
 /* Rows 2 and 3 are fixed: SMTH's time constant, Off at 127, and DCLK's crossfade, Off at
  * 0 (dnfw.waverider.live.smth_names, dclk_names). */
-const void *wr_rate_fmt[4][2] __attribute__((section(".data"))) =
+/* page 3's levels (docs/waverider-pages34.md): its records are FM Tone's, whose own text
+ * is bipolar ("Pitch All"), so SUB and NOIS read 0..127, COLR -64..+63 and DEC 0..126 then
+ * Inf, from the coarse byte */
+static void plain_text(char *buf, int value)
+{
+    SPRINTF(buf, "%d", step_of(value, 127));
+}
+
+static void bipolar_text(char *buf, int value)
+{
+    int v = step_of(value, 127) - 64;
+    SPRINTF(buf, v > 0 ? "+%d" : "%d", v);
+}
+
+static void decay_text(char *buf, int value)
+{
+    int v = step_of(value, 127);
+    if (v == 127)
+        SPRINTF(buf, "Inf");
+    else
+        SPRINTF(buf, "%d", v);
+}
+
+/* TRIM's value: dB in tenths from the table index (coarse >> 1), as dnfw.waverider.live.trim_db
+ * has it: -15.0 at 0, -11.0 at 32 (4 dB over 32 steps), 0.0 at 63 (11 dB over 31) */
+static void trim_text(char *buf, int value)
+{
+    int i = step_of(value, 127) >> 1;
+    int tenths = i <= 32 ? -150 + i * 40 / 32 : -110 + (i - 32) * 110 / 31;
+    int m = tenths < 0 ? -tenths : tenths;
+    SPRINTF(buf, tenths < 0 ? "-%d.%d dB" : "%d.%d dB", m / 10, m % 10);
+}
+
+const void *wr_rate_fmt[8][2] __attribute__((section(".data"))) =
     { { 0, 0 }, { 0, 0 }, { (const void *)smth_text, FORMATTER },
-      { (const void *)dclk_text, FORMATTER } };
+      { (const void *)dclk_text, FORMATTER }, { (const void *)plain_text, FORMATTER },
+      { (const void *)bipolar_text, FORMATTER }, { (const void *)decay_text, FORMATTER },
+      { (const void *)trim_text, FORMATTER } };
 
 static u32 sound_value(const u8 *sound, u32 slot)
 {
@@ -153,14 +233,45 @@ static const int *limits(u32 id)
     return RECORD(id) + 2;
 }
 
+#define SCOPE_PAGE 3                 /* page 4: the scope (see scope_track) */
+#define SHAPE_PAGE 4                 /* page 5: the shape's knobs, with the scope in the wave's place too */
+#define SCOPE_SHOWN(p) ((p) == SCOPE_PAGE || (p) == SHAPE_PAGE)
+
 /* the strips: four columns of 25 across x 22..121 */
 #define COL0  22
 #define COLW  25
+#define TUNE_ID 238                  /* TUNE (osc 1) and DETN (osc 2), dnfw.waverider.pages */
+#define DETN_ID 242
 #define TOP_LABEL_Y 46
 #define TOP_BAR_Y   43
 #define BOT_BAR_Y   9
 #define BOT_LABEL_Y 1
 #define BAR_HALF    10
+
+/* A value that is p-locked on the trig being held: the value getter's flag says so (the stock
+ * grid hands the same flag to its cells as `locked`, and draws them held). The stock machines
+ * show such a value inverted; a cell here is its label and its bar, so that box is inverted
+ * once everything in it is drawn (docs/waverider-lockdisplay.md). */
+#ifdef WR_TEST_LOCKED
+static const u32 test_locked[] = { WR_TEST_LOCKED };      /* test builds: these ids read as locked */
+#endif
+static int is_locked(u32 id, u8 flag)
+{
+#ifdef WR_TEST_LOCKED
+    for (u32 k = 0; k < sizeof test_locked / sizeof test_locked[0]; k++)
+        if (test_locked[k] == id)
+            return 1;
+#else
+    (void)id;
+#endif
+    return flag != 0;
+}
+
+static void locked_cell(void *canvas, int cx, int top)
+{
+    FILL(canvas, cx - COLW / 2 + 1, top ? TOP_BAR_Y - 1 : BOT_LABEL_Y - 1,
+         cx + COLW / 2 - 1, top ? TOP_LABEL_Y + 7 : BOT_BAR_Y + 2, -1);   /* a pixel in from the cell's edges: two locked neighbours stay two boxes */
+}
 
 /* the wave, and the position bar under it */
 #define WAVE_X  24
@@ -234,6 +345,14 @@ static int osc_of(int page)
  * about 7 times a second, the wave stepping visibly (instrument, m10b3f,
  * 2026-10-03: oscillator 2's Tri, pattern stopped). FRAME still caps the rate. */
 #define POS_QUANT 0x80
+/* TBL's own step: half a table (a table is 0x100). QUANT is three tables there: an LFO
+ * sweeping TBL +-1.56 tables (0x31e wide; instrument, tbl128b, 2026-10-07, read live
+ * over the probe, LFO1 depth 3.9, default speed) sat on QUANT's edge, so the band
+ * vanished each time its edges relaxed between peaks and came back at the next one:
+ * the owner saw it flash. */
+#define TBL_QUANT 0x80
+
+static int quant_of(u32 id);
 #define HOLD    (2 * TICK_HZ)   /* a range edge holds 2 s before it relaxes */
 #define SHOWN   (TICK_HZ * 6 / 5)   /* 1.2 s: the stock UI redraws a shown page once a second */
 #define FRAME   5               /* ticks: at most 24 redraws a second, about a turn's own rate */
@@ -410,6 +529,12 @@ static u32 asked_at __attribute__((section(".data"))) = 0;
 static int drawn_sig __attribute__((section(".data"))) = 0;
 static int settling __attribute__((section(".data"))) = 0;
 
+/* the offset that counts as modulation at all: TBL's half a table, else QUANT */
+static int quant_of(u32 id)
+{
+    return id == WR_TBL_ID || id == WR_TBL2_ID ? TBL_QUANT : QUANT;
+}
+
 static int which(u32 id)
 {
     for (int k = 0; k < MARKED; k++)
@@ -483,7 +608,7 @@ static int signature(void)
     int sig = 0;
     for (int k = 2 * osc_of(shown_page); k < 2 * osc_of(shown_page) + 2; k++)
         sig = sig * 131 + (tier(marked[k]) < 2
-                           ? mod_offset(marked[k]) / (k & 1 ? QUANT : POS_QUANT) : 0);
+                           ? mod_offset(marked[k]) / (k & 1 ? TBL_QUANT : POS_QUANT) : 0);
     return sig;
 }
 
@@ -544,7 +669,7 @@ int wr_poll(void *screen)
 #endif
     follow(now, osc_of(shown_page));
     if (now - drawn_at < SHOWN && now - asked_at >= FRAME
-            && (settling || signature() != drawn_sig)) {
+            && (settling || SCOPE_SHOWN(shown_page) || signature() != drawn_sig)) {
         asked_at = now;
         SET_DIRTY(screen);
     }
@@ -567,20 +692,6 @@ static void *method(void *obj, int offset)
     return *(void **)(*(char **)obj + offset);
 }
 
-static void px(void *c, int x, int y)
-{
-    SET_PIXEL(c, x, y, 1);
-}
-
-static void column(void *c, int x, int y0, int y1)
-{
-    if (y0 > y1) {
-        int t = y0; y0 = y1; y1 = t;
-    }
-    for (int y = y0; y <= y1; y++)
-        px(c, x, y);
-}
-
 /* A control's value under its label: a dotted track with the value filled in,
  * from the left, or from the centre for a control whose default is the middle
  * of its range (TUNE). A control of a few steps (TBL: 0..0x100) is drawn as
@@ -601,21 +712,21 @@ static void indicator(void *c, int cx, int y, u32 id, int v)
         for (int k = 0; k < n; k++) {
             int a = x0 + k * w, b = a + w - 2;
             for (int x = a; x <= b; x++) {
-                px(c, x, y);
+                canvas_px(c, x, y);
                 if (k == at)
-                    px(c, x, y + 1);
+                    canvas_px(c, x, y + 1);
             }
         }
         return;
     }
 
     for (int x = x0; x <= x1; x += 2)
-        px(c, x, y);
+        canvas_px(c, x, y);
     int at = x0 + (v - lo) * (x1 - x0) / span;
     int from = (2 * def == lo + hi) ? cx : x0;
-    column(c, at, y, y + 1);
+    canvas_column(c, at, y, y + 1);
     for (int x = (from < at ? from : at); x <= (from < at ? at : from); x++)
-        px(c, x, y + 1);
+        canvas_px(c, x, y + 1);
 }
 
 #if WR_MARKERS
@@ -625,7 +736,7 @@ static void approx(void *c, int x, int y)
 {
     for (int k = 0; k < 2; k++) {
         int yy = y + 1 + 3 * k;
-        px(c, x, yy); px(c, x + 1, yy + 1); px(c, x + 2, yy); px(c, x + 3, yy + 1);
+        canvas_px(c, x, yy); canvas_px(c, x + 1, yy + 1); canvas_px(c, x + 2, yy); canvas_px(c, x + 3, yy + 1);
     }
 }
 
@@ -651,21 +762,22 @@ static void modulation(void *c, int cx, int y, int label_y, u32 id, int set, u32
     int off = mod_offset(id);
     sweep(k, off, now);
     struct sweep *w = &sweeps[k];
-    if (w->hi - w->lo <= QUANT && off < QUANT && off > -QUANT)
+    int q = quant_of(id);
+    if (w->hi - w->lo <= q && off < q && off > -q)
         return;
     int a = track_x(id, cx, set + w->lo), b = track_x(id, cx, set + w->hi);
     int speed = tier(id);
     if (speed == 0) {
         for (int x = a; x <= b; x += 2)
-            px(c, x, y);
+            canvas_px(c, x, y);
     } else {
         for (int x = a; x <= b; x++)            /* the band: a 50 % dither, the panel's grey */
             for (int yy = y - 1; yy <= y; yy++)
                 if (((x + yy) & 1) == 0)
-                    px(c, x, yy);
+                    canvas_px(c, x, yy);
     }
     if (speed < 2)
-        column(c, track_x(id, cx, set + off), y - 1, y);
+        canvas_column(c, track_x(id, cx, set + off), y - 1, y);
     else
         approx(c, cx + 10, label_y);            /* "too fast to draw" beside the label */
 }
@@ -710,11 +822,11 @@ static void curve(void *c, int tbl, int pos)
         span(tbl, pos, x, &lo, &hi);
         if (hi - lo <= 2)                   /* a smooth stretch: one pixel, at its middle */
             lo = hi = (lo + hi) >> 1;
-        column(c, WAVE_X + x, lo, hi);
+        canvas_column(c, WAVE_X + x, lo, hi);
         if (x > 0 && lo > last_hi)
-            column(c, WAVE_X + x, last_hi + 1, lo);
+            canvas_column(c, WAVE_X + x, last_hi + 1, lo);
         else if (x > 0 && hi < last_lo)
-            column(c, WAVE_X + x, hi, last_lo - 1);
+            canvas_column(c, WAVE_X + x, hi, last_lo - 1);
         last_lo = lo;
         last_hi = hi;
     }
@@ -727,18 +839,18 @@ static void wave(void *c, void *view, int page)
     int o = osc_of(page);
     u32 pos_id = marked[2 * o], tbl_id = marked[2 * o + 1];
     struct sweep *sw = &sweeps[2 * o];
-    int tbl = GET_VALUE(view, tbl_id, &flag) >> 8;
+    int tbl = (GET_VALUE(view, tbl_id, &flag) & 0xFFFF) >> 8;   /* the getter sign-extends */
     int pos = GET_VALUE(view, pos_id, &flag);
 #if WR_MARKERS
     int set_pos = clamp_pos(pos);
     int moved = mod_offset(pos_id);
     int speed = tier(pos_id);
     pos += moved;
-    tbl = (GET_VALUE(view, tbl_id, &flag) + mod_offset(tbl_id)) >> 8;
+    tbl = ((GET_VALUE(view, tbl_id, &flag) & 0xFFFF) + mod_offset(tbl_id)) >> 8;
 #else
     (void)sw;
 #endif
-    if (tbl < 0 || tbl >= (int)(WR_TABLES + pool_count()))
+    if (tbl < 0 || tbl >= (int)(WR_TABLES + pool_count()) || !pool_has(tbl - WR_TABLES))
         tbl = 0;                            /* what the DSP plays for a slot it has not */
     pos = clamp_pos(pos);
 
@@ -771,18 +883,18 @@ static void wave(void *c, void *view, int page)
             else continue;                      /* they touch in this column */
             for (int y = y0 + 2; y <= y1 - 2; y++)
                 if (y % 3 == 0)
-                    px(c, WAVE_X + x, y);
+                    canvas_px(c, WAVE_X + x, y);
         }
         for (int x = 0; x < WR_WIDTH; x += 2)
-            px(c, WAVE_X + x, POS_Y);
+            canvas_px(c, WAVE_X + x, POS_Y);
         int a = WAVE_X + from * (WR_WIDTH - MARK) / WR_POS_MAX;
         int b = WAVE_X + to * (WR_WIDTH - MARK) / WR_POS_MAX + MARK - 1;
         for (int x = a; x <= b; x++)            /* the positions swept, under the bar */
             if ((x & 1) == 0)
-                px(c, x, CURSOR_Y);
+                canvas_px(c, x, CURSOR_Y);
         int m = WAVE_X + set_pos * (WR_WIDTH - MARK) / WR_POS_MAX;
         for (int k = 0; k < MARK; k++)
-            column(c, m + k, POS_Y, POS_Y + 1);
+            canvas_column(c, m + k, POS_Y, POS_Y + 1);
         return;
     }
 #endif
@@ -790,7 +902,7 @@ static void wave(void *c, void *view, int page)
     curve(c, tbl, pos);
 
     for (int x = 0; x < WR_WIDTH; x += 2)
-        px(c, WAVE_X + x, POS_Y);
+        canvas_px(c, WAVE_X + x, POS_Y);
 #if WR_MARKERS
     int m = WAVE_X + set_pos * (WR_WIDTH - MARK) / WR_POS_MAX;
     int h = WAVE_X + pos * (WR_WIDTH - MARK) / WR_POS_MAX;
@@ -798,12 +910,136 @@ static void wave(void *c, void *view, int page)
      * as the cursor passes under the knob's own marker (owner, modview4f) */
     if (sw->hi - sw->lo > QUANT || moved >= QUANT || moved <= -QUANT)
         for (int k = 0; k < MARK; k += 2)
-            px(c, h + k, CURSOR_Y);
+            canvas_px(c, h + k, CURSOR_Y);
 #else
     int m = WAVE_X + pos * (WR_WIDTH - MARK) / WR_POS_MAX;
 #endif
     for (int k = 0; k < MARK; k++)
-        column(c, m + k, POS_Y, POS_Y + 1);
+        canvas_column(c, m + k, POS_Y, POS_Y + 1);
+}
+
+/* Page 3 (owner's layout A, 2026-10-07): the sub-oscillator's four controls as the
+ * stock grid's own cells, two by two on the left of the strip, and the noise as a
+ * field of dots on the right; the noise's four stay on the bottom row.
+ *
+ * A cell is the grid's: the grid 0x40017428 calls view->vtable[180](view, canvas,
+ * x, y, id, value, a, locked, held, 0, 0) per cell, x = 24 + 26 col, y = 27 for the
+ * top row and 0 for the bottom, with `a` = 0x40113346(view + 148, cell), `locked` the
+ * value getter's flag, and `held` 1 when locked, else 0x40113558(view + 148, cell). */
+#define SUB_PAGE   2
+#ifndef SUB_LAYOUT
+#define SUB_LAYOUT 4               /* where the controls and the strip go: see sub_noise */
+#endif
+#define CELL_DRAW  180
+#define CELL_A     ((int (*)(void *, int))0x40113346u)
+#define CELL_HELD  ((int (*)(void *, int))0x40113558u)
+#ifndef SUB_CELL_X0
+#define SUB_CELL_X0 24
+#endif
+#ifndef SUB_CELL_TOP
+#define SUB_CELL_TOP 27
+#endif
+#define SUB_STRIP_Y0 15            /* layout 4: the wave's span on the oscillator pages, */
+#define SUB_STRIP_Y1 39            /* clear of both rows' modulation markers */
+#ifndef SUB_CELL_LOW
+#define SUB_CELL_LOW 0
+#endif
+
+#if SUB_LAYOUT != 4
+static void stock_cell(void *view, void *canvas, int cell, int x, int y)
+{
+    u8 flag = 0;
+    u32 id = wr_ids[SUB_PAGE][cell];
+    int value = GET_VALUE(view, id, &flag);
+    void *cells = (char *)view + 148;
+    int held = flag ? 1 : (u8)CELL_HELD(cells, cell);
+    int a = CELL_A(cells, cell);
+    ((void (*)(void *, void *, int, int, u32, int, int, int, int, int, int))method(view, CELL_DRAW))
+        (view, canvas, x, y, id, value, a, flag, held, 0, 0);
+}
+#endif
+
+/* the noise and the sub as their traces (ui/noise_strip: the generator's and the shape's
+ * own steps, as the voice plays them), from page 3's eight values. SUB_GLYPH 4 (default,
+ * the owner's choice on 2026-10-08) draws one line, their sum, as the track adds them;
+ * 3 the sub solid over the noise dotted */
+#ifndef SUB_GLYPH
+#define SUB_GLYPH 4
+#endif
+#if SUB_LAYOUT == 4
+#define NOISE_UNIT   10                 /* full scale, in pixels: the strip is 25 high */
+#else
+#define NOISE_UNIT   4
+#endif
+
+static int sub_value_of(void *view, int k)
+{
+    u8 flag;
+    return (GET_VALUE(view, wr_ids[SUB_PAGE][k], &flag) & 0xFFFF) >> 8;
+}
+
+static void noise_field(void *c, void *view, int x0, int x1, int y0, int y1)
+{
+    struct noise_strip_values v = {
+        .sub = sub_value_of(view, 0), .octave = sub_value_of(view, 1), .shape = sub_value_of(view, 2),
+        .nois = sub_value_of(view, 4), .type = sub_value_of(view, 5),
+        .colr = sub_value_of(view, 6), .dec = sub_value_of(view, 7),
+    };
+    struct strip_box box = { x0, x1, y0, y1, NOISE_UNIT };
+    noise_strip_draw(c, &v, &box, SUB_GLYPH);
+}
+
+/* SUB_LAYOUT 1: the cells two by two on the left, the field top right, the noise's four
+ * two by two below it; 3: the cells as a stock grid row on top (A..D over their
+ * encoders), the field a strip under them, the noise's four on the bottom row;
+ * 4 (default, owner on p3subdot2: the knobs at the top looked odd and took the wave's
+ * room, and OCT, WAVE and SRC barely turned): the oscillator pages' layout, both rows as
+ * labels and bars, the strip where their wave is */
+
+static void sub_noise(void *view, void *canvas)
+{
+#if SUB_LAYOUT == 1
+    for (int k = 0; k < 4; k++)
+        stock_cell(view, canvas, k, SUB_CELL_X0 + 26 * (k & 1), k < 2 ? SUB_CELL_TOP : SUB_CELL_LOW);
+    for (int y = 1; y <= TOP_LABEL_Y + 4; y += 2)                  /* the divider */
+        canvas_px(canvas, 76, y);
+    TEXT(canvas, FONT, 100, TOP_LABEL_Y, CENTRED, "NOISE");
+    noise_field(canvas, view, 80, 121, 32, TOP_LABEL_Y - 3);
+#elif SUB_LAYOUT == 3
+    for (int k = 0; k < 4; k++)
+        stock_cell(view, canvas, k, SUB_CELL_X0 + 26 * k, SUB_CELL_TOP);
+    noise_field(canvas, view, WAVE_X, 121, BOT_BAR_Y + 5, SUB_CELL_TOP - 2);
+#else
+    noise_field(canvas, view, WAVE_X, 121, SUB_STRIP_Y0, SUB_STRIP_Y1);
+#endif
+}
+
+#if SUB_LAYOUT != 4
+/* where page 3 puts control i (4..7, the noise's) */
+static void sub_place(int i, int *cx, int *label_y, int *bar_y)
+{
+#if SUB_LAYOUT == 1
+    int k = i - 4;
+    *cx = COL0 + COLW * (2 + (k & 1)) + COLW / 2;
+    *label_y = k < 2 ? 18 : BOT_LABEL_Y;
+    *bar_y = k < 2 ? 26 : BOT_BAR_Y;
+#else
+    *cx = COL0 + COLW * (i & 3) + COLW / 2;
+    *label_y = BOT_LABEL_Y;
+    *bar_y = BOT_BAR_Y;
+#endif
+}
+#endif
+
+/* Page 4 (owner's option A, 2026-10-06): the scope in the wave's place, the active track's
+ * own sound as the DSP sent it (ui/scope; the capture is scope_feed.c, every frame, from
+ * dn2/audio_tap). The page names the track to capture; any other page names none. */
+static const struct strip_box scope_box = { WAVE_X, 121, SUB_STRIP_Y0, SUB_STRIP_Y1, 0 };
+
+static void scope_track(int page)
+{
+    if (WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+        WR_DRIVE_HEAD->events->scope_track = SCOPE_SHOWN(page) ? ACTIVE_TRACK : 0xFF;
 }
 
 void wr_page_draw(void *view, void *canvas)
@@ -826,31 +1062,76 @@ void wr_page_draw(void *view, void *canvas)
 #ifdef WR_PROBE
     u32 w0 = DTCN0;
 #endif
-    wave(canvas, view, page);
+    scope_track(page);
+    if (page == SUB_PAGE)
+        sub_noise(view, canvas);
+    else if (SCOPE_SHOWN(page) && WR_DRIVE_HEAD->magic == WR_DRIVE_MAGIC)
+        scope_draw(canvas, WR_DRIVE_HEAD->events->scope, &scope_box);
+    else
+        wave(canvas, view, page);
 #ifdef WR_PROBE
     wr_probe.wave_ticks += DTCN0 - w0;
 #endif
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = page == SUB_PAGE && SUB_LAYOUT != 4 ? 4 : 0; i < 8; i++) {  /* layouts 1, 3: the cells drew A..D */
         int top = i < 4;
         int cx = COL0 + COLW * (i & 3) + COLW / 2;
+        int label_y = top ? TOP_LABEL_Y : BOT_LABEL_Y, bar_y = top ? TOP_BAR_Y : BOT_BAR_Y;
+#if SUB_LAYOUT != 4
+        if (page == SUB_PAGE)
+            sub_place(i, &cx, &label_y, &bar_y);
+#endif
         u32 id = wr_ids[page][i];
-        TEXT(canvas, FONT, cx, top ? TOP_LABEL_Y : BOT_LABEL_Y, CENTRED, "%.5s", wr_labels[page][i]);
+        if (id == WR_TBL_ID || id == WR_TBL2_ID) {
+            /* TBL is a counter: the table loaded, by its number, on the label row, and its
+             * modulation on the bar row (the owner's option A, 2026-10-06). The built-ins by
+             * name, a pool table by its shown slot 001.. (coarse c >= 2 is shown slot c - 1) */
+            u8 flag = 0;
+            int set = GET_VALUE(view, id, &flag) & 0xFFFF, c = set >> 8;   /* the getter sign-extends: 0x8000 and up read negative */
+            int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
+            if (c < WR_TABLES)
+                TEXT(canvas, FONT, cx, y, CENTRED, c ? "HARM" : "PRIM");
+            else
+                TEXT(canvas, FONT, cx, y, CENTRED, "T:%03d", c - 1);
+#if WR_MARKERS
+            /* the modulation on the bar row, in line with the other controls' bars */
+            modulation(canvas, cx, top ? TOP_BAR_Y : BOT_BAR_Y + 1, y, id, set, now);
+#endif
+            if (is_locked(id, flag))
+                locked_cell(canvas, cx, top);
+            continue;
+        }
+        if (id == TUNE_ID || id == DETN_ID) {
+            /* TUNE and DETN as semitones, one decimal, on the label row (option A): the value
+             * is (semitones + 64) x 256. Their modulation band comes with the preview for
+             * every control (queued) */
+            u8 flag = 0;
+            int tenths = ((GET_VALUE(view, id, &flag) - 0x4000) * 10 + (1 << 7)) >> 8;
+            int y = top ? TOP_LABEL_Y : BOT_LABEL_Y;       /* level with the other labels */
+            int m = tenths < 0 ? -tenths : tenths;
+            TEXT(canvas, FONT, cx, y, CENTRED, "%s%d.%d", tenths < 0 ? "-" : tenths ? "+" : "",
+                 m / 10, m % 10);
+            if (is_locked(id, flag))
+                locked_cell(canvas, cx, top);
+            continue;
+        }
+        TEXT(canvas, FONT, cx, label_y, CENTRED, "%.5s", wr_labels[page][i]);
         if (!id)
             continue;
-        u8 flag;
+        u8 flag = 0;
         int set = GET_VALUE(view, id, &flag);
-        indicator(canvas, cx, top ? TOP_BAR_Y : BOT_BAR_Y, id, set);
+        indicator(canvas, cx, bar_y, id, set);
 #if WR_MARKERS
 #ifdef WR_PROBE
         u32 m0 = DTCN0;
 #endif
-        modulation(canvas, cx, top ? TOP_BAR_Y - 2 : BOT_BAR_Y + 3, top ? TOP_LABEL_Y : BOT_LABEL_Y,
-                   id, set, now);
+        modulation(canvas, cx, top ? bar_y - 2 : bar_y + 3, label_y, id, set, now);
 #ifdef WR_PROBE
         tm += DTCN0 - m0;
 #endif
 #endif
+        if (is_locked(id, flag))
+            locked_cell(canvas, cx, top);
     }
 
     /* the stock grid's own tail: the level meter, then the page dots */

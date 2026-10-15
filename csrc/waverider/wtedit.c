@@ -1,8 +1,8 @@
 /* Edits of the working project's pool list (record 0), from the wavetable page.
  *
- * Each edit starts from what plays (wr_record_resolve): the stored list, or, for a
- * project still on the automatic pool, the automatic pool written out as a list, so the
- * edit keeps what was playing (docs/for-dnx-waverider-pool.md §2). It changes the list,
+ * Each edit starts from what plays (wr_record_resolve): the stored list; for a project with
+ * no record, an empty list; for one that follows the store, the store-order pool written out
+ * as a list, so the edit keeps what was playing (docs/for-dnx-waverider-pool.md §2). It changes the list,
  * writes it in one sector (generation + 1), and makes Waverider refill its pool.
  *
  * LOAD sets the active track's TBL1 or TBL2 in the kit's sound (the value array at
@@ -73,6 +73,48 @@ u32 wt_pool_clear(u32 j)
         return WT_FAILED;
     rec = start();
     wr_put16(rec + R_ENTRIES + 2 * j, RECORD_NONE);
+    return finish(rec) ? WT_DONE : WT_FAILED;
+}
+
+/* several at once (the lists' ticks, owner 2026-10-07): one record write for the set */
+u32 wt_pool_add_many(const u8 *slots, u32 n, u32 *added, u32 *skipped)
+{
+    u8 *rec = start();
+    u32 result = WT_DONE;
+    *added = *skipped = 0;
+    for (u32 k = 0; k < n; k++) {
+        u32 free = POOL_ENTRIES, there = 0;
+        for (u32 j = 0; j < POOL_ENTRIES; j++) {
+            u32 s = be16(rec + R_ENTRIES + 2 * j);
+            if (s == slots[k])
+                there = 1;
+            if (s == RECORD_NONE && free == POOL_ENTRIES)
+                free = j;
+        }
+        if (there) {
+            (*skipped)++;
+            continue;
+        }
+        if (free == POOL_ENTRIES) {
+            result = WT_FULL;
+            break;
+        }
+        wr_put16(rec + R_ENTRIES + 2 * free, slots[k]);
+        (*added)++;
+    }
+    if (!*added) {
+        DELETE(rec);
+        return result;
+    }
+    return finish(rec) ? result : WT_FAILED;
+}
+
+u32 wt_pool_clear_many(const u8 *js, u32 n)
+{
+    u8 *rec = start();
+    for (u32 k = 0; k < n; k++)
+        if (js[k] < POOL_ENTRIES)
+            wr_put16(rec + R_ENTRIES + 2 * js[k], RECORD_NONE);
     return finish(rec) ? WT_DONE : WT_FAILED;
 }
 

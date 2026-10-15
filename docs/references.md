@@ -1221,3 +1221,56 @@ Elektron's artwork and are excluded by its own notice.
 **Adopted so far:** nothing. The hidden-intro finding is reproduced by
 reading only.
 
+
+## `naturarum/dn2-cfw` — OS 1.12 notes, and a frame-word census (added 2026-10-13)
+
+<https://github.com/naturarum/dn2-cfw>. "Custom firmware research for the Elektron
+Digitone II (OS 1.12): notes, tools and new effects. No Elektron firmware included."
+It reached this repository as issue #49 (2026-10-12).
+
+**Licence: GPL-2.0 or later, as the author states it** (issue #49); the GitHub licence record says
+GPL-2.0, and file headers were not checked (the owner asked the author to check them). A GPL-2.0-only work does not
+combine with this repository's AGPL-3.0-or-later, so **nothing was copied**: we cite
+its notes by file and re-did the measurements in our own code.
+
+**What it has that we use:**
+
+- **The frame layout** (`notes/T3.3-fx-frame.md`): regions of the ColdFire-to-DSP frame
+  by byte offset, which our census tools take as their list of regions.
+- **The census method** (`notes/T6.0-fx-params-room.md`, section 1.2): run the stock DSP
+  over many frames and report every instruction that reads each frame word, outside the
+  two unpack copy loops. This is how a word can be shown free, rather than assumed free.
+- **The claim that started it:** stock writes frame words 0xa54 and 0xa56 and the DSP
+  reads them (at `sw 0x1c3084`). **Checked and right** on OS 1.11: Waverider's song
+  position was in those words, and moved (`docs/waverider-frame-words.md`).
+
+**What we did with it:** `scripts/sharc_frame_census.py` (run, replay, report, diff and
+flip modes), `scripts/sharc_frame_word_check.py` and `sharc_frame_word_readers.py`, and
+`scripts/frame_corpus.py`, which records the frames the ColdFire really sends across
+machines and patterns, the corpus their census calls "every T3.3 capture". The census
+found word 0x2a read by the DSP in machine type 4, so the position went to 0xa18 and
+0x9a8, which no DSP instruction reads outside the copy loops in what we ran.
+
+**How far ours goes:** 169 random-frame blocks against their 2,247, and the replay of
+a real-frame corpus was still running when this was written. Read "no reader found" as
+bounded by that, not as proof.
+
+**Adopted so far:** the method and the region list. No code and no data.
+
+## `m-dwyer/moveforge`: judging a DSP render by numbers and plots (added 2026-10-14)
+
+A development platform for Ableton Move modules by digikit's author. No licence file as of
+2026-10-14, so it is read for its method and nothing is copied.
+
+**What it does that we wanted:** every module is rendered offline to WAVs (a preset suite and
+generated stress cases at each parameter's ends), each WAV is reduced to a metrics file (peak, RMS,
+DC offset, silence, clipped samples, a time profile and band energies in dB), the suite is compared
+against blessed goldens, the stress cases against safety limits (clipping, DC, silence, too-hot
+peaks, stereo imbalance), and waveform and spectrum plots are drawn for a person or a model to
+read before listening. Its README says why: audio bugs are easier to catch in a plot than by ear.
+
+**Adopted:** the method, in `dnfw wav report` and `dnfw wav compare` (`docs/wav-report.md`), with
+our own code and three additions: a spectrogram, the pitch and what lies between its harmonics,
+and a classification of steps into periodic and isolated. Not adopted yet: goldens and generated
+stress cases.
+

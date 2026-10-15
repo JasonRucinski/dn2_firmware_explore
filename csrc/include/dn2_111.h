@@ -379,4 +379,29 @@ static inline void *dn2_memcpy(void *dst, const void *src, u32 n)
 }
 #endif /* __ASSEMBLER__ */
 
+/* The canvas's pixel setter: (canvas, x, y, on), y counting up from the bottom edge.
+ * The FILL draw grows a 1-pixel rectangle in both modes (docs, wavetable page). */
+#define DN2_SET_PIXEL  0x40113B90
+
+/* The audio the SHARC sends the ColdFire each frame (docs/waverider-pages34.md, measured
+ * on the instrument 2026-10-07):
+ * - the reply the DSPI exchange receives: 32 records of 84 B from +0x1c, one per sample,
+ *   28 channels of 24-bit big-endian; tracks 7..16 on channels 2(t-7) and 2(t-7)+1;
+ * - the SSI0 receive window (eDMA 48): 2 halves of 32 frames x 64 B, 16 longword slots,
+ *   a 24-bit sample in the low three bytes; tracks 1..6 on slots 2t and 2t+1, the main
+ *   mix on 0/1. The stock ISR picks a half by the transmit side (eDMA 50's source address,
+ *   0x400d0f98), but the receive side lags it: on the instrument (2026-10-08) the last
+ *   frame of that half was still the previous lap's. So a reader follows the receive DMA's
+ *   own write position, eDMA 48's destination address (its TCD at 0xFC045600, DADDR +0x10):
+ *   frames before it are written. */
+#define DN2_REPLY          0x800053A4
+#define DN2_REPLY_RECORDS  0x1C
+#define DN2_REPLY_RECORD   84
+#define DN2_SSI_RX         0x4E6DF100
+#define DN2_SSI_HALF       0x800
+#define DN2_SSI_FRAME      64
+#define DN2_SSI_RX_DADDR   0xFC045610
+#define DN2_SSI_FRAMES     64
+#define DN2_BLOCK          32
+
 #endif

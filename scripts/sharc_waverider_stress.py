@@ -40,6 +40,7 @@ import sharc_waverider_m5 as g                                 # noqa: E402
 import sharc_waverider_render as m1                            # noqa: E402
 from dnfw.waverider import dsp, live                           # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 TRACKS = range(16)
@@ -58,8 +59,8 @@ def all_tracks(sound, machines, machine, per_track=None, song=False, jumping=Fal
                 f.param(t, g.WAV2, 0 if b % 2 else 0x7800)
         if song:
             p = (b * live.trunc(g.SYNC_TEMPO * live.SYNC_K)) & 0xFFFFFFFF
-            f.put(live.SYNC_POSITION, p & 0xFFFF)
-            f.put(live.SYNC_POSITION + 2, p >> 16)
+            f.put(live.SYNC_POSITION_LO, p & 0xFFFF)
+            f.put(live.SYNC_POSITION_HI, p >> 16)
             f.put(live.SYNC_TEMPO, g.SYNC_TEMPO)
         return f.to_bytes()
     return fb
@@ -70,7 +71,7 @@ def main(argv=None) -> int:
     ap.add_argument("--image", type=pathlib.Path,
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--digikit", type=pathlib.Path,
-                    default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC", ROOT.parent / "digikit-wt-sharcemu")))
+                    default=sharcemu.path())
     ap.add_argument("--blocks", type=int, default=16)
     ap.add_argument("--cases", default="", help="comma-separated subset of the cases to run")
     a = ap.parse_args(argv)

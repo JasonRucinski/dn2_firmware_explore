@@ -5,11 +5,12 @@
 One panel_drive run on the card image (docs/for-dnx-waverider-pool.md §2, the hooks in
 csrc/wrstore/projects.c). The panel does what the owner would; the Data API, through the
 SysEx router as DNX sends it, writes and reads the records:
-1. SAVE PROJECT AS 002 with no record 0: record 2 becomes an automatic record;
+1. SAVE PROJECT AS 002 with no record 0: record 2 becomes an empty list (no record is an
+   empty pool since 2026-10-13);
 2. DNX writes record 0 = [3, NONE, 0]; SAVE PROJECT AS 003: record 3 is that list;
 3. DNX writes record 0 = [7]; LOAD PROJECT 003: record 0 is [3, NONE, 0] again;
-4. LOAD PROJECT 002: record 0 is automatic;
-5. CREATE NEW (in the LOAD list): record 0 is an empty list, stored and not automatic.
+4. LOAD PROJECT 002: record 0 is an empty list;
+5. CREATE NEW (in the LOAD list): record 0 is an empty list, stored and explicit.
 After each step the records are read back over /wavepool, and wr_projects is peeked.
 """
 
@@ -78,9 +79,9 @@ def main() -> int:
     steps: list[str] = ["tap:12", "wait:30M"]
     reads: dict[str, int] = {}                     # label -> index of its open in f.lines
 
-    def api_write(label, p, entries, automatic=False):
+    def api_write(label, p, entries, follows_store=False):
         start = len(f.lines)
-        f.write(label, f"/wavepool/{p}", container(PR.Record(p, entries, automatic).to_bytes(), p, 0x50))
+        f.write(label, f"/wavepool/{p}", container(PR.Record(p, entries, follows_store).to_bytes(), p, 0x50))
         steps.extend(f"send:{h}" for _, h in f.lines[start:])
 
     def api_read(label, p):
@@ -158,15 +159,15 @@ def main() -> int:
     check("the stock calls: save 1, 128; save 2, 128; load 2; ...; load 1",
           [c for c in calls if c[0] == "0x400f6a2c"] == [("0x400f6a2c", 2), ("0x400f6a2c", 1)]
           and ("0x400f6960", 1) in calls and ("0x400f6960", 2) in calls, calls)
-    check("SAVE AS 002 with no record 0: record 2 automatic, stored",
-          r2 and r2.automatic and r2.generation >= 1 and r2.project == 2, r2)
+    check("SAVE AS 002 with no record 0: record 2 an empty list, stored",
+          r2 and not r2.follows_store and r2.entries == [] and r2.generation >= 1 and r2.project == 2, r2)
     check("SAVE AS 003: record 3 is record 0's list [3, NONE, 0]",
-          r3 and not r3.automatic and r3.entries == [3, NONE, 0] and r3.project == 3, r3)
-    check("LOAD 003: record 0 is [3, NONE, 0] again", l3 and not l3.automatic and l3.entries == [3, NONE, 0]
+          r3 and not r3.follows_store and r3.entries == [3, NONE, 0] and r3.project == 3, r3)
+    check("LOAD 003: record 0 is [3, NONE, 0] again", l3 and not l3.follows_store and l3.entries == [3, NONE, 0]
           and l3.project == 0, l3)
-    check("LOAD 002: record 0 automatic", l2 and l2.automatic and l2.project == 0, l2)
-    check("CREATE NEW: record 0 an empty list, stored, not automatic",
-          nw and not nw.automatic and nw.entries == [] and nw.project == 0 and nw.generation > l2.generation, nw)
+    check("LOAD 002: record 0 an empty list", l2 and not l2.follows_store and l2.entries == [] and l2.project == 0, l2)
+    check("CREATE NEW: record 0 an empty list, stored, explicit",
+          nw and not nw.follows_store and nw.entries == [] and nw.project == 0 and nw.generation > l2.generation, nw)
     check("wr_projects: 2 saves, 2 loads, 1 created, none failed",
           len(counters) == 4 and counters[0][1] == 1 and counters[2][1] == 2 and counters[2][2] == 2
           and counters[3][6] == 1 and counters[3][5] == 0, counters)

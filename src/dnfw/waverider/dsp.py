@@ -48,11 +48,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import struct
 
 from ..image import bootstream, sharc_object
-from . import harmonics, live, testtable
+from . import harmonics, live, mip, reduce, table3, testtable
 from . import render as reference
 
 STOCK_SHA256 = "336e340aa0cdcd34e314cfa44849f709a3134f6bd4cd57dfc7e15702c83115e2"
@@ -86,8 +87,19 @@ DIRECTORY_MAGIC = 0x57525431                 # 'WRT1'
 # sample pool. DDR has no 0x28 load alias: a block's target is the address itself.
 STOCK_DDR_END = 0x8052FBE0
 DDR_REGION = (0x80600000, 0x80A00000)
-TABLE_BYTES = 0x4000                         # 16 frames x 512 int16
-TABLES_DM = (0x80600000, 0x80604000)
+TABLE_BYTES = 0x4000                         # 16 frames x 512 int16 (a pool table, without levels)
+# The baked tables are mip-mapped (dnfw.waverider.mip): eight levels, 65,024 B each, 64 KB
+# apart. TABLES_AT is where their bytes load; TABLES_DM what the directory (and so the reader
+# block) holds: the address with bit 0 set, which tells reader_mip.asm to pick a level.
+# hermite2's guarded rows (mip.row_points) make a table 65,792 B: its slots are 68 KB apart
+MIP_TABLE_BYTES = 0x11000 if mip.guarded() else 0x10000
+MIP_FLAG = 1
+TABLES_AT = (0x80600000, 0x80600000 + MIP_TABLE_BYTES)
+# DNFW_WAVERIDER_NOMIP=1 (the comparison set's control, 2026-10-08): the tables load plain
+# (16 KB, no levels) and the directory holds their addresses without the flag, so the reader
+# plays them as it plays a pool table: level 0, today's reader on the same table
+NOMIP = os.environ.get("DNFW_WAVERIDER_NOMIP", "") == "1"
+TABLES_DM = tuple(a | (0 if NOMIP else MIP_FLAG) for a in TABLES_AT)
 
 IDLE_DM = 0x2DEA00                           # idle_load.asm, in the gap before table 0
 IDLE_SW = IDLE_DM // 2                       # 0x16f500
@@ -112,16 +124,44 @@ LOAD_DM = 0x2DF600                           # load.asm, after MOVE's random sta
 LOAD_SW = LOAD_DM // 2                       # 0x16fb00: the command table's entry 4
 CMD_TABLE_DM = 0x2DFA00                      # the handler's command table, moved here with 8 entries
 LOAD_STATE_DM, LOAD_STATE_BYTES = 0x2DFA20, 8  # the chunk's sequence and checksum while it is copied
-LOAD_AREA = (0x80800000, 0x80A00000)         # DDR the ColdFire's chunks may write: 2 MB, the top of DDR_REGION
+LOAD_AREA = (0x807FF000, 0x84800000)         # DDR the ColdFire's chunks may write: the request directory's 4 KB, then 128 raw tables of 512 KiB
 LOAD_MAX_WORDS = 668                         # payload words in one 2,688-byte frame, after the 4-word header
 POOL_DM = 0x2DFC00                           # pool.asm: a slot past the baked directory, from the load area's pool
 POOL_SW = POOL_DM // 2                       # 0x16fe00
-POOL_DIR = LOAD_AREA[1] - 0x1000             # 0x809ff000: the pool directory, the area's last 4 KB
-POOL_MAGIC = 0x57525031                      # 'WRP1'
-POOL_SLOTS = (POOL_DIR - LOAD_AREA[0]) // TABLE_BYTES   # 127 tables of 16 KB below the directory
+POOL_DIR = LOAD_AREA[0]                      # 0x807ff000: the request directory, the area's first 4 KB
+POOL_MAGIC = 0x57525033                      # 'WRP3': +4 count, +8 generation, +16 a word per entry (frames | points << 16, 0 none)
+POOL_GEOMETRY = POOL_DIR + 0x10
+POOL_RAW = POOL_DIR + 0x1000                 # 0x80800000: entry j's table as stored (int16, frame-major) at POOL_RAW + j x 512 KiB
+POOL_RAW_BYTES = 0x80000
+POOL_SLOTS = (LOAD_AREA[1] - POOL_RAW) // POOL_RAW_BYTES   # 128
 POOL_ZEROS = 0x200                           # the directory's first bytes, zeros at boot: no pool yet
+# Runtime DDR above the load area, never in the boot stream (docs/sharc-ddr.md: free to 0xa0000000)
+BUILD_SCRATCH = 0x84800000                   # build3's arrays, 32 KB apart (aligned for fft3 at N = 4096)
+BUILD_ARRAYS = ("src_re", "src_im", "dst_re", "dst_im", "ar", "ai", "br", "bi", "zr", "zi", "discard")
+BUILD_STRIDE = 0x8000
+LEVELS_AT = 0x84900000                       # entry j's levels (table3's layout) at LEVELS_AT + j x LEVELS_SLOT
+LEVELS_SLOT = 0x201000                       # >= table3.size_bytes(64, 4096)
+LEVELS_END = LEVELS_AT + POOL_SLOTS * LEVELS_SLOT
+# A reload builds into a spare region and swaps (build3.asm): 129 regions, entry j holds one
+LEVELS_REGIONS = POOL_SLOTS + 1
+LEVELS_REGIONS_END = LEVELS_AT + LEVELS_REGIONS * LEVELS_SLOT    # 0x94b81000, inside the free DDR
+REGION_TABLE = 0x84860000                    # REGION[j] (128 words): the region entry j holds
+SPARE_DM = 0x2E4390                          # the free region (0: the region table is not set up yet)
+SPARE_STAMP_DM = 0x2E4394                    # BLOCKS_DM at the swap that freed it
+BLOCKS_DM = 0x2DE118                         # block_count.asm: blocks, cumulative
+SPARE_HOLD_BLOCKS = 160                      # DCLK's longest fade is 4800 samples = 150 blocks of 32
+DDR_END = 0xA0000000
+# Boot-stream data for build3, in DDR_REGION
+TEMPLATES_AT = 0x80700000                    # table3.templates(), 1 KB per N = 64 .. 4096
+SCALES_AT = 0x80701C00                       # table3.scales(), S for F = 1 .. 64
+TWR_AT, TWI_AT = 0x80702000, 0x80706000      # fft3's twiddles at N = 4096 (they serve every smaller M)
+STAGE3_DATA_END = 0x8070A000
 SYNC_DM = 0x2E0000                           # sync.asm (M10b-2): MOVE locked to the tempo and the song position
 SYNC_SW = SYNC_DM // 2                       # 0x170000
+TRIM_DM = 0x2E0200                          # trim.asm (the level trim): one gain factor per voice, from FINE (record 262)
+TRIM_SW = TRIM_DM // 2                       # 0x170100
+TRIM_TABLE_DM = 0x2E0300                     # its factors, 64 float32 (live.trim_table)
+TRIM_FACTOR_DM = 0x2DE6C8                    # the factor for the voice in hand: loop, sub.asm and noise.asm read it
 SYNC_TABLE_DM = 0x2E0400                     # its table: a word per RATE 0..100 (live.sync_table)
 SMOOTH_DM = 0x2E0600                         # smooth.asm (M10b-2): SMTH, the glide on POS
 SMOOTH_SW = SMOOTH_DM // 2                   # 0x170300
@@ -134,6 +174,36 @@ SMOOTH_STATE_DM = 0x2E1200                   # SMTH's glide per voice and oscill
 DCLK_STATE_DM = 0x2E1400                     # DCLK's state, 64 bytes a voice and oscillator
 DCLK_BUFFERS_DM = 0x2E1C00                   # its two scratch buffers of 128 samples
 DCLK_STATE_END = 0x2E2000
+SUB_DM = 0x2E2000                            # sub.asm (page 3): the sub-oscillator
+SUB_SW = SUB_DM // 2                         # 0x171000
+SUB_STATE_DM = 0x2E2400                      # its 16 phases, then three words of scratch (sub.asm)
+SUB_STATE_BYTES = 0x50
+NOISE_DM = 0x2E2600                          # noise.asm (page 3): the noise, after the sub
+NOISE_SW = NOISE_DM // 2                     # 0x171300
+NOISE_DECAY_DM = 0x2E2C00                    # its envelope factor per DEC, 128 float32 (live.noise_decay_table)
+NOISE_STATE_DM = 0x2E2E00                    # 16 voices x 32 bytes (x seeded, live.noise_seeds), then its count
+NOISE_STATE_BYTES = 0x210
+MIP_LEVELS_DM = 0x2E3100                     # reader_mip.asm's level records, 8 x 32 bytes (mip.level_records)
+MIP_DM = 0x2E3400                            # reader_mip.asm: the reader, with mip-mapped tables
+MIP_SW = MIP_DM // 2                         # 0x171a00
+MIP_END = 0x2E3800                           # the reader's 1 KB
+STAGE3 = mip.INTERP == "hermite2"            # the pool's tables get levels built on the DSP (build3.asm)
+SHARC_SRC = pathlib.Path(__file__).resolve().parents[3] / "csrc" / "waverider" / "sharc"
+# Stage 3 (dnfw.waverider.table3): the pool's levels, built on the DSP in its idle time
+FFT3_DM = 0x2E3800                           # fft3.asm
+FFT3_SW = FFT3_DM // 2                       # 0x171c00
+STAGE3_PARAMS_DM = 0x2E4000                  # fft3's, spec3's and mipb3's parameter blocks and scratch (fixed in them)
+BUILT_DM = 0x2E4100                          # build3.asm's directory: pool entry j's table (| 1), or 0
+BUILD_STATE_DM = 0x2E4300                    # its state, the level rows' pointers and its save area
+BUILD_STATE_END = 0x2E4500
+SPEC3_DM = 0x2E4500                          # spec3.asm
+SPEC3_SW = SPEC3_DM // 2                     # 0x172280
+MIPB3_DM = 0x2E4800                          # mipb3.asm
+MIPB3_SW = MIPB3_DM // 2                     # 0x172400
+BUILD3_DM = 0x2E4B00                         # build3.asm, the idle loop's back edge jumps here
+BUILD3_SW = BUILD3_DM // 2                   # 0x172580
+BUILD3_END = 0x2E5600
+FILL_MIN = 32                                # a shorter tail of zeros stays in its payload (a fill block's header is 16 bytes)
 L2_LOAD, L2_SW = 0x20000000, 0xB80000        # L2 code: load address 0x20000000 is sw 0xb80000
 
 # stock sites
@@ -164,10 +234,22 @@ class DspError(ValueError):
     pass
 
 
+# DNFW_WAVERIDER_BRIGHT=1 (the mip comparison builds, 2026-10-08): table 0's saw end has
+# all 255 harmonics a 512-point frame holds instead of 32, so aliasing (and what the levels
+# take away) is heard across the keyboard, not only from F#5 up. Original formula as ever.
+BRIGHT = os.environ.get("DNFW_WAVERIDER_BRIGHT", "") == "1"
+BRIGHT_HARMONICS = 255
+
+
 def tables() -> list[list[list[int]]]:
     """The two original tables, in slot order: 0 = a 32-harmonic saw darkening to a
-    sine (`testtable`'s frames reversed), 1 = the overtone series (`harmonics`)."""
-    return [list(reversed(testtable.table())), harmonics.table()]
+    sine (`testtable`'s frames reversed; 255 harmonics with BRIGHT), 1 = the overtone
+    series (`harmonics`)."""
+    t0 = (reduce.to_int16(testtable.source_frames(harmonics=BRIGHT_HARMONICS)) if BRIGHT
+          else testtable.table())
+    if NOMIP:
+        return [list(reversed(t0)), harmonics.table()]
+    return [mip.MipTable(list(reversed(t0))), mip.MipTable(harmonics.table())]
 
 
 def sw_to_load(sw: int) -> int:
@@ -194,7 +276,13 @@ def objects() -> dict[str, bytes]:
     return {name: sharc_object.load_bytes(bytes.fromhex(spec[name]["object_parcels_be"]))
             for name in ("reader", "machine5_live", "entry_jump", "idle_load", "idle_jump", "block_count",
                          "entry_mark", "emark_jump", "modulator", "shapes", "load", "pool", "sync",
-                         "smooth", "dclk")}
+                         "smooth", "dclk", "sub", "noise", "trim", "reader_mip", "reader_miph", "reader_miph2")}
+
+
+def noise_state() -> bytes:
+    """noise.asm's 16 voices at boot: each x seeded (live.noise_seeds), the rest zeros."""
+    out = b"".join(struct.pack("<I", s) + bytes(28) for s in live.noise_seeds())
+    return out + bytes(NOISE_STATE_BYTES - len(out))
 
 
 def directory() -> bytes:
@@ -244,6 +332,8 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("load state (zeros)", LOAD_STATE_DM, bytes(LOAD_STATE_BYTES)),
         ("pool.asm (wr_pool)", POOL_DM, obj["pool"]),
         ("sync.asm (wr_sync)", SYNC_DM, obj["sync"]),
+        ("trim.asm (wr_trim)", TRIM_DM, obj["trim"]),
+        ("the trim's gain factors, 64 float32", TRIM_TABLE_DM, struct.pack("<64f", *live.trim_table())),
         ("SYNC's note table, a word per RATE", SYNC_TABLE_DM, struct.pack("<101I", *live.sync_table())),
         ("smooth.asm (wr_smooth)", SMOOTH_DM, obj["smooth"]),
         ("dclk.asm (wr_dclk_pre)", DCLK_DM, obj["dclk"]),
@@ -251,7 +341,24 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("DCLK's lengths, 128 u32", DCLK_LENGTH_DM, struct.pack("<128I", *live.dclk_lengths())),
         ("DCLK's inverses, 128 float32", DCLK_INVERSE_DM, struct.pack("<128f", *live.dclk_inverses())),
         ("SMTH's and DCLK's state (zeros)", SMOOTH_STATE_DM, bytes(DCLK_STATE_END - SMOOTH_STATE_DM)),
+        ("sub.asm (wr_sub_ran)", SUB_DM, obj["sub"]),
+        ("the sub-oscillator's phases and scratch (zeros)", SUB_STATE_DM, bytes(SUB_STATE_BYTES)),
+        ("noise.asm (wr_noise)", NOISE_DM, obj["noise"]),
+        ("the noise's decay factors, 128 float32", NOISE_DECAY_DM, struct.pack("<128f", *live.noise_decay_table())),
+        ("the noise's state (seeds, then zeros)", NOISE_STATE_DM, noise_state()),
+        ("reader_mip.asm's level records", MIP_LEVELS_DM, mip.level_records()),
+        {"hermite": ("reader_miph.asm (wr_miph, Hermite)", MIP_DM, obj["reader_miph"]),
+         "hermite2": ("reader_miph2.asm (wr_miph2, Hermite, 16-bit taps)", MIP_DM, obj["reader_miph2"]),
+         "linear": ("reader_mip.asm (wr_mip)", MIP_DM, obj["reader_mip"])}[mip.INTERP],
     ]
+    if STAGE3:
+        s3 = stage3_objects()
+        raw += [("fft3.asm (wr_fft3)", FFT3_DM, s3["fft3"]),
+                ("stage 3 parameter blocks and scratch (zeros)", STAGE3_PARAMS_DM, bytes(BUILT_DM - STAGE3_PARAMS_DM)),
+                ("build3's directory and state (zeros: nothing built)", BUILT_DM, bytes(BUILD_STATE_END - BUILT_DM)),
+                ("spec3.asm (wr_spec3_split, wr_spec3_join)", SPEC3_DM, s3["spec3"]),
+                ("mipb3.asm (wr_mipb3_in, wr_mipb3_out)", MIPB3_DM, s3["mipb3"]),
+                ("build3.asm (wr_build3)", BUILD3_DM, s3["build3"])]
     out = []
     for k, (what, at, payload) in enumerate(raw):
         end = raw[k + 1][1] if k + 1 < len(raw) else REGION[1]
@@ -260,14 +367,67 @@ def spans() -> list[tuple[str, int, bytes]]:
         if "asm" in what and end - at - len(payload) < 64:
             raise DspError(f"{what} leaves fewer than 64 bytes of NOP padding")
         out.append((what, dm_to_load(at), payload + bytes(end - at - len(payload))))
-    for what, at, frames in (("table 0: saw -> sine (testtable reversed)", TABLES_DM[0], t[0]),
-                             ("table 1: the overtone series (harmonics)", TABLES_DM[1], t[1])):
-        payload = reference.dsp_bytes(frames)
-        if len(payload) != TABLE_BYTES:
-            raise DspError(f"{what} is {len(payload)} bytes, not {TABLE_BYTES}")
+    for what, at, table in ((f"table 0: saw{' (255 harmonics)' if BRIGHT else ''} -> sine (testtable reversed), mip-mapped", TABLES_AT[0], t[0]),
+                            ("table 1: the overtone series (harmonics), mip-mapped", TABLES_AT[1], t[1])):
+        payload = table.dsp_bytes() if isinstance(table, mip.MipTable) else reference.dsp_bytes(table)
+        if len(payload) > MIP_TABLE_BYTES:
+            raise DspError(f"{what} is {len(payload)} bytes, more than {MIP_TABLE_BYTES}")
         out.append((what, at, payload))                  # DDR: the target is the address
+    if STAGE3:
+        wr, wi = twiddles(table3.MAX_POINTS)
+        out += [("build3's templates, 1 KB per N (table3.templates)", TEMPLATES_AT, table3.templates()),
+                ("build3's position scales, S per F (table3.scales)", SCALES_AT, table3.scales()),
+                ("fft3's twiddles at N 4096, cos", TWR_AT, wr.astype("<f4").tobytes()),
+                ("fft3's twiddles at N 4096, -sin", TWI_AT, wi.astype("<f4").tobytes())]
     out.append(("pool directory (zeros: no table loaded yet)", POOL_DIR, bytes(POOL_ZEROS)))
     return out
+
+
+def stream_blocks(at: int, payload: bytes) -> bytes:
+    """A span as boot-stream blocks: its bytes, then a fill block for a tail of zeros (the
+    form stock uses for its own zeroed ranges in L1 and DDR, 4-byte aligned). The memory
+    loaded is the same; the stream is shorter by the zeros."""
+    body = len(payload.rstrip(b"\x00"))
+    body += -body % 4
+    tail = len(payload) - body
+    if at % 4 or tail % 4 or tail < FILL_MIN:
+        return bootstream.block(at, payload)
+    fill = bootstream.block(at + body, flags=bootstream.FLAG_FILL, count=tail)
+    return (bootstream.block(at, payload[:body]) if body else b"") + fill
+
+
+def twiddles(points: int):
+    """fft3.asm's tables: entry h + k = (cos, -sin)(pi k / h) for each half-width h < N
+    (a smaller transform reads the same entries)."""
+    import numpy as np  # noqa: PLC0415
+    wr, wi = np.zeros(points, np.float32), np.zeros(points, np.float32)
+    h = 1
+    while h < points:
+        a = np.pi * np.arange(h) / h
+        wr[h:2 * h], wi[h:2 * h] = np.cos(a), -np.sin(a)
+        h *= 2
+    return wr, wi
+
+
+def stage3_objects() -> dict[str, bytes]:
+    """fft3, spec3, mipb3 and build3 from their committed .json (scripts/build_fft.py),
+    each checked against the placement it was assembled for."""
+    out = {}
+    for name, sw in (("fft3", FFT3_SW), ("spec3", SPEC3_SW), ("mipb3", MIPB3_SW), ("build3", BUILD3_SW)):
+        spec = json.loads((SHARC_SRC / f"{name}.json").read_text(encoding="utf-8"))
+        if int(spec["load_sw"], 16) != sw:
+            raise DspError(f"{name}.json was assembled for sw {spec['load_sw']}, not {sw:#x}")
+        out[name] = sharc_object.load_bytes(bytes.fromhex(spec["object_parcels_be"]))
+    return out
+
+
+def build3_jump() -> bytes:
+    """The idle loop's back edge to build3.asm: `JUMP 0x172500`, the committed idle JUMP's
+    encoding (Type 8a, 063e00 + the address) with build3's address."""
+    jump = lambda sw: sharc_object.load_bytes(bytes.fromhex(f"063e00{sw:06x}"))
+    if objects()["idle_jump"] != jump(IDLE_SW):
+        raise DspError("the committed idle JUMP is not 063e00 + its target")
+    return jump(BUILD3_SW)
 
 
 def placements() -> list[dict]:
@@ -348,11 +508,17 @@ def _check_idle_site(stock: bytes, obj: dict) -> None:
 STREAM_LIMIT = 0x100000 - 1
 
 
+def check_upload_size(section: bytes) -> None:
+    """Refuse a section 7 the ColdFire's uploader would not send (stage3c, 2026-10-10:
+    1,051,404 bytes through `section7`, which did not check: no audio frames since boot)."""
+    if len(section) > STREAM_LIMIT:
+        raise DspError(f"section 7 is {len(section):,} B: the ColdFire loads at most {STREAM_LIMIT:,} "
+                       "(a 1 MiB buffer), so the DSP would never boot")
+
+
 def _finish(out: bytearray) -> bytes:
     result = bytes(out)
-    if len(result) > STREAM_LIMIT:
-        raise DspError(f"section 7 is {len(result):,} B: the ColdFire loads at most {STREAM_LIMIT:,} "
-                       "(a 1 MiB buffer), so the DSP would never boot")
+    check_upload_size(result)
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")
@@ -368,7 +534,7 @@ def section7_idle_only(stock: bytes) -> bytes:
     added = idle_spans()
     _check_free(stock, added)
     out = bytearray(bootstream.insert_before_final(
-        stock, b"".join(bootstream.block(at, payload) for _, at, payload in added)))
+        stock, b"".join(stream_blocks(at, payload) for _, at, payload in added)))
     bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), obj["idle_jump"])
     return _finish(out)
 
@@ -406,10 +572,10 @@ def section7(stock: bytes) -> bytes:
     _check_free(stock, added)
 
     out = bytearray(bootstream.insert_before_final(
-        stock, b"".join(bootstream.block(at, payload) for _, at, payload in added)))
+        stock, b"".join(stream_blocks(at, payload) for _, at, payload in added)))
     bootstream.write_span(out, sw_to_load(ENTRY_SW), entry)
     bootstream.write_span(out, dm_to_load(LOOKUP_DM + 20), struct.pack("<I", 5))
-    bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), obj["idle_jump"])
+    bootstream.write_span(out, l2_sw_to_load(IDLE_SITE_SW), build3_jump() if STAGE3 else obj["idle_jump"])
     bootstream.write_span(out, sw_to_load(CALL_SITE_SW), obj["emark_jump"])
     bootstream.write_span(out, sw_to_load(TABLE_SITE_SW), TABLE_SITE_NEW)
     bootstream.write_span(out, sw_to_load(BOUND_SITE_SW), BOUND_SITE_NEW)
@@ -417,4 +583,5 @@ def section7(stock: bytes) -> bytes:
     walked = bootstream.walk(result)
     if not walked.complete or walked.stopped_at != len(result):
         raise DspError(f"the result does not walk as a boot stream ({walked.reason})")
+    check_upload_size(result)
     return result

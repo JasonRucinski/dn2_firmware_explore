@@ -169,8 +169,9 @@ TBL slot 2 + j is pool entry j.
 2. it reads the working project's pool list (record 0, `csrc/wrstore/records.c`,
    `docs/for-dnx-waverider-pool.md`). Pool entry j is the list's entry j, when that
    store slot holds a table of that geometry; otherwise entry j is empty and plays
-   slot 0. With no list, or an automatic one, the list is every slot of that
-   geometry in slot order (the automatic pool, as before the lists). A table of
+   slot 0. With a follows-store list, the list is every slot of that geometry in slot
+   order (the store-order pool, as before the lists); with no list, it is empty
+   (2026-10-13). A table of
    another geometry stays stored and listed, but is not played;
 3. it sends each table from the store's sectors, five sectors a chunk;
 4. it sends the directory **last**.

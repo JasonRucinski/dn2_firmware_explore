@@ -4,6 +4,12 @@
     python tools/dn2sharc_load.py LABEL --idle [--seconds 1] [--n 10]
                                   the SHARC's whole load, from its idle time (a build
                                   with idle_load.asm: dnfw.waverider.dsp, patch 4)
+    python tools/dn2sharc_load.py LABEL --frame-max [--for 60]
+                                  a frame-max build: frame overruns, and each second's
+                                  longest busy stretch, kept by the DSP itself
+    python tools/dn2sharc_load.py LABEL --peak [--for 30]
+                                  the same load over the shortest windows the probe
+                                  can resolve: its median, p99 and worst window
 
     e.g.  silent                  first, with nothing sounding: the baseline
           waverider-1             one held note on a Waverider track
@@ -22,6 +28,26 @@ Each reading is one PEEK, so N readings are N frames sampled at the round
 trip's pace, not consecutive frames. The row printed and appended to the CSV is
 the median, the 5th and 95th percentile, the extremes, and the median's
 difference from the CSV's latest `silent` row: the cost of what LABEL added.
+
+**`--frame-max`** needs a build whose idle stub keeps them (feature/sharc-frame-max,
+idle_load.asm): reply word 3 counts busy stretches of a frame or more (666,667 cycles:
+the DSP worked through a frame boundary without idling once), and word 4 holds the
+longest stretch of the last window of 1,500 stretches (about a second). It samples
+both four times a second for FOR seconds and prints the overruns in that time and the
+windows' longest stretches as a share of a frame. In such a build words 3 and 4 no
+longer carry the A/C split, so `--idle`'s split columns are meaningless there.
+
+**`--peak`** reads the reply's idle and block words back to back for FOR seconds,
+one PEEK each, so each window is one probe round trip (a few frames). Its length
+is the DSP's own block count from the same read (block_count.asm: one block a
+frame), never the ColdFire's frame count from a second call: the two are read at
+different moments, and in a 9-frame window one frame of skew is 11 %. It prints
+the windows' load median, p99 and maximum: an average over a second hides a rare
+heavy frame; this narrows it to a few frames, not one (a single frame's peak needs
+the DSP to keep its own maximum). Missed blocks are checked over the whole run:
+the DSP's blocks against the ColdFire's frames, both cumulative, read at the start
+and the end; fewer blocks than frames (beyond a frame or two of read skew) means
+the per-block routine missed frames, audio the DAC never got.
 A benchmark wants the same track, the same note and no overdrive or FX, so
 only the synth differs.
 
@@ -60,6 +86,7 @@ BLOCKS_WORD = REPLY + 8               # reply word 2: block_count.asm's cumulati
 # reply words 3, 4: idle_load.asm's busy time split at the dispatch's MARK (before / after it)
 FRAME_CYCLES = 1_000_000_000 / 1500   # the core's 1 GHz (docs/sharc-load.md, the clock) per frame
 COLUMNS = ("when", "label", "n", "median", "p5", "p95", "min", "max", "over_silent")
+PEAK_COLUMNS = ("when", "label", "windows", "frames_median", "median", "p99", "max", "missed_blocks")
 
 
 def cycles(word0: bytes) -> int:
@@ -90,11 +117,11 @@ def baseline(path: pathlib.Path) -> int | None:
     return int(rows[-1]["median"]) if rows else None
 
 
-def append(path: pathlib.Path, row: dict) -> None:
+def append(path: pathlib.Path, row: dict, columns=COLUMNS) -> None:
     new = not path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, COLUMNS)
+        w = csv.DictWriter(f, columns)
         if new:
             w.writeheader()
         w.writerow(row)
@@ -109,13 +136,19 @@ def main(argv=None) -> int:
     p.add_argument("--port", default="Digitone II")
     p.add_argument("--idle", action="store_true", help="the whole load, from the idle stub's word 1")
     p.add_argument("--seconds", type=float, default=1.0)
+    p.add_argument("--peak", action="store_true", help="the load over the shortest windows the probe resolves")
+    p.add_argument("--frame-max", action="store_true", help="a frame-max build: overruns and each second's longest stretch")
+    p.add_argument("--for", dest="duration", type=float, default=30.0, help="--peak: seconds to sample")
+    p.add_argument("--bar", type=float, default=0.0,
+                   help="--peak: a bar's length in seconds (e.g. 2.0 at 120 BPM): where in the bar the heavy windows fall")
     a = p.parse_args(argv)
     import dn2probe as dp
     import winmidi
     port = winmidi.Port(a.port, None, None)
-    if a.idle:
+    if a.idle or a.peak or a.frame_max:
         try:
-            return idle_main(dp, dp.Probe(port), a)
+            run = frame_max_main if a.frame_max else peak_main if a.peak else idle_main
+            return run(dp, dp.Probe(port), a)
         finally:
             port.close()
     try:
@@ -139,11 +172,121 @@ def main(argv=None) -> int:
     return 0
 
 
+def _reading(dp, pr):
+    """(idle total, ColdFire frames, blocks, MARK0 split, MARK split) now."""
+    data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD, 16))["data"]
+    frames = dp.decode_stats(pr.call(dp.req_stats))["frames"]
+    return cycles(data[:4]), frames, cycles(data[4:8]), cycles(data[8:12]), cycles(data[12:16])
+
+
+def peak_windows(readings: list[tuple[int, int]], stamps: list[float] | None = None) -> list[dict]:
+    """Consecutive (idle total, blocks total) readings, each from one PEEK -> per
+    window: blocks (= frames), load (0..1) and, given STAMPS (seconds, one per
+    reading), the window's end time. Windows with no block are dropped."""
+    out = []
+    for k, (a, b) in enumerate(zip(readings, readings[1:])):
+        load = load_from_idle(a, b)
+        if load is not None:
+            out.append({"frames": (b[1] - a[1]) & 0xFFFFFFFF, "load": load,
+                        "t": None if stamps is None else stamps[k + 1]})
+    return out
+
+
+def bar_histogram(windows: list[dict], bar: float, above: float, bins: int = 16) -> list[int]:
+    """How many windows over ABOVE fall in each 1/BINS of a BAR-second bar (by end time)."""
+    out = [0] * bins
+    for x in windows:
+        if x["load"] > above and x["t"] is not None:
+            out[int((x["t"] % bar) / bar * bins) % bins] += 1
+    return out
+
+
+def peak_main(dp, pr, a) -> int:
+    def word_pair():
+        data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD, 8))["data"]
+        return cycles(data[:4]), cycles(data[4:8])
+    start = _reading(dp, pr)
+    if not start[2]:
+        print("  reply word 2 is 0: this build has no block_count.asm, so --peak has no window clock")
+        return 1
+    t0 = time.monotonic()
+    readings, stamps, t_end = [word_pair()], [0.0], t0 + a.duration
+    while time.monotonic() < t_end:
+        readings.append(word_pair())
+        stamps.append(time.monotonic() - t0)
+    end = _reading(dp, pr)
+    if readings[-1][0] == readings[0][0]:
+        print("  reply word 1 did not move: this build has no idle stub, or the SHARC never idled")
+        return 1
+    w = peak_windows(readings, stamps)
+    loads = sorted(x["load"] for x in w)
+    sizes = sorted(x["frames"] for x in w)
+    at = lambda v, q: v[min(len(v) - 1, int(q * len(v)))]
+    worst = max(w, key=lambda x: x["load"])
+    frames = (end[1] - start[1]) & 0xFFFFFFFF
+    blocks = (end[2] - start[2]) & 0xFFFFFFFF
+    print("%-16s SHARC load over %d windows of %d..%d frames (median %d): median %.1f %%, p99 %.1f %%, "
+          "worst %.1f %% (a %d-frame window)"
+          % (a.label, len(w), sizes[0], sizes[-1], at(sizes, 0.5), 100 * at(loads, 0.5),
+             100 * at(loads, 0.99), 100 * worst["load"], worst["frames"]))
+    log = a.csv.with_name("sharc-peak-windows") / f"{a.label}.csv"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("w", encoding="utf-8", newline="") as f:
+        f.write("t,frames,load\n")
+        f.writelines("%.4f,%d,%.4f\n" % (x["t"], x["frames"], x["load"]) for x in w)
+    if a.bar:
+        hi = at(loads, 0.99)
+        h = bar_histogram(w, a.bar, hi)
+        print("  windows over p99 (%.1f %%) by sixteenth of a %.2f s bar: %s" % (100 * hi, a.bar, h))
+        print("  (the clock is this computer's, started at an arbitrary point in the bar: look for a cluster, not its position)")
+    print("  windows logged to", log)
+    print("  blocks %d over %d ColdFire frames (%+d): %s"
+          % (blocks, frames, blocks - frames,
+             "no frame missed" if blocks >= frames - 2 else "THE DSP MISSED FRAMES"))
+    append(a.csv.with_name("sharc-peak-load.csv"), {"when": time.strftime("%Y-%m-%d %H:%M:%S"),
+           "label": a.label, "windows": len(w), "frames_median": at(sizes, 0.5),
+           "median": round(100 * at(loads, 0.5), 2), "p99": round(100 * at(loads, 0.99), 2),
+           "max": round(100 * loads[-1], 2), "missed_blocks": max(0, frames - blocks)},
+           PEAK_COLUMNS)
+    return 0
+
+
+def frame_max_summary(samples: list[tuple[int, int]]) -> dict:
+    """(overruns total, last window's longest stretch) samples -> the overruns in the
+    span and the distinct window maxima, as shares of a frame."""
+    overruns = (samples[-1][0] - samples[0][0]) & 0xFFFFFFFF
+    windows, prev = [], None
+    for _, longest in samples:
+        if longest and longest != prev:
+            windows.append(longest / FRAME_CYCLES)
+        prev = longest
+    return {"overruns": overruns, "windows": windows}
+
+
+def frame_max_main(dp, pr, a) -> int:
+    def words():
+        data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD + 8, 8))["data"]
+        return cycles(data[:4]), cycles(data[4:8])
+    samples, t_end = [words()], time.monotonic() + a.duration
+    while time.monotonic() < t_end:
+        time.sleep(0.25)
+        samples.append(words())
+    r = frame_max_summary(samples)
+    w = sorted(r["windows"])
+    if not w:
+        print("  reply word 4 never held a window's maximum: not a frame-max build, or no busy stretch closed a window")
+        return 1
+    print("%-16s frame overruns in %.0f s: %d   (cumulative since boot: %d)"
+          % (a.label, a.duration, r["overruns"], samples[-1][0]))
+    print("  longest busy stretch per ~1 s window, as a share of a frame, over %d windows: "
+          "median %.1f %%, max %.1f %%   (all: %s)"
+          % (len(w), 100 * w[len(w) // 2], 100 * w[-1], ", ".join("%.0f" % (100 * x) for x in r["windows"])))
+    return 0
+
+
 def idle_main(dp, pr, a) -> int:
     def reading():
-        data = dp.decode_peek(pr.call(dp.req_peek, IDLE_WORD, 16))["data"]
-        frames = dp.decode_stats(pr.call(dp.req_stats))["frames"]
-        return cycles(data[:4]), frames, cycles(data[4:8]), cycles(data[8:12]), cycles(data[12:16])
+        return _reading(dp, pr)
     prev, loads = reading(), []
     for _ in range(a.n if a.n != 100 else 10):
         time.sleep(a.seconds)

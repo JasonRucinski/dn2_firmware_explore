@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m5.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit D:/01_Code/Z_Personal/digikit-wt-sharcemu \\
+        --digikit ../digikit-wt-sharcemu3 \\
         [--blocks 8] [--frame FILE | --frame-be FILE | --frames PATTERN]
 
 The image is `dnfw.waverider.dsp.section7(stock)` -- byte for byte what the mod
@@ -65,9 +65,10 @@ import sharc_waverider_m4 as m4                                # noqa: E402
 import sharc_waverider_render as m1                            # noqa: E402
 import sharc_waverider_voice as m2                             # noqa: E402
 from dnfw.image import bootstream, sharc_object                # noqa: E402
-from dnfw.waverider import dsp, live, render, testtable        # noqa: E402
+from dnfw.waverider import dsp, live, mip, render, testtable        # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
 from dnfw.waverider import voice as V                          # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 SHARC = ROOT / "csrc" / "waverider" / "sharc"
@@ -76,7 +77,10 @@ LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chai
 
 
 SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
-                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"))
+                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"), ("trim", "TRIM_SW"),
+                ({"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip"), "MIP_SW"))
+# (reader_mip and reader_miph load at the same address; the image carries the one
+# dnfw.waverider.mip.INTERP picks, so that one is the one decoded)
 
 
 def shipped_sources() -> tuple[str, ...]:
@@ -141,6 +145,14 @@ def init_on(snap, m2mach, image: Image):
     runner.data = image.memory
     runner.state = dataclasses.replace(runner.state, concrete=image.memory)
     return runner
+
+
+def native_on(init, image: Image, library=None, host_fixups: bool = True):
+    """INIT (from `init_on`) in digikit's native engine: `run_blocks` then runs the same
+    blocks about 20 times faster. See scripts/sharc_native.py for what that is trusted for.
+    One engine holds one run's state: make a new one for each series of blocks."""
+    import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
+    return sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups)
 
 
 def fixups(hooks=None) -> fx.Fixups:
@@ -225,8 +237,8 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               # tempo, as the DSP's frame copy holds them
                               "sync": (frame_word(r.state, FR.slot_offset(t, SYNC1)),
                                        frame_word(r.state, FR.slot_offset(t, SYNC2))),
-                              "song": frame_word(r.state, live.SYNC_POSITION)
-                                      | frame_word(r.state, live.SYNC_POSITION + 2) << 16,
+                              "song": frame_word(r.state, live.SYNC_POSITION_LO)
+                                      | frame_word(r.state, live.SYNC_POSITION_HI) << 16,
                               "tempo": frame_word(r.state, live.SYNC_TEMPO),
                               "smth": (frame_word(r.state, FR.slot_offset(t, SMTH1)),
                                        frame_word(r.state, FR.slot_offset(t, SMTH2))),
@@ -286,9 +298,10 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                  SETUP_TABLE_READ: table_read, SETUP_NONE: none_arm}
         hooks.update(extra_hooks or {})
         f = fixups(hooks)
-        r = m4.unpack_call(state, frames(b))
+        native = hasattr(state, "block_call")   # a sharc_native.Engine: the taps above read it as they are
+        r = state.block_call(frames(b)) if native else m4.unpack_call(state, frames(b))
         t0 = time.perf_counter()
-        res = fx.run(r, 8_000_000, f)
+        res = r.run(8_000_000, hooks, m4.UNPACK_RETURN) if native else fx.run(r, 8_000_000, f)
         wall += time.perf_counter() - t0
         if not (res[0] == "halt" and res[1].pc_sw == m4.UNPACK_RETURN):
             halt = f"{res[1].reason} at {res[1].pc_sw:#x}" if res[0] == "halt" else f"{res[0]} at {res[1]:#x}"
@@ -380,6 +393,23 @@ def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict
             insn = dk.st.decode_at(image.memory, None, load_sw + off // 2)
             if insn.kind in ("unknown", "uncertain") or (insn.length_bytes or 0) != end - off:
                 bad.append(f"+{off} digikit {insn.type_name}/{insn.length_bytes} vs {end - off}")
+            sub = m3.SUBWORD_LOAD.match(lines[k].split("//", 1)[0].strip())
+            if sub:
+                # a byte / short-word load, re-encoded as Type 3d (m3.fix_subword): digikit must
+                # read 3d with this load's fields; selmap has no Type 3d and reads 3a with a
+                # compute field of 0x31xxxx, so it is held to the load's registers only
+                f = insn.fields or {}
+                l, x, w = m3.SUBWORD[sub.group(4).upper()]
+                want3d = {"u": 1, "i[2:0]": int(sub.group(2)), "m[2:0]": int(sub.group(3)), "cond[4:0]": 31,
+                          "g": 0, "d": 0, "l": l, "ureg[6:0]": int(sub.group(1)), "ex": 0, "w": w, "x": x}
+                if insn.type_name != "3d" or {k2: f.get(k2) for k2 in want3d} != want3d:
+                    bad.append(f"+{off} digikit {insn.type_name} {f} vs Type 3d {want3d}")
+                if use_selmap:
+                    n, text = sel.get(off, (0, "?"))
+                    plain = norm(f"R{sub.group(1)} = DM(I{sub.group(2)}, M{sub.group(3)})")
+                    if n != 6 or not norm(text).endswith(plain):
+                        bad.append(f"+{off} selmap {n}B '{text}' vs a 3a reading of '{lines[k].strip()}'")
+                continue
             if use_selmap:
                 n, text = sel.get(off, (0, "?"))
                 want = norm(lines[k])
@@ -407,14 +437,17 @@ def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict
 
 # -- WAVs ------------------------------------------------------------------------------------------
 
-def wav(name, samples, seconds, wavs, what, normalise=False):
+def wav(name, samples, seconds, wavs, what, normalise=False, source="the runner"):
+    """SOURCE goes into the file with the loop note, so a reader of the WAV alone knows
+    what rendered it: the runner (the default) or "the model" for a preview."""
     n = int(seconds * RATE)
     pk = V.peak(samples)
     scale = 0.9 / pk if normalise and pk else 1.0
     looped = 0 < len(samples) < n
     data = V.loop_to([x * scale for x in samples], n) if looped else [x * scale for x in samples]
     path = OUT / name
-    m1.write_wav(path, data, RATE)
+    m1.write_wav(path, data, RATE, source + (", LOOPED from %d rendered samples" % len(samples) if looped
+                                             else ", not looped") + ": " + what)
     wavs.append({"file": str(path), "seconds": round(len(data) / RATE, 3),
                  "rendered_samples": len(samples), "looped": looped, "gain": round(scale, 4),
                  "peak": pk, "rms": V.rms(samples),
@@ -436,8 +469,7 @@ def main(argv=None):
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=8)
     p.add_argument("--seconds", type=float, default=2.5)
     p.add_argument("--frame", help="a 2,688-byte frame in DSP memory order (dnfw.waverider.frame)")
@@ -506,7 +538,7 @@ def main(argv=None):
                 wav("m5_voice_machine.wav", track_series(runs["init"], 0), a.seconds, wavs,
                     "track 0's buffer after the type-5 loop, bit-exact to the reference (init sound)")
                 wav("m5_preview_init_sound.wav", preview(tables, 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
-                    "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)")
+                    "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)", source="the model")
             for key, what, pv in (
                     ("pos120", "POS (WAV1) 120: slot 0's last frame, the sine", (60.0, 0x7800, 0x7800, 0)),
                     ("slot1", "TBL1 1, WAV1 64: the overtone table, partials 9-10", (60.0, 0x4000, 0x4000, 0x100)),
@@ -515,16 +547,16 @@ def main(argv=None):
                     wav(f"m5_{key}_machine.wav", track_series(runs[key], 0), a.seconds, wavs,
                         f"track 0's buffer, {what}")
                     wav(f"m5_preview_{key}.wav", preview(tables, *pv[:1], pv[1], pv[2], pv[3], a.seconds),
-                        a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}")
+                        a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}", source="the model")
             if runs["silent"]["ok"]:
                 wav("m5_no_trigger.wav", runs["silent"]["amp_out"], a.seconds, wavs,
                     "control: no trigger, amp output (silent)")
             wav("m5_demo_pos_sweep_preview.wav", preview(tables, 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 0 at note 48, POS swept 0 -> 120 over 4 s: "
-                "a buzzy saw darkening to a sine")
+                "a buzzy saw darkening to a sine", source="the model")
             wav("m5_demo_harmonic_climb_preview.wav", preview(tables, 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 1 at note 48, POS swept 0 -> 120 over 4 s: "
-                "the overtone series climbing, partial 1 to 16")
+                "the overtone series climbing, partial 1 to 16", source="the model")
 
         if "stock" in steps:
             print("\nstep 4: types 0-4 unchanged")
@@ -549,7 +581,7 @@ def main(argv=None):
                 i0 = run["t5_inputs"][-1][t]
                 wav(f"m5_preview_frame{sep[:-1]}.wav", preview(tables, i0["note"], i0["wav1"], i0["wav1"],
                                                     i0["tbl1"], a.seconds), a.seconds, wavs,
-                    "PREVIEW, not the runner: the reference for the caller's frame's last block inputs")
+                    "PREVIEW, not the runner: the reference for the caller's frame's last block inputs", source="the model")
 
     ok = bool(results) and all(r.get("ok") for r in results.values())
     report["steps"] = results
@@ -649,8 +681,8 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
                 f.param(0, WAV1, jump)
             if song is not None:                # M10b-2: what the ColdFire's sync.c writes
                 p = song(b)
-                f.put(live.SYNC_POSITION, p & 0xFFFF)
-                f.put(live.SYNC_POSITION + 2, p >> 16)
+                f.put(live.SYNC_POSITION_LO, p & 0xFFFF)
+                f.put(live.SYNC_POSITION_HI, p >> 16)
                 f.put(live.SYNC_TEMPO, SYNC_TEMPO)
             return f.to_bytes()
         return fb
@@ -940,7 +972,7 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)
             and rb2["tune_both"][2] == rb["tune_both"][2] and abs(rb["tune_both"][2] / inc60 - 2.0) < 1e-6,
-        "the DSP's frame copy carries the tail's song position (2644) and the tempo (0xd8), "
+        "the DSP's frame copy carries the song position (words 0xa18 and 0x9a8) and the tempo (0xd8), "
         "as the frames put them (M10b-2)":
             all(frame_carries(k) for k in ("sync_free", "sync_retrig", "sync_osc2", "sync_off")),
         "SYNC Free: osc 1's MOVE phase is the song position x 1152 (RATE 100, 1/32 T) mod 2^32 "

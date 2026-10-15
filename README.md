@@ -32,6 +32,7 @@ file, byte for byte. A test checks this.
 | `transients` | Replace the FM drum transient bank with your own samples | confirmed on hardware | yes |
 | `songguard` | A song with a damaged row count loads as empty instead of halting the instrument (a stock bug) | confirmed on hardware | no |
 | `lfolength` | The LFO ONE/HALF fix: TRIG MODE ONE and HALF run one cycle / half a cycle from the start phase and hold the value they reached, on audio and MIDI tracks (two stock bugs; supersedes `lfohold`) | confirmed on hardware (2026-10-09, audio track); MIDI tracks in the emulator | yes |
+| `waverider` | A sixth synth machine: two wavetable oscillators with MOVE, a sub-oscillator and noise, with tables from the +Drive (alpha) | alpha, confirmed on hardware (2026-10-14) | yes |
 | ~~`lfohold`~~ | Superseded by `lfolength` (2026-10-09): the hold, audio tracks only. Kept in the tree for the record, not offered | confirmed on hardware (2026-10-08) | no |
 
 **Combining them.** `dnfw mods matrix` tries each pair in both orders. The command
@@ -51,11 +52,15 @@ passed on the instrument:
 even stock 1.11 on load (`EXCEPTION DS0059`). The `songguard` mod limits the count.
 It passed on the instrument (`docs/old-project-load.md`).
 
-**In development: Waverider**, a wavetable machine for the Digitone II, after the
-Wavefinder of Tonverk (`docs/waverider-feasibility.md`). We read a baked table back on
-the instrument (Milestone 0). Milestones 1–4 run offline in the SHARC emulator of
-digikit. They cover our own SHARC reader inside a real DN2 voice, the per-track chain,
-and tables baked into the DSP image. Milestone 5 is the first build to flash.
+**Waverider is an alpha.** It is a wavetable machine for the Digitone II, after the
+Wavefinder of Tonverk (`docs/waverider-feasibility.md`). It is a sixth machine in MACHINE
+SEL. It has two wavetable oscillators, a sub-oscillator, noise and its own modulator. Page 5
+(Shape) does not change the sound yet. Our own SHARC reader runs inside a real DN2 voice.
+
+Its tables are in the wavetable pool of the project, on the +Drive. You put them there with
+DNX. The manual is `docs/waverider-manual.md`, and the measurements are in
+`docs/waverider-performance.md`. Sounds that you save may not load the same way in a later
+version. On the command line, use `dnfw mods apply ... --mod waverider`.
 
 ## Installation
 
@@ -98,9 +103,11 @@ check. This tool writes no file that it cannot check.
 
 - **Integrity:** the tool calculates every checksum and the HMAC-SHA256 signature
   again, and checks them on the rebuilt file.
-- **Boot from reset in an emulator:** `scripts/emu_boot_check.py` runs on the ColdFire
-  emulator of digikit, against a stock control. A snapshot of a machine that has
-  already booted does not count (`docs/emulator.md`).
+- **Boot from reset in an emulator:** the `boot_gate` of digikit boots the image from reset
+  (about 11 s on our computer). It watches the fault reporter of the firmware and the refusal
+  of the uploader, and both must see zero hits. `scripts/emu_boot_check.py` is the older route,
+  against a stock control. A snapshot of a machine that has already booted does not count
+  (`docs/emulator.md`).
 - **The engine and save/load:** `scripts/emu_boot_engine.py` runs the evaluator of
   the audio engine. It also takes a stored sound through LOAD and SAVE.
 - **ColdFire encodings:** `scripts/check_coldfire.py` rejects an addressing mode that
@@ -108,6 +115,10 @@ check. This tool writes no file that it cannot check.
 - **Per-mod harnesses** under `scripts/emu_*.py`, each with a stock control.
 - **DSP code** runs offline in the SHARC runner of digikit. A script compares it with
   a Python reference (`scripts/sharc_waverider_*.py`).
+- **Frame words:** a mod can put data in a word of the ColdFire-to-DSP frame. Before it
+  does, two scripts run the stock DSP over recorded and random frames:
+  `scripts/sharc_frame_census.py` and `sharc_frame_word_check.py`. They name every instruction that reads that word
+  (`docs/waverider-frame-words.md`).
 - **On the instrument:** before we flash anything, the project's test plan gives a
   written pass and fail for each hardware test. The recovery route (stock through the
   Early Start-up Menu) works on the instrument. Send it over a clean MIDI link
@@ -153,6 +164,8 @@ something absent (the OS images in `00_Resources/`, objdump or Node) skips, and 
 | `docs/instruments.md` | which tool answers which question |
 | `docs/lfo4-build-plan.md` | the whole LFO4 story, including the dead ends |
 | `docs/waverider-feasibility.md` | Waverider, milestone by milestone |
+| `docs/waverider-manual.md` | Waverider as the alpha behaves: pages, controls, wavetable pool |
+| `docs/waverider-frame-words.md` | which frame words stock writes and the DSP reads, and where Waverider's position moved |
 | `docs/drive-storage-research.md` | the +Drive, and where a sample library could live |
 | `docs/ideas-backlog.md` | ideas, costed, with their state |
 | `docs/ele3-format.md` | the transport, container, codec and integrity layers |
@@ -182,7 +195,14 @@ The ColdFire and SHARC emulators are from
 [m-dwyer/digikit](https://github.com/m-dwyer/digikit) (GPL-2.0-or-later). We use them as
 external tools. We assemble our own SHARC code with
 [js216/selache](https://github.com/js216/selache) (GPL-3.0). The Digitone data formats
-come from the sibling project DNX. The `arpscale` mod is the work of
+come from the sibling project DNX.
+
+The USB SysEx probe adapts the design of
+[irpina/digihealth](https://github.com/irpina/digihealth) (GPL-2.0-or-later). The
+frame-word census follows the method of the OS 1.12 notes of
+[naturarum/dn2-cfw](https://github.com/naturarum/dn2-cfw) (GPL-2.0, method only, no code
+taken). Its report on words 0xa54 and 0xa56 (issue #49) moved the song position of
+Waverider. The `arpscale` mod is the work of
 [w-winter](https://github.com/w-winter) (pull request #212). `docs/references.md` says
 what we took from each, and where this project does it differently on purpose.
 

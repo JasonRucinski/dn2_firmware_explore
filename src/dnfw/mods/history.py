@@ -80,7 +80,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "songguard": UNPUBLISHED,
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
-    "waverider": UNPUBLISHED,
+    "waverider": (
+        Release("0.1.0", "2026-10-15", (
+            "The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a "
+            "sub-oscillator, noise, sound options and wavetable pools from the +Drive. Page 5 is for "
+            "a future version.",
+        )),
+    ),
 }
 
 

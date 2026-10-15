@@ -31,8 +31,11 @@ then answer with Waverider's pages and labels:
 The labels and the page layout are the owner's (2026-10-01), from the Waverider mockup,
 with our own names:
 
-    page 1, OSC 1   A TUNE  B LEV   C POS   D TBL   E RATE  F MPOS  G MLEV  H MOVE
-    page 2, OSC 2   A DETN  B LEV   C POS   D TBL   E RATE  F MPOS  G MLEV  H MOVE
+    page 1, OSC 1   A TUNE  B LEV   C POS   D TBL   E RATE  F MLEV  G MPOS  H MOVE
+    page 2, OSC 2   A DETN  B LEV   C POS   D TBL   E RATE  F MLEV  G MPOS  H MOVE
+
+MLEV and MPOS were F and G the other way round until 2026-10-07 (owner: each mod control
+under the control it moves, MLEV under LEV, MPOS under POS).
 
 Only TUNE, POS and TBL work in M7 (the loop reads TUN1, WAV1 and TBL1), and LEV from M9a
 (LEV1, the reader's gain); page 2's DETN, LEV, POS and TBL from M9b (osc 2: TUN2, LEV2,
@@ -51,10 +54,11 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
-from .live import DCLK_DEFAULT, MOVE_SHAPES, SYNC_INDEX, SYNC_NOTES, dclk_names, smth_names
+from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
+                   dclk_names, smth_names)
 
-LOAD = 0x4670C000                 # RAM above BSS, clear of every declared range (docs/mods-compatibility.md)
-C_LOAD = LOAD + 0x800             # the C page renderer, after this assembly (0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2)
+LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
+C_LOAD = LOAD + 0x1200            # the C page renderer, after this assembly (0x1000 until the destination list's numbers, 0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4, 0xC00 until the shape page: 3,484 B)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -68,8 +72,31 @@ TAG = 10                          # the tag every stock SYN descriptor ends with
 # number). Our own strings, so no descriptor points into WaveTone's. The waveform icons
 # a Waverider page first showed at B and F did not come from the titles: they are the
 # SYN page draw's WaveTone OSC-page overlay (page id 7), which `wr_icons` skips.
-TITLES = ("WR 1", "WR 2", "WR 3")
+TITLES = ("WR 1", "WR 2", "WR 3", "WR 4", "WR 5")
 SUBTITLE = "Waverider"             # where WaveTone's say "WaveTone"
+
+SUBNOISE = (227, 228, 229, 230, 231, 232, 233, 234)    # SUB OCT WAVE SRC / NOIS TYPE COLR DEC
+SUBNOISE_LABELS = dict(zip(SUBNOISE, ("SUB", "OCT", "WAVE", "SRC", "NOIS", "TYPE", "COLR", "DEC")))
+SUBNOISE_SLOT0 = 50                # their sound slots: 50..57 (the record table's slot field)
+SUBNOISE_PLAIN = (227, 231)        # SUB, NOIS: 0..127 (wr_rate_fmt row 4)
+SUBNOISE_COLR = 233                # -64..+63 (row 5)
+SUBNOISE_DEC = 234                 # 0..126, Inf (row 6)
+
+# Page 5, "Shape" (owner's option 4, 2026-10-12; docs/waverider-shape.md): four live knobs and
+# one typed shaper, reserved before the sound features that fill them. The records are FM
+# Tone's 208..211 and 235..237 in sound slots 58..64 (a WaveTone-type sound has none there)
+# and WaveTone's master tuning 261 in slot 48, which the Waverider voice never reads
+# (scripts/sharc_waverider_inert.py: the render is identical with 48, 49 and 58..64 at their
+# extremes). 262 (FINE, slot 49) stays free. None of the eight reaches the sound yet.
+# AMT is record 261 (WaveTone's MAST, a modulatable record) and P2 is 236 (mask 0): the amount can be
+# an LFO destination, P2 and P1 cannot (owner, 2026-10-13: the AMT/P2 swap). The sound slots stay.
+SHAPE = (208, 209, 210, 211, 235, 261, 237, 236)     # FOLD WARP FM NPOS / TYPE AMT P1 P2
+SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1", "P2")))
+SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
+SHAPE_TYPE = 235
+TRIM_ID = 262                      # WaveTone's FINE (slot 49): the level trim, page 4 place D (docs/waverider-trim.md)
+SHAPE_TYPES = ("Off", "Ring", "AM", "Formant", "Comb")     # more later: the list grows, no slot
+SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
 # frame's params 25..27, which the SHARC loop reads)
@@ -84,7 +111,21 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           248: "SYN1", 260: "SYN2",
           # DCLK (HOLD: the crossfade, 0 Off, 1..127 = 1..100 ms) and SMTH (DEC, WDTH: the
           # glide, 127 Off, the records' default)
-          254: "DCLK", 255: "SMT1", 258: "SMT2"}
+          254: "DCLK", 255: "SMT1", 258: "SMT2",
+          # pages 3 and 4 (owner, 2026-10-07; docs/waverider-pages34.md): page 3 the
+          # sub-oscillator and the noise, on FM Tone's records in slots 50..57, which a
+          # WaveTone-type sound doesn't have (prototype: the screen only, no sound yet)
+          **SUBNOISE_LABELS,
+          # page 5: the shape (reserved)
+          **SHAPE_LABELS,
+          TRIM_ID: "TRIM"}
+# record id -> the DEST cell's label where the page's own label is the same for both
+# oscillators (each oscillator has its own page, so the pages cannot tell; the cell can):
+# the stem and the oscillator, four characters like SYN1/SMT1. The pages keep LABELS
+# (owner, 2026-10-13: "do all of them").
+MINI_LABELS = {241: "LEV1", 245: "LEV2", 239: "POS1", 243: "POS2", 247: "TBL1", 251: "TBL2",
+               240: "RAT1", 244: "RAT2", 246: "MPO1", 250: "MPO2", 252: "MLV1", 256: "MLV2",
+               253: "MOV1", 257: "MOV2"}
 # record id -> Waverider's long name, in the stock "Osc1 Waveform" style: what the
 # header shows while a knob turns ("Osc1 Position=65"), and the LFO destination
 # browser on a Waverider track
@@ -94,30 +135,47 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               253: "Osc1 M.Shape", 244: "Osc2 M.Rate", 250: "Osc2 M.Pos",
               256: "Osc2 M.Level", 257: "Osc2 M.Shape", 259: "Move Retrig",
               248: "Osc1 M.Sync", 260: "Osc2 M.Sync",
-              254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth"}
+              254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth",
+              227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
+              231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay",
+              208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "Noise to Pos",
+              235: "Shaper Type", 261: "Shaper Amount", 237: "Shaper P1", 236: "Shaper P2",
+              TRIM_ID: "Level Trim"}
 
-# the two pages, encoders A..H; 0 is an empty place
+# the pages, encoders A..H; 0 is an empty place
 PAGES = (
-    (238, 241, 239, 247, 240, 246, 252, 253),   # OSC 1: TUNE LEV POS TBL RATE MPOS MLEV MOVE
-    (242, 245, 243, 251, 244, 250, 256, 257),   # OSC 2: DETN LEV POS TBL RATE MPOS MLEV MOVE
-    (249, 259, 254, 0, 248, 260, 255, 258),     # PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
-)                                               # DCLK; SYN1, SYN2, SMT1, SMT2 (M10b-2)
+    (238, 241, 239, 247, 240, 252, 246, 253),   # OSC 1: TUNE LEV POS TBL RATE MLEV MPOS MOVE
+    (242, 245, 243, 251, 244, 256, 250, 257),   # OSC 2: DETN LEV POS TBL RATE MLEV MPOS MOVE
+    SUBNOISE,                                   # page 3: SUB OCT WAVE SRC / NOIS TYPE COLR DEC
+    (249, 259, 254, TRIM_ID, 248, 260, 255, 258),   # page 4 (page 3 until 2026-10-07): PRST (RSET: Off/On/Random), TRIG (TYPE: 0 restart),
+                                                # DCLK, TRIM (FINE, 2026-10-12); SYN1, SYN2, SMT1, SMT2 (M10b-2)
+    SHAPE,                                      # page 5: FOLD WARP FM NPOS / TYPE AMT P1 P2 (reserved, 2026-10-12)
+)
 
 # M10b: the controls whose steps and value text are Waverider's own. The records stay
 # WaveTone's (MOVE1 is its Noise Attack, MOVE2 the noise filter Base, TRIG the Noise
 # Type), so wr_range and wr_fmt answer for them on a Waverider track only: MOVE steps
 # shape by shape and the header names the shape; TRIG reads Retrig / Free.
 VALUE_NAMES = {253: MOVE_SHAPES, 257: MOVE_SHAPES, 259: ("Retrig", "Free"),
-               248: ("Off", "On"), 260: ("Off", "On")}
+               228: SUB_OCTAVES, 229: SUB_WAVES, 230: ("OSC1", "OSC2"),
+               232: ("WHT", "PNK", "BRN", "DIG"),
+               248: ("Off", "On"), 260: ("Off", "On"),
+               SHAPE_TYPE: SHAPE_TYPES}
 # record id -> (min, max, default), as the firmware's limits getter returns them
 RANGES = {rid: (0, (len(names) - 1) << 8, 0) for rid, names in VALUE_NAMES.items()}
-RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
+RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)
+# page 3's levels (prototype defaults: the sub and the noise off, COLR centred, DEC Inf)
+RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000), 234: (0, 0x7F00, 0x7F00)})   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
+RANGES.update({rid: (0, 0x7F00, 0) for rid in SHAPE_PLAIN})   # the shape's knobs: 0..127, off at 0
+RANGES[TRIM_ID] = (0, 0x7F00, 0x4000)   # TRIM: -15..0 dB, -11 dB at the stock default (live.trim_table)
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
+HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
 SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming routines call it
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
-              "wr_fmt", "wr_vfmt", "wr_range", "descriptors")
+              "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
+              "wr_group", "wr_tie", "wr_list_name", "wr_minilabel")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -186,20 +244,47 @@ TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the pa
 RATE_IDS = (240, 244)             # RATE1, RATE2: named as note lengths while SYNC is on (the page's)
 SMTH_IDS = (255, 258)             # SMT1, SMT2: named by the C page's table (a time, Off at 127)
 DCLK_ID = 254                     # DCLK: likewise (Off at 0, then 1..100 ms)
-TBL_NAMES = 2 + 127               # the baked tables, then the +Drive pool's (csrc/waverider/pool.h)
+TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128 (csrc/waverider/pool.h)
 
 
-def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str:
+SLOT_RUNS = ((SUBNOISE_SLOT0, SUBNOISE[0], len(SUBNOISE)),) + SHAPE_RUNS   # the sound slots Waverider answers
+
+
+def slot_id_runs() -> str:
+    """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot is in it, else
+    on to the next run; past the last, to the stock answer (label 9). Ends at label 6 with d0 = id."""
+    lines = []
+    for k, (first, record, count) in enumerate(SLOT_RUNS):
+        last = k == len(SLOT_RUNS) - 1
+        head = f"{k + 3}:  " if k else "    "
+        lines += [f"{head}move.l  %sp@(8),%d0",
+                  f"    subi.l  #{first},%d0",
+                  f"    moveq   #{count - 1},%d1",
+                  "    cmp.l   %d0,%d1",
+                  f"    bcs.s   {'9f' if last else str(k + 4) + 'f'}",
+                  f"    addi.l  #{record},%d0"]
+        if not last:
+            lines.append("    bra.s   6f")
+    return chr(10).join(lines)
+
+
+def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     """The chunk's assembly (GNU as, ColdFire), linked at LOAD. PAGE_DRAW is the C
-    renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE and TBL_NAMES its
-    `wr_tbl_range` ({min, max, default}) and `wr_tbl_names` (a name per slot), which
-    it keeps as the +Drive pool fills, so TBL steps through the pool and names it;
+    renderer's entry, `wr_page_draw(view, canvas)`; TBL_RANGE its `wr_tbl_range`
+    ({min, max, default}), which it keeps as the +Drive pool fills, so TBL steps
+    through the pool; TBL_FMT its `wr_tbl_fmt`, the formatter that names a TBL value
+    (the pool position and the name, from its `wr_tbl_names`);
     RATE_FMT its `wr_rate_fmt`, a {names, count} pair per oscillator that it sets from
     the active track's SYNC (count 0: RATE's own number), and a third that names SMTH."""
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
+    mini_table = "\n".join(f"    .long {rid}, mini_{rid}" for rid in MINI_LABELS)
+    mini_strings = "\n".join(f'mini_{rid}: .asciz "{name}"' for rid, name in MINI_LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
     long_strings = "\n".join(f'long_{rid}: .asciz "{name}"' for rid, name in LONG_NAMES.items())
+    # record id -> position on the pages (page x 8 + knob): the destination list's order and its numbers
+    key_table = "\n".join(f"    .long {rid}, {8 * p + k}" for p, entries in enumerate(PAGES)
+                          for k, rid in enumerate(entries) if rid)
     pages = []
     for k, entries in enumerate(PAGES):
         pages.append(f"    .long title_{k}, subtitle\n"
@@ -208,12 +293,15 @@ def source(page_draw: int, tbl_range: int, tbl_names: int, rate_fmt: int) -> str
     page_data = "\n".join(pages)
     # a row is an id and where its {names, count} pair is: TBL's and RATE's pairs change
     fmt_table = "\n".join([f"    .long {60 * rid}, pair_{rid}" for rid in VALUE_NAMES]
-                          + [f"    .long {60 * rid}, pair_tbl" for rid in TBL_IDS]
+                          + [f"    .long {60 * rid}, {tbl_fmt:#010x}" for rid in TBL_IDS]
                           + [f"    .long {60 * rid}, {rate_fmt + 8 * k:#010x}" for k, rid in enumerate(RATE_IDS)]
                           + [f"    .long {60 * rid}, {rate_fmt + 16:#010x}" for rid in SMTH_IDS]
-                          + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"])
-    fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()]
-                          + [f"pair_tbl: .long {tbl_names:#010x}, {TBL_NAMES}"])
+                          + [f"    .long {60 * DCLK_ID}, {rate_fmt + 24:#010x}"]
+                          + [f"    .long {60 * rid}, {rate_fmt + 32:#010x}" for rid in SUBNOISE_PLAIN + SHAPE_PLAIN]
+                          + [f"    .long {60 * SUBNOISE_COLR}, {rate_fmt + 40:#010x}"]
+                          + [f"    .long {60 * SUBNOISE_DEC}, {rate_fmt + 48:#010x}"]
+                          + [f"    .long {60 * TRIM_ID}, {rate_fmt + 56:#010x}"])
+    fmt_pairs = "\n".join([f"pair_{rid}: .long names_{rid}, {len(names)}" for rid, names in VALUE_NAMES.items()])
     name_lists = "\n".join(f"names_{rid}:\n" + "\n".join(f"    .long name_{rid}_{k}" for k in range(len(names)))
                            for rid, names in VALUE_NAMES.items())
     name_strings = "\n".join(f'name_{rid}_{k}: .asciz "{n}"' for rid, names in VALUE_NAMES.items()
@@ -306,6 +394,47 @@ wr_label:
     rts
 9:  jmp     {GET_SHORT_NAME:#010x}
 
+| -- the LFO page's DEST cell (`0x400c2528`, the one that draws SYN over the parameter's name),
+| at 0x400c267c: `movel %a0@(30,%d2:l),%sp@- ; pea 0x40219c2d` (10 bytes, now jsr here and two
+| nops). It pushes the destination record's short name straight from the table, not through
+| getShortName, so the SYN page's wr_label never saw it: a Waverider destination drew its
+| borrowed record's own name (3A Sub Level: PITCH; owner, 2026-10-13). a0 = the record table,
+| d2 = 60 x the id, d0 = 4 x the id (still, from the multiply just above). On a Waverider
+| track and for an id the pages label, our label; otherwise the stock pointer. Replays the two
+| pushes by the return address in a1 (a0 and a1 are free after).
+wr_minilabel:
+    movea.l %sp@+,%a1
+    movea.l %a0@(0x30,%d2:l),%a0
+    move.l  %d0,%sp@-
+    move.l  %d1,%sp@-
+    move.l  %a0,%sp@-
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   8f
+    move.l  %sp@(8),%d0
+    lsr.l   #2,%d0
+    lea     mini_labels,%a0
+3:  move.l  %a0@+,%d1
+    beq.s   4f
+    cmp.l   %d0,%d1
+    beq.s   2f
+    addq.l  #4,%a0
+    bra.s   3b
+4:  lea     labels,%a0
+1:  move.l  %a0@+,%d1
+    beq.s   8f
+    cmp.l   %d0,%d1
+    beq.s   2f
+    addq.l  #4,%a0
+    bra.s   1b
+2:  move.l  %a0@,%sp@
+8:  movea.l %sp@+,%a0
+    move.l  %sp@+,%d1
+    move.l  %sp@+,%d0
+    move.l  %a0,%sp@-
+    move.l  #0x40219c2d,%sp@-
+    jmp     %a1@
+
 | -- the long-name getter 0x400365c8, at 0x400365f2 (`move.l %a0@(40,%d1:l),-(%sp) ;
 | move.l %d2,-(%sp)`, 6 bytes: push the record's long name, then the string to build),
 | now jsr here. a0 = the record table, d1 = 60 x id; a0 and a1 are free after, the next
@@ -328,6 +457,126 @@ wr_long:
     move.l  %a1,%sp@-
     move.l  %d2,%sp@-
     jmp     %a0@
+
+| -- the LFO destination list (owner, 2026-10-13: one group, page and knob order, numbers).
+| wr_key: d0 = a record id -> d0 = its place on the pages (page x 8 + knob), -1 for a record
+| the pages do not hold. Every other register kept.
+wr_key:
+    move.l  %d1,%sp@-
+    move.l  %a0,%sp@-
+    lea     key_table,%a0
+1:  move.l  %a0@+,%d1
+    beq.s   2f
+    cmp.l   %d1,%d0
+    beq.s   3f
+    addq.l  #4,%a0
+    bra.s   1b
+2:  moveq   #-1,%d0
+    bra.s   4f
+3:  move.l  %a0@,%d0
+4:  movea.l %sp@+,%a0
+    move.l  %sp@+,%d1
+    tst.l   %d0
+    rts
+
+| wr_sortkey: d0 = a record id -> d0 = 1000 + its place on the pages, or the entry itself for
+| any other record (so every entry has one key, the order is total, and what stock lists
+| first in a group, META None, stays first: owner, 2026-10-13). d1 kept.
+wr_sortkey:
+    move.l  %d1,%sp@-
+    move.l  %d0,%d1
+    bsr.s   wr_key
+    bpl.s   2f
+    move.l  %d1,%d0
+    bra.s   1f
+2:  add.l   #1000,%d0
+1:  move.l  %sp@+,%d1
+    rts
+
+| -- the group getter 0x400dbce8(entry), from its first instruction by jmp (its first two
+| instructions, 10 bytes, are replaced). On a Waverider track the records its pages hold
+| answer WaveTone's group (1), FM Tone's borrowed ones (group 0) included, so the list shows
+| one SYN group. Otherwise the displaced `move.l %sp@(4),%d0 ; cmpi.l #321,%d0` and on.
+wr_group:
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    move.l  %sp@(4),%d0
+    bsr.s   wr_key
+    bmi.s   9f
+    moveq   #1,%d0
+    rts
+9:  move.l  %sp@(4),%d0
+    cmpi.l  #321,%d0
+    jmp     0x400dbcf2
+
+| -- the sort comparator's tie-break at 0x400390d0 (`cmp.l %d3,%d2 ; sgt %d0 ; bra.s`, 6
+| bytes, now jsr here). d3 and d2 are the two entries, a before b when the result is true. On a
+| Waverider track the entries' places on the pages decide, within a group; otherwise the
+| entries themselves. Returns past the else arm (4 bytes) to the comparator's exit.
+wr_tie:
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   1f
+    move.l  %d3,%d0
+    bsr.s   wr_sortkey
+    move.l  %d0,%sp@-
+    move.l  %d2,%d0
+    bsr.s   wr_sortkey
+    cmp.l   %sp@+,%d0
+    sgt     %d0
+    bra.s   2f
+1:  cmp.l   %d3,%d2
+    sgt     %d0
+2:  addq.l  #4,%sp@
+    rts
+
+| -- the list's name text at 0x40105af2 (`move.l %sp@(64),%sp@- ; pea 0x4021f244`, 10 bytes,
+| now jsr here and two nops). d2 is the entry; the char* the format reads is at sp+64. On a
+| Waverider track, for a record the pages hold, it becomes "1A " + the name (page, knob), in
+| list_buf. The header's own name path does not come through here. The string object at
+| sp+64 is never touched (its destructor reads a reference-count header list_buf does not
+| have): only the copy of its pointer pushed for the formatter is replaced, via a0, which
+| the stock code sets again before the formatter call.
+wr_list_name:
+    movea.l %sp@+,%a1
+    move.l  %a1,%sp@-
+    move.l  %d0,%sp@-
+    move.l  %d1,%sp@-
+    move.l  %a0,%sp@-
+    move.l  %sp@(80),%sp@
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   8f
+    move.l  %d2,%d0
+    bsr.w   wr_key
+    bmi.s   8f
+    move.l  %d0,%d1
+    lsr.l   #3,%d1
+    add.l   #49,%d1
+    lea     list_buf,%a0
+    move.b  %d1,%a0@+
+    and.l   #7,%d0
+    add.l   #65,%d0
+    move.b  %d0,%a0@+
+    move.b  #32,%a0@+
+    movea.l %sp@(80),%a1
+    moveq   #59,%d1
+2:  move.b  %a1@+,%d0
+    move.b  %d0,%a0@+
+    beq.s   3f
+    subq.l  #1,%d1
+    bne.s   2b
+    clr.b   %a0@
+3:  lea     list_buf,%a0
+    move.l  %a0,%sp@
+8:  movea.l %sp@+,%a0
+    move.l  %sp@+,%d1
+    move.l  %sp@+,%d0
+    movea.l %sp@+,%a1
+    move.l  %a0,%sp@-
+    move.l  #0x4021f244,%sp@-
+    jmp     %a1@
 
 | -- the SYN page draw at 0x4001821e (`moveq #7 ; cmp.l %d3,%d0 ; bne.w` past the icons),
 | now `jsr` here and a nop. Back to the icons (0x40018226) when the stock test would draw
@@ -404,6 +653,7 @@ wr_fmt_named:
     bmi.s   5f
     movea.l %a0@,%a0
     move.l  %sp@(4),%d0
+    andi.l  #0xFFFF,%d0           | the word, unsigned: the caller sign-extends (TBL at 0x8000 up)
     asr.l   #8,%d0
     bpl.s   3f
     moveq   #0,%d0
@@ -473,6 +723,78 @@ wr_range:
     move.l  %sp@(8),%d1
     jmp     %a1@
 
+| -- the knob turn 0x40036adc(set, id, current, delta), d4 = the id: its loads of current
+| and delta (`move.l %sp@(56),%d2 ; move.l %sp@(60),%d7`, 8 bytes) now jsr here. Its
+| caller passes current sign-extended from the stored word, so TBL's top values (0x8000
+| up, the pool's last two tables) read as negative, and the clamp sent any turn from them
+| to 0, Prim. A Waverider track and TBL1 or TBL2: current as the unsigned word it is.
+| Anything else as stock. d0 is free here (the next use is the getter's answer).
+wr_turn:
+    move.l  %sp@(60),%d2
+    move.l  %sp@(64),%d7
+    cmpi.l  #{TBL_IDS[0]},%d4
+    beq.s   1f
+    cmpi.l  #{TBL_IDS[1]},%d4
+    bne.s   9f
+1:  bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    andi.l  #0xFFFF,%d2
+9:  rts
+
+| -- the header's "name=value" (0x40067820: `move.l %fp@(-36),%sp@- ; pea "%s=%s"`, 10
+| bytes, then the header's own printf 0x400562e6), d2 = the id: now jsr here, which
+| pushes the same two. TBL1 or TBL2 on a Waverider track (owner, tbl128b): the name ""
+| and the format "%s%s", so the header shows only the value, "T:126 HS Sa".
+wr_head:
+    movea.l %sp@+,%a0
+    move.l  %fp@(-36),%sp@-
+    pea     {HEAD_FORMAT:#010x}
+    cmpi.l  #{TBL_IDS[0]},%d2
+    beq.s   1f
+    cmpi.l  #{TBL_IDS[1]},%d2
+    bne.s   9f
+1:  bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+    lea     head_none,%a1             | ColdFire: no #imm to d16(An) for .l; a1 is free here
+    move.l  %a1,%sp@(4)
+    lea     head_value,%a1
+    move.l  %a1,%sp@
+9:  jmp     %a0@
+head_none:  .asciz ""
+head_value: .asciz "%s%s"
+    .align 2
+
+| -- param_set_slot_to_id(slot, type, filter) at 0x400dc02a, every per-machine list's
+| source (p-locks, LFO destinations, CC): its first two instructions (`move.l %d2,-(%sp)
+| ; moveq #100,%d1`, 4 bytes) and the next (`movea.l %sp@(8),%a0`, 4) now jsr here and a
+| nop. Slot 50..57 of a Waverider sound: page 3's record, 227 + slot - 50; slots 58..61 and
+| 62..64: page 5's, 208 + slot - 58 and 235 + slot - 62; straight back to the caller. A Waverider sound is type 5 (its own type: the engine's callers), or type
+| 1 on a Waverider track (the UI reports 5 as WaveTone, 1). Anything else: the three
+| displaced instructions, then on after them (the return address, site + 6, is the nop:
+| back through a1, which the stock code loads only after), with the stack as stock's.
+wr_slot_id:
+{slot_id_runs()}
+6:  move.l  %d0,%a0
+    moveq   #{NEW_TYPE},%d1
+    cmp.l   %sp@(12),%d1
+    beq.s   2f
+    moveq   #1,%d1
+    cmp.l   %sp@(12),%d1
+    bne.s   9f
+    bsr.w   is_wr
+    tst.l   %d0
+    beq.s   9f
+2:  move.l  %a0,%d0
+    addq.l  #4,%sp
+    rts
+9:  movea.l %sp@+,%a1
+    move.l  %d2,%sp@-
+    moveq   #100,%d1
+    movea.l %sp@(8),%a0
+    jmp     %a1@
+
     .align 2
 fmt_table:
 {fmt_table}
@@ -486,14 +808,24 @@ range_table:
 labels:
 {table}
     .long 0
+mini_labels:
+{mini_table}
+    .long 0
 long_names:
 {long_table}
     .long 0
+key_table:
+{key_table}
+    .long 0
+    .align 2
+list_buf:
+    .space 64
 descriptors:
 {page_data}
 {_rep("subtitle", SUBTITLE)}
 {chr(10).join(_rep(f"title_{k}", t) for k, t in enumerate(TITLES))}
 {strings}
+{mini_strings}
 {long_strings}
 {name_strings}
     .align 2

@@ -47,11 +47,15 @@ def test_every_mod_declares_the_ram_it_names(applied):
 
 
 def test_no_mod_uses_stocks_dma_section(applied):
-    """Stock's uncached DMA section (the eMMC bounce buffer is in it) holds nothing of ours."""
+    """Stock's uncached DMA section (the eMMC bounce buffer is in it) holds nothing of ours.
+
+    A mod's NOT_RAM places (shown, by disassembly, not to hold an address) are skipped here
+    as in the declaration check, beside the places it shows to read stock's own buffer."""
     stock, mods = applied
     bad = {mid: found for mid, (mod, content) in mods.items()
            if (found := ramcheck.in_stock_dma(stock, content, getattr(mod, "ram", list)(),
-                                              getattr(mod, "READS_STOCK_DMA", ())))}
+                                              tuple(getattr(mod, "READS_STOCK_DMA", ()))
+                                              + tuple(getattr(mod, "NOT_RAM", ()))))}
     assert not bad, bad
 
 

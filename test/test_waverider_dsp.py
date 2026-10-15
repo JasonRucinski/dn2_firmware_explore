@@ -16,7 +16,7 @@ import struct
 import pytest
 
 from dnfw.image import bootstream, sharc_object
-from dnfw.waverider import dsp, harmonics, live, reduce, render, testtable
+from dnfw.waverider import dsp, harmonics, live, mip, reduce, render, table3, testtable
 from dnfw.waverider import render as reference
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -109,10 +109,16 @@ def test_the_six_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     assert entry == bytes.fromhex("3e06160000f60100")          # jump 0x16f600 (the block counter) ; nop
     lookup = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.LOOKUP_DM), 32))
     assert lookup == (0, 1, 2, 3, 4, 5, 0, 0)
-    # the idle loop's back edge, jump (pc,-0x10) at sw 0xb88abb in L2, becomes JUMP 0x16f500
+    # the idle loop's back edge, jump (pc,-0x10) at sw 0xb88abb in L2, becomes the idle
+    # chain's first stub: JUMP 0x16f500 (idle_load.asm) up to stage 2, JUMP 0x172580
+    # (build3.asm, which then runs idle_load's) from stage 3
     site = dsp.l2_sw_to_load(dsp.IDLE_SITE_SW)
     assert bootstream.read_span(stock7, site, 6) == bytes.fromhex("3e07ff00f0ff")
-    assert bootstream.read_span(built, site, 6) == bytes.fromhex("3e061600" "00f5")
+    jump = bootstream.read_span(built, site, 6)
+    assert jump == (dsp.build3_jump() if dsp.STAGE3 else dsp.objects()["idle_jump"])
+    assert jump[:2] == bytes.fromhex("3e06")
+    hi, lo = struct.unpack("<HH", jump[2:])
+    assert hi << 16 | lo == (dsp.BUILD3_SW if dsp.STAGE3 else dsp.IDLE_SW)
     # the handler's call of the per-block routine: r4 = 0x268438 becomes JUMP 0x16f680
     call = dsp.sw_to_load(dsp.CALL_SITE_SW)
     assert bootstream.read_span(stock7, call, 6) == dsp.CALL_SITE_STOCK
@@ -172,18 +178,23 @@ def test_the_loader_renders_through_case_3_from_the_frame_copy():
     assert tail == ["R0 = 8;", "R11 = 8;", "R12 = 2;", "R13 = 4;"]
     # the bounds it checks are the build's own
     assert "R0 = 668;" in src and dsp.LOAD_MAX_WORDS == 668 == (2688 - 16) // 4
-    assert "R0 = 0x80800000;" in src and dsp.LOAD_AREA[0] == 0x80800000
-    assert "R0 = 0x200000;" in src and dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0] == 0x200000
-    assert "R0 = 0xffe00003;" in src                                        # below 2 MB, 4-aligned
-    # the load area is DDR the stock image does not use, above both baked tables
-    assert dsp.DDR_REGION[0] <= dsp.TABLES_DM[-1] + dsp.TABLE_BYTES <= dsp.LOAD_AREA[0]
-    assert dsp.LOAD_AREA[1] <= dsp.DDR_REGION[1]
+    assert "R0 = 0x807ff000;" in src and dsp.LOAD_AREA[0] == 0x807FF000
+    span = dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0]
+    assert span == 0x4001000 == 0x1000 + dsp.POOL_SLOTS * dsp.POOL_RAW_BYTES      # the directory, then 128 x 512 KiB
+    assert f"R0 = {span:#x};" in src
+    assert "R0 = 3;" in src and "COMPU(R12, R0);" in src                   # 4-aligned; the start tested alone
+    # the load area is DDR the stock image does not use, above both baked tables; build3's
+    # arrays and the levels' regions (runtime DDR, never in the boot stream) follow it
+    assert dsp.DDR_REGION[0] <= dsp.TABLES_AT[-1] + dsp.MIP_TABLE_BYTES <= dsp.LOAD_AREA[0]
+    assert dsp.LOAD_AREA[1] <= dsp.BUILD_SCRATCH < dsp.LEVELS_AT
+    assert dsp.LEVELS_REGIONS_END <= dsp.DDR_END
     assert dsp.LOAD_STATE_DM >= dsp.CMD_TABLE_DM + 32
 
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x80600000, 0x80604000)
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, dsp.TABLES_AT[0] | 1, dsp.TABLES_AT[1] | 1)   # bit 0: mip-mapped
+    assert dsp.TABLES_AT == ((0x80600000, 0x80611000) if mip.guarded() else (0x80600000, 0x80610000))
 
 
 def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
@@ -192,10 +203,18 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
                if b.count and b.target >= 0x80000000)
     assert last == dsp.STOCK_DDR_END
-    for k, at in enumerate(dsp.TABLES_DM):
-        assert last < at and at + dsp.TABLE_BYTES <= 0x80A00000
-        assert bootstream.read_span(built, at, dsp.TABLE_BYTES) == \
-            reference.dsp_bytes(dsp.tables()[k])
+    for k, at in enumerate(dsp.TABLES_AT):
+        assert dsp.TABLES_DM[k] == at | dsp.MIP_FLAG
+        assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
+        if mip.guarded():                                        # table3's layout: a header, then guarded rows
+            stride = table3.row_bytes(mip.POINTS, 0)
+            lead = table3.level_offset(16, mip.POINTS, 0) + 2 * mip.GUARD_BEFORE
+        else:
+            stride, lead = 2 * mip.row_points(0), 0
+        for f, frame in enumerate(dsp.tables()[k]):              # level 0: the frames as today
+            assert bootstream.read_span(built, at + f * stride + lead, 1024) == reference.dsp_bytes([frame])
+        assert bootstream.read_span(built, at, len(dsp.tables()[k].dsp_bytes())) == \
+            dsp.tables()[k].dsp_bytes()
     # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
     # where table 0 began; after them the loader, its command table and its state, the
     # pool lookup, then SYNC, SMTH and DCLK (M10b-2), their tables, and their state, which
@@ -212,15 +231,27 @@ def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
     assert at == dsp.dm_to_load(dsp.SYNC_TABLE_DM) and at + len(p) == dsp.dm_to_load(dsp.SMOOTH_DM)
     assert struct.unpack_from("<101I", p) == live.sync_table()
     at, p = sp["SMTH's and DCLK's state (zeros)"]
-    assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.REGION[1]) and not any(p)
+    assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.SUB_DM) and not any(p)
+    at, p = sp["the noise's state (seeds, then zeros)"]           # page 3: the last span runs to the region's end
+    assert at == dsp.dm_to_load(dsp.NOISE_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_LEVELS_DM)
+    # then the mip level records and the mip reader (L1 block 1), which runs to the region's end
+    at, p = sp["reader_mip.asm's level records"]
+    assert at == dsp.dm_to_load(dsp.MIP_LEVELS_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_DM)
+    at, p = sp[{"hermite": "reader_miph.asm (wr_miph, Hermite)",
+                 "hermite2": "reader_miph2.asm (wr_miph2, Hermite, 16-bit taps)"}.get(mip.INTERP, "reader_mip.asm (wr_mip)")]
+    assert at == dsp.dm_to_load(dsp.MIP_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_END)   # stage 3: fft3 follows
+    assert struct.unpack_from("<128f", sp["the noise's decay factors, 128 float32"][1]) == live.noise_decay_table()
     assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
 
 
 def test_the_pool_directory_starts_empty_inside_the_load_area(built):
     # the ColdFire writes the pool's directory last; until then the boot stream's zeros
     # make pool.asm fall back to slot 0, and its tables fit below the directory
-    assert dsp.LOAD_AREA[0] + dsp.POOL_SLOTS * dsp.TABLE_BYTES <= dsp.POOL_DIR < dsp.LOAD_AREA[1]
-    assert dsp.POOL_SLOTS == 127
+    assert dsp.POOL_DIR == dsp.LOAD_AREA[0] and dsp.POOL_RAW == dsp.POOL_DIR + 0x1000 == 0x80800000
+    assert dsp.POOL_RAW + dsp.POOL_SLOTS * dsp.POOL_RAW_BYTES == dsp.LOAD_AREA[1]
+    assert dsp.POOL_SLOTS == 128
+    # stage 3: entry j's levels are built into a region of their own, past the load area
+    assert dsp.LEVELS_AT > dsp.LOAD_AREA[1] and dsp.LEVELS_REGIONS == dsp.POOL_SLOTS + 1
     assert bootstream.read_span(built, dsp.POOL_DIR, dsp.POOL_ZEROS) == bytes(dsp.POOL_ZEROS)
 
 
@@ -331,12 +362,17 @@ def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
     assert at[0] == dsp.REGION[0] and ends[-1] == dsp.REGION[1]
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
-    code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 12                              # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2)
+    code_spans = [x for x in sp if "asm (" in x[0]]
+    s3 = dsp.stage3_objects() if dsp.STAGE3 else {}
+    # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2),
+    # trim.asm, sub/noise.asm (page 3), the mip reader, and stage 3's fft3, spec3, mipb3 and build3
+    assert len(code_spans) == 16 + len(s3)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
                                                      obj["block_count"], obj["entry_mark"], obj["modulator"],
-                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"],
-                                                     obj["smooth"], obj["dclk"])):
+                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
+                                                     obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
+                                                     obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")],
+                                                     *(s3[k] for k in ("fft3", "spec3", "mipb3", "build3") if k in s3))):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -376,10 +412,12 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
     src = [ln.split("//", 1)[0].strip() for ln in text.splitlines()]
     src = [c for c in src if c and not c.startswith(".") and not c.endswith(":")]
     at = {c: dsp.IDLE_SW + o // 2 for c, o in zip(src, offs)}
-    assert at["R8 = DM(0x2de100);"] == 0x16F57B                   # wr_idle_out.
-    assert at["R8 = DM(0x2de10c);"] == 0x16F55A                   # wr_idle_after.
+    assert at["R8 = DM(0x2de100);"] == 0x16F58A                  # wr_idle_out.
     assert be[offs[src.index("IF GE JUMP 0x16f53d;")]:][:6].hex() == "06220016f53d"
-    assert at["R11 = DM(0x2de13c);"] == 0x16F53D                  # wr_idle_busy.
+    assert at["R11 = 666667;"] == 0x16F53D                        # wr_idle_busy.
+    assert dsp.IDLE_SW + offs[src.index("R9 = DM(0x2de144);")] // 2 == 0x16F55B                   # wr_idle_max.
+    assert at["R9 = DM(0x2de148);"] == 0x16F566                   # wr_idle_count.
+    assert at["DM(0x2de148) = R9;"] == 0x16F587                   # wr_idle_keep.
     last = offs[len(src) - 1]
     assert be[last:last + 6].hex() == "063e00b88aab" and dsp.IDLE_RETURN_SW == 0xB88AAB
     # its DM: 0x2de100..0x2de117, after the 16 reader blocks (to 0x2de100) and inside the state block
@@ -390,7 +428,10 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
                       "DM(0x2de114) = R9;", "DM(0x2de10c) = R8;", "DM(0x2de110) = R9;",
                       "DM(0x2de128) = R9;", "DM(0x2de12c) = R9;",
                       "DM(0x2c49d4) = R9;", "DM(0x2c59d4) = R9;", "DM(0x2c49dc) = R9;", "DM(0x2c59dc) = R9;",
-                      "DM(0x2c49e0) = R9;", "DM(0x2c59e0) = R9;"}
+                      "DM(0x2c49e0) = R9;", "DM(0x2c59e0) = R9;",
+                      "DM(0x2de140) = R9;", "DM(0x2de144) = R10;", "DM(0x2de144) = R9;", "DM(0x2de148) = R9;"}
+    # frame-max's counters (0x2de140..0x2de14b) are past IDLE_STATE but inside the zeroed state block
+    assert 0x2de14c <= dsp.STATE_DM + dsp.STATE_BYTES
 
 
 def test_the_block_counter_goes_on_to_the_loop():
@@ -591,3 +632,114 @@ def test_only_load_asm_writes_the_answer_word():
                 writers.setdefault(int(m.group(1), 16) & 0xFFF, set()).add(src.stem)
     assert writers.get(0x9E8) == {"load"}, writers.get(0x9E8)
     assert all("load" not in names for off, names in writers.items() if off != 0x9E8 and off < 0x9EC)
+
+
+def test_the_coldfire_loader_and_pool_share_the_load_area():
+    """loader.c refuses an extent past AREA_BYTES, and pool.c puts the request directory at
+    the area's start and entry j's table at TABLE_OFFSET + j x RAW_BYTES: all of them must be
+    dsp.LOAD_AREA's and dsp.POOL_*'s, or the 128th table (the area's last 512 KiB) is never
+    loaded and a full pool never reads ready (found 2026-10-06: AREA_BYTES was the old 2 MB)."""
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent / "csrc/waverider"
+
+    def define(name: str, text: str) -> int:
+        m = re.search(rf"#define {name}\s+(0x[0-9a-fA-F]+|\d+)u", text)
+        assert m, f"{name} is not defined in the form `#define {name} <number>u`"
+        return int(m.group(1), 0)
+
+    loader, pool = (root / "loader.c").read_text(), (root / "pool.c").read_text()
+    assert define("AREA_BYTES", loader) == dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0]
+    assert define("DIR_OFFSET", pool) == dsp.POOL_DIR - dsp.LOAD_AREA[0] == 0
+    assert define("TABLE_OFFSET", pool) == dsp.POOL_RAW - dsp.LOAD_AREA[0]
+    assert define("RAW_BYTES", pool) == dsp.POOL_RAW_BYTES
+    slots = re.search(r"#define POOL_SLOTS\s+(\d+)", (root / "pool.h").read_text())
+    assert slots and int(slots.group(1)) == dsp.POOL_SLOTS
+    # the last table ends at the area's end: the loader accepts the 128th table whole
+    assert define("TABLE_OFFSET", pool) + dsp.POOL_SLOTS * define("RAW_BYTES", pool) == define("AREA_BYTES", loader)
+
+
+def test_the_sub_oscillators_shapes():
+    """live.sub_value, the arithmetic sub.asm does (page 3): SIN two parabolas, TRI,
+    SQR, PLS a 25 % pulse at +1 / -1/3, so no DC"""
+    q = 1 << 30
+    assert [live.sub_value(p, 0) for p in (0, q, 2 * q, 3 * q)] == [0.0, 1.0, 0.0, -1.0]
+    assert [live.sub_value(p, 1) for p in (0, q, 2 * q, 3 * q)] == [1.0, 0.0, -1.0, 0.0]
+    assert [live.sub_value(p, 2) for p in (0, 2 * q - 1, 2 * q)] == [1.0, 1.0, -1.0]
+    pls = [live.sub_value(p, 3) for p in range(0, 1 << 32, 1 << 24)]
+    assert abs(sum(pls)) < 1e-4                       # no DC over a cycle
+
+
+def test_the_sub_steps_an_octave_or_two_below():
+    one, p1 = live.render_sub(0, 1 << 24, (0x6400, 0x0000, 0x0000, 0), 32)
+    two, p2 = live.render_sub(0, 1 << 24, (0x6400, 0x0100, 0x0000, 0), 32)
+    assert p1 == 32 << 23 and p2 == 32 << 22
+    assert one[0] == two[0] == 0.0 and one[1] != two[1]
+
+
+def test_render_two_with_the_sub_at_zero_is_render_two():
+    t = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
+    assert live.render_two(t, blocks, 32, subs=[(0, 0, 0, 0)] * 3) == live.render_two(t, blocks, 32)
+
+
+def test_render_two_with_the_noise_at_zero_is_render_two():
+    t = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
+    assert live.render_two(t, blocks, 32, noises=[(0, 0, 0x4000, 0x7F00)] * 3) == live.render_two(t, blocks, 32)
+
+
+def test_the_noises_decay_and_seeds():
+    """noise.asm's tables (page 3): a factor per DEC that slows with DEC, 1.0 at Inf; the
+    seeds odd and distinct, so no voice's xorshift starts at its fixed point 0"""
+    k = live.noise_decay_table()
+    assert len(k) == 128 and k[-1] == 1.0
+    assert all(0 < a < b < 1 for a, b in zip(k, k[1:-1]))
+    seeds = live.noise_seeds()
+    assert len(set(seeds)) == 16 and all(s & 1 for s in seeds)
+    state = dsp.noise_state()
+    assert len(state) == dsp.NOISE_STATE_BYTES
+    assert struct.unpack_from("<I", state, 32 * 5)[0] == seeds[5]
+
+
+def test_the_noise_waits_for_a_note_unless_dec_is_inf():
+    v = live.NoiseVoice(live.noise_seeds()[0])
+    assert v.render((0x6400, 0, 0x4000, 0x2800), False, 32) == [0.0] * 32     # env 0 at boot
+    loud = v.render((0x6400, 0, 0x4000, 0x2800), True, 32)
+    later = [v.render((0x6400, 0, 0x4000, 0x2800), False, 32) for _ in range(200)][-1]
+    assert max(map(abs, loud)) > 10 * max(map(abs, later)) > 0
+    w = live.NoiseVoice(live.noise_seeds()[0])
+    assert max(map(abs, w.render((0x6400, 0, 0x4000, 0x7F00), False, 32))) > 0.1   # Inf: no envelope
+
+
+def test_the_noises_types_and_tilt():
+    """WHT is the generator scaled, DIG +-0.5, and COLR +63 (high-pass) has less energy
+    in a brown noise than COLR -64 (low boost)"""
+    def block(words, n=4800):
+        v = live.NoiseVoice(live.noise_seeds()[0])
+        return v.render(words, True, n)
+    dig = block((0x6400, 0x0300, 0x4000, 0x7F00))
+    assert {abs(x) for x in dig} == {live._f32(0.5 * live.gain(0x6400))}      # +-0.5, scaled by the trim's default (-11 dB)
+    rms = lambda ys: (sum(y * y for y in ys) / len(ys)) ** 0.5     # noqa: E731
+    assert rms(block((0x6400, 0x0200, 0x7F00, 0x7F00))) < rms(block((0x6400, 0x0200, 0x0000, 0x7F00)))
+
+
+def test_dclk_holds_a_jump_until_the_fade_ends():
+    """2026-10-07: TBL switching every block under DCLK 3 ms (a fade of 4.5 blocks)
+    restarted the fade each block and cut the old wave off: steps as large as the switch.
+    A jump now waits for the running fade, so no step is larger than the wave's own."""
+    t = dsp.tables()
+
+    def run(period, dclk, n=40):
+        blocks = []
+        for b in range(n):
+            tbl = 0x0100 if period and (b // period) % 2 else 0x0000
+            osc1 = (0x3000, tbl, 0x4000, 0x6400, 0, 0x3200, 0x3200, 0, 0, 0x7F00)
+            osc2 = (0, 0, 0x4000, 0, 0, 0x3200, 0x3200, 0, 0, 0x7F00)
+            blocks.append((48.0, osc1, osc2, (0, b == 0, 0, 0, 0, dclk)))
+        y = live.render_two(t, blocks, 32)
+        return max(abs(a - b) for a, b in zip(y[32:], y[33:]))
+
+    own = run(0, live.DCLK_DEFAULT)
+    assert run(1, 0) > 4 * own                                  # DCLK Off: the switch clicks
+    for period in (1, 2, 4):
+        assert run(period, live.DCLK_DEFAULT) <= own

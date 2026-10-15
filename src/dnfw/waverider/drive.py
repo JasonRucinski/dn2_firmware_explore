@@ -32,20 +32,22 @@ import pathlib
 LOAD = 0x467F0000                 # above reloadconfirm's chunk and the route test's, below lfo4's C
 LIMIT = 0x46800000
 SPANS = 0x46A00000                # pool.h: WR_POOL_SPANS
-SPANS_BYTES = 127 * 16 * 2 * 96
+SPANS_BYTES = 128 * 16 * 2 * 96     # POOL_SLOTS (pool.h) x 16 frames x min/max x 96 columns
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 SOURCES = (ROOT / "csrc/waverider/pool.c", ROOT / "csrc/waverider/loader.c",
-           ROOT / "csrc/waverider/events.c",
+           ROOT / "csrc/waverider/events.c", ROOT / "csrc/waverider/scope_feed.c",
+           ROOT / "csrc/dn2/audio_tap.c",
            ROOT / "csrc/waverider/sync.c",
            ROOT / "csrc/wrstore/store.c", ROOT / "csrc/wrstore/routekit.c",
            ROOT / "csrc/wrstore/route.c", ROOT / "csrc/wrstore/records.c",
            ROOT / "csrc/wrstore/poolroute.c", ROOT / "csrc/wrstore/projects.c",
+           ROOT / "csrc/wrstore/modinfo.c",
            ROOT / "csrc/waverider/wtmenu.c", ROOT / "csrc/waverider/wtlist.c",
            ROOT / "csrc/waverider/wtedit.c")
 ENTRIES = ["wr_drive_head", "wr_drive_poll", "wr_add", "wr_root_entry", "wr_list_invoker",
            "wr_register", "wr_nop", "wr_frame_hook", "wr_frame_src", "wr_clear_type",
            "wr_save_wrap", "wr_load_wrap", "wr_new_wrap",
-           "wr_wt_key", "wr_wt_draw", "wr_wt_led_hook"]
+           "wr_wt_key", "wr_wt_draw", "wr_wt_led_hook", "wr_wt_enc_hook"]
 STATUS = ("wr_pool", "wr_load", "wr_store", "wr_route", "wr_write", "wp_write", "wr_projects", "wr_wtmenu", "wr_events", "wr_sync")   # what the probe PEEKs
 CLEAR_SITE = 0x40071EB6           # CLEAR TRK PRESET's jsr to the machine-type getter (events.c)
 
@@ -61,6 +63,7 @@ NEW_STOCK = bytes.fromhex("42aefff04ebad726")      # clr.l -16(%fp) ; jsr 0x4004
 PK_KEY_SLOT, PK_KEY_STOCK = 0x401E6DB0, 0x4008C78E
 PK_DRAW_SLOT, PK_DRAW_STOCK = 0x401E6DB8, 0x4008A5EC
 PK_LED_SLOT, PK_LED_STOCK = 0x401E6E54, 0x4008ABEC
+PK_ENC_SLOT, PK_ENC_STOCK = 0x401E6E04, 0x4008A94A      # the encoder handler's thunk, in the secondary vtable
 
 ROUTE_SITE = 0x4002BB70
 ROUTE_STOCK = bytes.fromhex("700113c04059cd20")     # moveq #1,%d0 ; move.b %d0,0x4059cd20
@@ -126,6 +129,8 @@ def hooks(symbols: dict[str, int]) -> list[tuple[int, bytes, bytes, str]]:
          "PRESET/KIT's redraw: the wavetable page when it is open"),
         (PK_LED_SLOT, symbols["wr_wt_led_hook"].to_bytes(4, "big"), PK_LED_STOCK.to_bytes(4, "big"),
          "PRESET/KIT's LED callback: a frame mark, so the menu opens on page 1"),
+        (PK_ENC_SLOT, symbols["wr_wt_enc_hook"].to_bytes(4, "big"), PK_ENC_STOCK.to_bytes(4, "big"),
+         "PRESET/KIT's encoder handler: LEVEL/DATA moves the wavetable page's cursor and lists"),
         (FRAME_SITE, bytes.fromhex("4ef9") + symbols["wr_frame_hook"].to_bytes(4, "big"),
          FRAME_STOCK, "the audio ISR, before the stock send: the frame or a table chunk "
                       "(wr_frame_hook), then on at 0x40025eb2"),

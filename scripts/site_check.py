@@ -35,7 +35,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 SITE = ROOT / "site"
 DIAGNOSTIC = {"usbprobe"}            # a measuring tool for our own builds, never offered
-NOT_OFFERED = {"waverider"}          # in development: on the index's In progress table, not the README's
+NOT_OFFERED: set[str] = set()       # a mod in development: on the index's In progress table, not the README's
 SHARED = (("a link back to the index", 'href="index.html"', False),
           ("the go-back-to-stock warning", "Make sure that you can go back to stock", True),
           ("the footer's disclaimer", "Not affiliated with or endorsed by Elektron", False))

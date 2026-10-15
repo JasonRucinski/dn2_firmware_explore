@@ -87,7 +87,25 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
 #    less WR_TABLES (4) tables of 1,536 bytes. `WR_POOL_SPANS[tbl - WR_TABLES]` folds the
 #    subtraction into the base, so the value is an address, biased 0x1800 below the
 #    declared range and past the checker's 64-byte slack. Nothing is read at it.
-NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2)) + (
+NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2))
+
+# Word places that read as an address above BSS and are not one, each disassembled on
+# 2026-10-15 (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
+# them, so the check flags the new places again and they are read afresh.
+NOT_RAM += (
+    0x4670AFA4,              # "Noise Colour": the label text "Nois"
+    0x4670AFC2,              # "ave Fold": the label text "Fold"
+    0x4670B13A,              # ".AM.Formant": the label text "Form"
+    0x4670B54A,              # notl %d3 ; andl %d3,%d2
+    0x4670B7DA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
+                             # 3072 B entries, indexed by the table number (2 and up), declared
+    0x467F1B52, 0x467F27D4, 0x467F2D22,   # movel #0x467f46xx,(a0) ; clrl d(a0): read 2 bytes late
+    0x467F326A, 0x467F3270, 0x467F327A, 0x467F3280, 0x467F32CC, 0x467F32DC,
+                             # lea / movel of 0x467f46xx and 0x467f8e48: read 2 bytes late
+    0x467F4006,              # notl %d0 ; tstw %d0
+    0x467F4720, 0x467F472C, 0x467F4730, 0x467F4734,
+                             # a table of 0x467f46xx pointers: read 2 bytes late
+) + (
     0x4670C8E2, 0x4670CBCE, 0x467F3180)
 
 
