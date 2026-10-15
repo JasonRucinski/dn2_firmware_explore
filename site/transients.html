@@ -117,19 +117,19 @@
   <h1>Transient Swapper</h1>
   <p class="lede">
     Replace any of the Digitone II's 34 FM&nbsp;DRUM transients with your own samples.
-    Pick your firmware, drop in audio, hear the result, download a signed image.
+    Select your firmware file.
+    Drop in your audio. Listen to the result. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file and your
-  samples are never uploaded — this page has no server to upload them to. It is
-  static files on GitHub Pages; you can read every line of it in the
+  <p><strong>This tab does all the work in your browser.</strong> The page does not upload your firmware
+  file or your samples, because the page has no server. The page is a set of static files on GitHub
+  Pages. You can read all of its code in the
   <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
 
 <section class="changes">
@@ -146,21 +146,22 @@
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. No combined image has been
-  flashed yet.</p>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
+  <p>Nobody has flashed a combined image with this mod yet.</p>
 <!-- dnfw:matrix-row transients -->
 <div class="scroll">
 <table class="matrix">
-  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">FM drum transients <code>transients</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td></tr>
+    <tr><th scope="row">FM drum transients <code>transients</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines transients -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard, USB SysEx probe (diagnostic); <strong>not</strong> with Waverider, a sixth machine (both use the same code cave). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines transients -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, More modulation destinations, Reload confirm, Song guard and USB SysEx probe (diagnostic). This mod does <strong>not</strong> combine with Waverider, a sixth machine (both use the same code cave). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
@@ -182,37 +183,36 @@
 <section class="step hidden" id="step2">
   <div class="step-head"><span class="step-num">2</span><h2>The bank</h2></div>
   <p>
-    34 slots. Click a waveform to hear it. Drop audio on a slot to replace it —
-    any format your browser can play, at any rate; it is mixed to mono and
-    resampled for you.
+    34 slots. Click a waveform to hear it. To replace a slot, drop audio on it. You can use any
+    format and rate that your browser can play. The page mixes the audio to mono and resamples it
+    for you.
   </p>
 
   <div class="note">
     <p><strong>Every slot is exactly 100&nbsp;ms, and your sample is cut to
-    fit.</strong> 4,800 samples at 48&nbsp;kHz, the same for all 34 — there is no
-    length field to change. Anything longer is <em>truncated</em>; anything
-    shorter is <em>padded with silence at the end</em>. A slot that had to cut your file says so,
-    with the original length, and the <code>start</code> control moves which
-    100&nbsp;ms is kept. The slot's waveform shows your whole file with the
-    imported window shaded, so you can see exactly what is kept and what is
-    dropped &mdash; and, for a short sample, how much of the slot is silence.</p>
-    <p>Elektron's own transients do not all fit either: <strong>20 of the 34 are
-    still ringing when their slot ends</strong>, and that ring is what you hear at
-    the beginning of the next one. So the factory bank behaves like a continuous
-    3.4-second recording cut into 100&nbsp;ms pieces rather than 34 self-contained
-    hits — and replacing a slot quietly changes the opening of the slot after it,
-    because the borrowed tail goes away. A sample that decays inside 100&nbsp;ms
-    will behave more predictably than the factory content does.</p>
+    fit.</strong> That is 4,800 samples at 48&nbsp;kHz, the same for all 34. There is no length
+    field to change.</p>
+    <p>The page <em>truncates</em> a longer sample. It <em>pads a shorter sample with
+    silence at the end</em>. If the page cuts your file, the slot says so and gives the original
+    length. The <code>start</code> control moves the 100&nbsp;ms that the page keeps.</p>
+    <p>The waveform of the slot shows your whole file, with the imported window shaded. So you can
+    see exactly what the page keeps and what it drops. For a short sample, you can also see how much
+    of the slot is silence.</p>
+    <p>The transients of Elektron do not all fit either: <strong>20 of the 34 still ring when their
+    slot ends</strong>. You hear that ring at the start of the next slot. So the factory bank behaves
+    like a continuous 3.4-second recording, cut into 100&nbsp;ms pieces, and not like 34 separate
+    hits. When you replace a slot, the opening of the next slot also changes, because the borrowed
+    tail goes away. A sample that decays inside 100&nbsp;ms behaves more predictably than the factory
+    content does.</p>
   </div>
 
   <div class="note" id="tranNote">
     <p><strong>Each slot sits at <code>TRAN</code> = 4 × slot − 8</strong>, measured
     on hardware. Slot&nbsp;20 is at <code>TRAN</code>&nbsp;72, slot&nbsp;33 at
     <code>TRAN</code>&nbsp;124. Every slot below shows its value.</p>
-    <p><strong>Slots 0 and 1 cannot be selected at all.</strong> <code>TRAN</code>
-    starts at 0, which is already slot&nbsp;2, so the first two entries are in the
-    bank but out of the knob's reach — worth knowing before you spend a sample on
-    one. <em>32 of the 34 are reachable.</em></p>
+    <p><strong>You cannot select slots 0 and 1.</strong> <code>TRAN</code> starts at 0, which is
+    already slot&nbsp;2. So the first two entries are in the bank, but the knob cannot reach them.
+    Do not put a sample there. <em>The knob reaches 32 of the 34.</em></p>
     <p>The engine also <strong>interpolates between neighbours</strong> over that
     four-unit stride, so values between two slots blend them rather than snapping.
     <a href="https://github.com/angellinares/dn2_firmware_explore/blob/main/docs/tran-mapping.md">How this was measured</a>.</p>
@@ -239,11 +239,10 @@
 <footer>
   <p>
     Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
-    AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron. Transient
-    separation for ordinary samples is
-    <a href="https://mikkovihonen.github.io/transientsplit/">transientsplit</a> by
-    Mikko Vihonen — run a sample through that first if you want its transient
-    <em>component</em>, then bring the result here.
+    AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron. To separate the transient from
+    an ordinary sample, use <a href="https://mikkovihonen.github.io/transientsplit/">transientsplit</a>
+    by Mikko Vihonen. If you want the transient <em>component</em> of a sample, run the sample
+    through that tool first. Then bring the result here.
   </p>
 </footer>
 
