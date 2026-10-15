@@ -67,7 +67,12 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "Projects you save or load with LFO4 no longer have LFO data written into them.",
         )),
     ) + _first("1.0.0", "Unavailable for now: song data can be damaged in projects used with it."),
-    "lfolength": PUBLISHED,
+    "lfolength": (
+        Release("1.0.1", "2026-10-15", (
+            "You can now combine this mod with Waverider. Its code is now at a different place in "
+            "RAM. The LFOs operate as before.",
+        )),
+    ) + PUBLISHED,
     "lfowaves": PUBLISHED,
     "midiarp": PUBLISHED,
     "moddest": PUBLISHED,

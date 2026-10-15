@@ -58,7 +58,8 @@ from dnfw.patch.assemble import assemble, available       # noqa: E402
 
 BASE = 0x40000400
 MAIN_OS = 3
-CODE_VA = 0x467F8000          # below LFO4's region (0x46800000), past waverider's route (0x467e8000)
+CODE_VA = 0x467B0000          # between arpscale (0x467a8000) and arpplocks (0x467c0000); 0x467f8000 until
+                              # 2026-10-15, which Waverider's +Drive chunk (0x467f0000..0x467fa390) grew over
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
 OUT = ROOT / "00_Resources/02_Builds/lfolength_DN2_1.11.syx"
 

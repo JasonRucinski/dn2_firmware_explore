@@ -5,7 +5,7 @@
  * The browser half of `src/dnfw/mods/lfolength.py`, which carries the evidence
  * and the hardware result. Same steps, same order: check every guard and every
  * edit's stock bytes, write the four hooks, then add the routines to the platform's
- * area as a CODE chunk at 0x467f8000. `scripts/js_lfolength_check.mjs` fails if
+ * area as a CODE chunk at 0x467b0000. `scripts/js_lfolength_check.mjs` fails if
  * the bytes differ from the Python's.
  */
 
