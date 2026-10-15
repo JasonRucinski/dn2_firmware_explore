@@ -367,15 +367,15 @@ def dclk_curve() -> str:
     return p.svg("The crossfade time for each DCLK value")
 
 
-# ---------------------------------------------------------------- 4. GLD, the glide (SMTH in the code; SMT1/SMT2 before 0.1.1)
+# ---------------------------------------------------------------- 4. SLW, the slew (SMTH in the code; SMT1/SMT2 before 0.1.1)
 
 def smt_curve() -> str:
     vs = list(range(0, 127))
-    p = Plot((0, 126), (1, 1000), "GLD (the knob's value; 127 is Off)", "time constant (ms)", logy=True,
+    p = Plot((0, 126), (1, 1000), "SLW (the knob's value; 127 is Off)", "time constant (ms)", logy=True,
              xticks=[0, 14, 28, 42, 56, 70, 84, 98, 112, 126], yticks=[1, 3, 10, 30, 100, 300, 1000],
              height=220, yfmt=lambda v: f"{v:g}")
     p.line(vs, [live.smth_tau(v) * 1000 for v in vs], "s0")
-    return p.svg("The glide's time constant for each GLD value")
+    return p.svg("The slew's time constant for each SLW value")
 
 
 def smt_response() -> str:
@@ -402,11 +402,11 @@ def smt_response() -> str:
     p = Plot((0, 1.2), (0, 120), "time (s)", "POS", xticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
              yticks=[0, 30, 60, 90, 120], height=260, xfmt=lambda v: f"{v:g}", legend="tr")
     p.line(t, target, "s2", "POS from the knob, the LFO and the p-lock")
-    p.line(t, glided, "s0", "POS the reader plays, GLD 56 (62.5 ms)")
+    p.line(t, glided, "s0", "POS the reader plays, SLW 56 (62.5 ms)")
     p.vline(0.1, "knob jump", low=True)
     p.vline(0.45, "LFO 4 Hz", low=True)
     p.vline(0.95, "trig with a lock", low=True)
-    return p.svg("What GLD does to a knob jump, an LFO and a p-lock")
+    return p.svg("What SLW does to a knob jump, an LFO and a p-lock")
 
 
 def smt_values_table() -> str:
@@ -422,7 +422,7 @@ def smt_values_table() -> str:
         n95 = math.ceil(math.log(0.05) / math.log(1 - k))          # blocks
         rows.append([v, f"{tau * 1000:,.1f} ms", f"{k:.6f}", f"{1 / (2 * math.pi * tau):,.2f} Hz",
                      f"{n95 / 1500 * 1000:,.0f} ms"])
-    return table_html(["GLD", "Time constant", "k (each block)", "Cutoff", "95 % of a jump"], rows)
+    return table_html(["SLW", "Time constant", "k (each block)", "Cutoff", "95 % of a jump"], rows)
 
 
 def smt_lfo_table() -> str:
@@ -437,7 +437,7 @@ def smt_lfo_table() -> str:
             g = abs(k / (1 - (1 - k) * complex(math.cos(w), -math.sin(w))))
             cells.append(f"{100 * g:.0f} %")
         rows.append(cells)
-    return table_html(["GLD", "Time constant", "LFO 0.5 Hz", "LFO 2 Hz", "LFO 8 Hz"], rows)
+    return table_html(["SLW", "Time constant", "LFO 0.5 Hz", "LFO 2 Hz", "LFO 8 Hz"], rows)
 
 
 # ---------------------------------------------------------------- 5. noise

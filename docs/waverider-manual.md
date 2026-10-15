@@ -92,8 +92,8 @@ The middle of the page shows the sub-oscillator and the noise.
 | D | TRIM | The output level of the whole machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone |
 | E | SYN1 | Off or On. With On, the MOVE of oscillator 1 follows the tempo. SYN does not change the LFOs, which have their own tempo settings |
 | F | SYN2 | The same as SYN1, for oscillator 2 |
-| G | GLD1 | Glide: the glide time of POS on oscillator 1. It glides the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a glide. At 127, the glide is off. The Technical tab of the Waverider page has the details |
-| H | GLD2 | The same as GLD1, for oscillator 2. Before version 0.1.1, GLD1 and GLD2 were called SMT1 and SMT2 |
+| G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 127, the slew is off. The Technical tab of the Waverider page has the details |
+| H | SLW2 | The same as SLW1, for oscillator 2. Before version 0.1.1, SLW1 and SLW2 were called SMT1 and SMT2 |
 
 The middle of the page shows the sound of the track as a scope.
 
