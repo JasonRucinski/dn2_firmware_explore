@@ -85,7 +85,7 @@
   <h1>Modulation Destinations</h1>
   <p class="lede">
     Open thirteen more Digitone&nbsp;II parameters to LFO and modulation
-    control. Pick your firmware, download a signed image.
+    control. Select your firmware file. Then download a signed image.
   </p>
 </header>
 
@@ -121,14 +121,14 @@
 <!-- dnfw:matrix-row moddest -->
 <div class="scroll">
 <table class="matrix">
-  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">More modulation destinations <code>moddest</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">More modulation destinations <code>moddest</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines moddest -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; in one order only with A fourth LFO (moddest must be applied first). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines moddest -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. This mod combines in one order only with A fourth LFO (moddest must be applied first). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
@@ -163,10 +163,9 @@
     <p><strong>Nineteen others stay closed here, on purpose.</strong> The same test had Chorus
     and Master parameters, and <em>none of them appeared</em>. For those parameters, a separate
     enumeration is the gate, not this mask, so a flip of the mask does nothing. Nineteen switches
-    that have no effect, as we proved, are worse than no switches.</p>
+    that have no effect, as we proved, would be worse than no switches.</p>
     <p><strong>The effects now have their own mod.</strong> That separate enumeration
-    was opened on 2026-09-23, so Chorus, Delay and Reverb are reachable after all —
-    through <a href="fx.html">FX Modulation</a>, which combines with this one. Master
+    was opened on 2026-09-23, so Chorus, Delay and Reverb are reachable after all, through <a href="fx.html">FX Modulation</a>, which combines with this one. Master
     is still out.</p>
   </div>
 </section>
