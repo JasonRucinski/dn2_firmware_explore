@@ -111,7 +111,7 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           248: "SYN1", 260: "SYN2",
           # DCLK (HOLD: the crossfade, 0 Off, 1..127 = 1..100 ms) and SMTH (DEC, WDTH: the
           # glide, 127 Off, the records' default)
-          254: "DCLK", 255: "SMT1", 258: "SMT2",
+          254: "DCLK", 255: "SLW1", 258: "SLW2",       # SMT1/SMT2 until 0.1.1 (owner, 2026-10-15)
           # pages 3 and 4 (owner, 2026-10-07; docs/waverider-pages34.md): page 3 the
           # sub-oscillator and the noise, on FM Tone's records in slots 50..57, which a
           # WaveTone-type sound doesn't have (prototype: the screen only, no sound yet)
@@ -135,7 +135,7 @@ LONG_NAMES = {238: "Osc1 Tune", 239: "Osc1 Position", 247: "Osc1 Table",
               253: "Osc1 M.Shape", 244: "Osc2 M.Rate", 250: "Osc2 M.Pos",
               256: "Osc2 M.Level", 257: "Osc2 M.Shape", 259: "Move Retrig",
               248: "Osc1 M.Sync", 260: "Osc2 M.Sync",
-              254: "Declick", 255: "Osc1 Smooth", 258: "Osc2 Smooth",
+              254: "Declick", 255: "Osc1 POS Slew", 258: "Osc2 POS Slew",
               227: "Sub Level", 228: "Sub Octave", 229: "Sub Wave", 230: "Sub Source",
               231: "Noise Level", 232: "Noise Type", 233: "Noise Colour", 234: "Noise Decay",
               208: "Wave Fold", 209: "Phase Warp", 210: "FM Depth", 211: "Noise to Pos",

@@ -83,7 +83,7 @@
         You put the tables on the +Drive with DNX.
       </p>
       <div class="tags">
-        <span class="tag untested">alpha 1</span>
+        <span class="tag untested">alpha 2</span>
         <span class="tag research">OS 1.11 only</span>
         <span class="tag research">page 5 is not complete</span>
       </div>
@@ -208,6 +208,7 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
+  <p class="small">Documentation version 1.0, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
   <h2>Select Waverider</h2>
   <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
   header shows Waverider (1/5) to Waverider (5/5).</p>
@@ -455,10 +456,12 @@
 
   <section class="changes">
   <h2>Version and changes</h2>
-  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.1.0<!-- /dnfw:version --></strong> (alpha).
+  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.1.1<!-- /dnfw:version --></strong> (alpha).
   The list shows the changes in each version, with the newest first.</p>
 <!-- dnfw:changes waverider -->
 <dl class="changes">
+  <dt><span class="version">v0.1.1</span> <time datetime="2026-10-15">2026-10-15</time></dt>
+  <dd><ul><li>Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.</li><li>The page has a Technical tab: the table formats, the files that DNX accepts, how the reader plays a table, DCLK, SLW and SYN, and the noise.</li></ul></dd>
   <dt><span class="version">v0.1.0</span> <time datetime="2026-10-15">2026-10-15</time></dt>
   <dd><ul><li>The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a sub-oscillator, noise, sound options and wavetable pools from the +Drive. Page 5 is for a future version.</li></ul></dd>
 </dl>
@@ -486,6 +489,7 @@
 </section>
 
 <section id="tech" role="tabpanel" aria-labelledby="tab-tech" hidden>
+  <p class="small">Documentation version 1.0, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
   <h2>Technical</h2>
   <p>This tab is for people who make tables, and for people who want to know how Waverider makes its
   sound. A script computes every figure and every table on this tab from the code that runs on the
