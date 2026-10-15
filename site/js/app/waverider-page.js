@@ -52,7 +52,7 @@ async function buildImage() {
   await buildAndOffer(
     state.firmware,
     new Map([[3, replacement(state.firmware, 3, main)], [7, replacement(state.firmware, 7, dsp)]]),
-    { filename: state.filename, suffix: "waverider", note: notes[0] });
+    { filename: state.filename, mod: "waverider", suffix: "waverider", note: notes[0] });
 }
 
 function open(file) {
