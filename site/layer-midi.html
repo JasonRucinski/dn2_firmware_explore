@@ -67,21 +67,20 @@
   <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / layering to midi</p>
   <h1>Layering to MIDI</h1>
   <p class="lede">
-    Layer an audio track onto MIDI tracks with TRACK WILL TRIGGER, and the MIDI
-    tracks play along over MIDI: every note, chord and release your audio track
-    plays. Pick your firmware, download a signed image.
+    Layer an audio track onto MIDI tracks with TRACK WILL TRIGGER. The MIDI tracks then
+    play along over MIDI: every note, chord and release that your audio track plays. Select
+    your firmware file. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
+  <p><strong>This tab does all the work in your browser.</strong> The page does not upload your firmware
+  file, because the page has no server. The page is a set of static files on GitHub Pages. You can
+  read all of its code in the
   <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
 
 <section class="changes">
@@ -98,9 +97,10 @@
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. Flashed together and
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell. Flashed together and
   confirmed on the instrument: this mod with the Boot screen (2026-10-02).</p>
 <!-- dnfw:matrix-row layermidi -->
 <div class="scroll">
@@ -139,18 +139,19 @@
     <dt>Playback</dt><dd>Every note the audio track plays &mdash; trigs, chords, retrigs, probability, held keys &mdash; also goes out on each layered MIDI track's channel</dd>
     <dt>Releases</dt><dd>Note-off when the layered note ends: at its length, when a held key is let go, or at stop for INF</dd>
     <dt>Combining</dt><dd>Several audio tracks can layer onto one MIDI track, and one audio track onto several</dd>
-    <dt>Mutes</dt><dd>A muted source sends nothing; a muted MIDI track sends nothing</dd>
+    <dt>Mutes</dt><dd>A muted source sends nothing. A muted MIDI track sends nothing</dd>
     <dt>Not layered</dt><dd>Every track behaves as stock</dd>
     <dt>Writes</dt><dd id="writes">&mdash;</dd>
   </dl>
 
   <div class="note">
-    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-02</strong>, recorded into
-    Ableton from an external synth on the layered MIDI track: sequenced notes, chords,
-    retrigs and probability arrive as played; INF holds until the sequencer stops; held
-    keys release cleanly; two sources into one MIDI track and one source into several
-    both work. The MIDI note arrived about 8&nbsp;ms ahead of the recorded audio &mdash;
-    the audio path's latency, not the mod's.</p>
+    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-02.</strong> We recorded into Ableton
+    from an external synth on the layered MIDI track. Sequenced notes, chords, retrigs and
+    probability arrive as played. INF holds until the sequencer stops. Held keys release
+    cleanly. Two sources into one MIDI track work, and one source into several MIDI tracks
+    works.</p>
+    <p>The MIDI note arrived about 8&nbsp;ms before the recorded audio. That delay is the
+    latency of the audio path, not of the mod.</p>
   </div>
 </section>
 

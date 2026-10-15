@@ -34,22 +34,20 @@
   <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / boot screen</p>
   <h1>Boot Screen</h1>
   <p class="lede">
-    Your own mark in the Digitone&nbsp;II start-up animation: scattered by the intro's
-    tunnel, held still or flashing, broken into glitching ASCII, or spinning in like a
-    1960s TV transition. Pick your firmware
-    and a picture, download a signed image.
+    Put your own mark in the Digitone&nbsp;II start-up animation. The mark can scatter in the
+    tunnel of the intro, stay still, flash, break into glitching ASCII, or spin in like a 1960s
+    TV transition. Select your firmware file and a picture. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware and your picture are
-  never uploaded — this page has no server to upload them to. It is static files on
-  GitHub Pages; you can read every line in the
+  <p><strong>This tab does all the work in your browser.</strong> The page does not upload your
+  firmware file or your picture, because the page has no server. The page is a set of static files
+  on GitHub Pages. You can read all of its code in the
   <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
 
 <section class="changes">
@@ -66,10 +64,12 @@
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. No combined image has been
-  flashed yet.</p>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
+  <p>Three combinations with this mod passed on an instrument (2026-09-30, 2026-10-02 and
+  2026-10-03). The list is on the <a href="index.html#compatibility">index</a>.</p>
 <!-- dnfw:matrix-row bootscreen -->
 <div class="scroll">
 <table class="matrix">
@@ -91,7 +91,7 @@
 
   <div class="choice" role="radiogroup" aria-label="Mark">
     <label><input type="radio" name="source" id="srcPreset" value="preset" checked><span>Chimera (ours)</span></label>
-    <label><input type="radio" name="source" id="srcFile" value="file"><span>Your picture…</span></label>
+    <label><input type="radio" name="source" id="srcFile" value="file"><span>Your picture</span></label>
   </div>
   <input type="file" id="picture" accept="image/*,.pgm" hidden>
 
@@ -144,14 +144,14 @@
     </div>
   </div>
   <div id="asciiControls" class="hidden">
-    <p class="help-text">Instead of the tunnel, the mark breaks into characters: noise that tears and
-    slips like lost video sync, cells locking into the picture one by one, then a residual glitch
-    that keeps flickering until the Digitone is ready. After the <a href="https://noiseandmatter.github.io/DNX/">DNX</a> start-up screen.</p>
+    <p class="help-text">The mark breaks into characters in place of the tunnel. First comes noise
+    that tears and slips like lost video sync. Then the cells lock into the picture one by one. Then
+    a small glitch flickers until the Digitone is ready. After the <a href="https://noiseandmatter.github.io/DNX/">DNX</a> start-up screen.</p>
     <div class="controls">
       <div class="control">
         <label for="ramp">Picture characters</label>
         <input type="text" id="ramp" value=" .:+#" spellcheck="false">
-        <span class="help">Dark to bright; a cell's coverage picks one</span>
+        <span class="help">Dark to bright. The coverage of a cell selects one</span>
       </div>
       <div class="control">
         <label for="glitchChars">Glitch characters</label>
@@ -171,7 +171,7 @@
       <div class="control">
         <label for="resolve">Resolve over</label>
         <input type="number" id="resolve" min="1" max="175" value="96">
-        <span class="help">Frames; the intro runs about 175</span>
+        <span class="help">Frames. The intro lasts about 175</span>
       </div>
       <div class="control">
         <label for="seed">Seed</label>
@@ -183,8 +183,9 @@
     <p class="err" id="asciiErr"></p>
   </div>
   <div id="spinControls" class="hidden">
-    <p class="help-text">Instead of the tunnel, the mark spins and zooms towards you, back and forth, over a
-    swirl of smeared stars, like a 1960s television transition, then settles while the swirl keeps turning.
+    <p class="help-text">The mark spins and zooms towards you, back and forth, in place of the tunnel.
+    Behind it turns a swirl of smeared stars, like a 1960s television transition. Then the mark stops
+    while the swirl continues to turn.
     A mark that does not fill the screen leaves more of the swirl in view.</p>
     <div class="controls">
       <div class="control">
@@ -210,7 +211,7 @@
       <div class="control">
         <label for="spinResolve">Settle after</label>
         <input type="number" id="spinResolve" min="2" max="175" value="120">
-        <span class="help">Frames; the intro runs about 175</span>
+        <span class="help">Frames. The intro lasts about 175</span>
       </div>
       <div class="control">
         <label for="spinSeed">Seed</label>
@@ -243,9 +244,9 @@
 
 <section class="step">
   <div class="step-head"><span class="step-num">4</span><h2>Your firmware</h2></div>
-  <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron, or one the Modulation
-  Destinations, MIDI Arpeggiator, LFO Waves or A Fourth LFO page built: they share one
-  start-up loader, and this page adds the mark to whatever it already copies up.</p>
+  <p>Use a Digitone&nbsp;II OS 1.11 <code>.syx</code> file from Elektron. You can also use a file
+  from the Modulation Destinations, MIDI Arpeggiator, LFO Waves or A Fourth LFO page. These mods share
+  one start-up loader, and this page adds the mark to the data that the loader already copies.</p>
 
   <div class="drop" id="drop">
     <p><label class="filebtn" for="syx">Choose a .syx file</label>
@@ -275,14 +276,14 @@
 </div>
 
 <div class="note">
-  <p><strong>Confirmed on a Digitone&nbsp;II.</strong> A flashing mark built by this mod
-  booted and played on the instrument on 2026-09-17, and the ASCII glitch and the spin on
-  2026-09-18 &mdash; upright, fluent, with no delay to start-up. The page and the command
-  line produce the same bytes.</p>
+  <p><strong>Confirmed on a Digitone&nbsp;II.</strong> A flashing mark from this mod booted and
+  played on the instrument on 2026-09-17. The ASCII glitch and the spin did the same on 2026-09-18.
+  They were upright and fluent, and they did not delay the start-up. The page and the command line
+  make the same bytes.</p>
   <p><strong>Combines</strong> with Modulation Destinations, the MIDI Arpeggiator, the
-  Transient Swapper, LFO Waves and A Fourth LFO. Since 2026-09-30 the mark and its code are
-  chunks in the one appended area every mod shares, copied up by one start-up loader; that
-  version has been checked in the emulator but <strong>not yet flashed</strong>.</p>
+  Transient Swapper, LFO Waves and A Fourth LFO. Since 2026-09-30, the mark and its code are chunks
+  in the one appended area that every mod shares. One start-up loader copies them. This version
+  passed on the instrument on 2026-09-30, with LFO Waves and A Fourth LFO.</p>
 </div>
 
 <footer>

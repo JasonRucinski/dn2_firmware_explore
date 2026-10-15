@@ -200,14 +200,22 @@ def combines_text(mod_id: str, found: list[Pair], names: dict[str, str]) -> str:
         other = p.b if p.a == mod_id else p.a
         kind = cell(p)
         (ok if kind == "yes" else ordered if kind == "order" else no).append((names[other], _short(p)))
+    # Full sentences, no semicolons: the pages follow ASD-STE100 structure (the ste check).
     parts = []
     if ok:
-        parts.append("With " + ", ".join(n for n, _ in ok))
+        parts.append("This mod combines with " + _and([n for n, _ in ok]) + ".")
     if ordered:
-        parts.append("in one order only with " + "; ".join(f"{n} ({why})" for n, why in ordered))
+        parts.append("This mod combines in one order only with "
+                     + _and([f"{n} ({why})" for n, why in ordered]) + ".")
     if no:
-        parts.append("<strong>not</strong> with " + "; ".join(f"{n} ({why})" for n, why in no))
-    return "; ".join(parts) + ". See the compatibility table"
+        parts.append("This mod does <strong>not</strong> combine with "
+                     + _and([f"{n} ({why})" for n, why in no], "or") + ".")
+    return " ".join(parts) + " See the compatibility table"
+
+
+def _and(items: list[str], last: str = "and") -> str:
+    """A, B and C."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {last} " + items[-1]
 
 
 def table_html(ids: list[str], found: list[Pair], names: dict[str, str],
