@@ -209,7 +209,7 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
-  <p class="small">Documentation version 1.0, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
+  <p class="small">Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
   <h2>Select Waverider</h2>
   <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
   header shows Waverider (1/5) to Waverider (5/5).</p>
@@ -294,6 +294,26 @@
     <li><strong>A deleted table:</strong> its pool slot shows MISSING and plays Prim. The slot stays until you clear it with CLEAR SLOT. Because the slot stays, a sound that uses the slot does not change to a different table.</li>
     <li><strong>When you replace a table that plays:</strong> the old table continues to play until the new table is ready. Then the old table crossfades into the new table, in the DCLK time. If the first table of a slot is not ready, the slot plays Prim. until the table is ready.</li>
   </ul>
+
+  <h3>The wavetable page</h3>
+  <p>Push PRESET/KIT two times. The left column has three lists: LOAD, MANAGE and POOL. The right column shows the pool of this project. IN POOL is the number of tables in the pool. FREE is the number of empty slots. +DRIVE is the number of tables on the +Drive.</p>
+  <div class="figs">
+    <figure><img class="capture" src="art/waverider/wt_page.png" alt="The wavetable page: LOAD, MANAGE and POOL, with IN POOL 3, FREE 124 and +DRIVE 5" width="256" height="128"><figcaption>The wavetable page</figcaption></figure>
+  </div>
+  <ul>
+    <li><strong>Move:</strong> push UP or DOWN, or turn LEVEL/DATA. Hold FUNC and push UP or DOWN to move 7 rows.</li>
+    <li><strong>Open and close:</strong> push YES to open a list. Push NO to go back. Push PRESET/KIT or NO on the wavetable page to close it.</li>
+    <li><strong>Operations:</strong> in a list, push RIGHT. Push UP or DOWN to select an operation, then push YES. An operation applies to the ticked rows. If no row is ticked, it applies to the highlighted row. Push NO or LEFT to close the operations.</li>
+    <li><strong>LOAD:</strong> the slots of the pool. Select a slot and push YES. If the last SYN page that you saw is page 2, the table goes to TBL2. If not, it goes to TBL1. RIGHT shows LOAD TO TBL1 and LOAD TO TBL2. On a track that is not a Waverider track, LOAD changes nothing.</li>
+    <li><strong>MANAGE:</strong> all the tables on the +Drive. A + shows a table that is in the pool. Push YES to tick a table. ADD TO POOL puts the ticked tables in empty slots. DELETE removes the ticked tables from the +Drive, after you confirm with YES.</li>
+    <li><strong>POOL:</strong> the slots of the pool. CLEAR SLOT empties the ticked slots. A MISSING slot stays until you clear it.</li>
+    <li><strong>Empty slots</strong> show a line of slashes.</li>
+  </ul>
+  <div class="figs">
+    <figure><img class="capture" src="art/waverider/wt_load_ops.png" alt="LOAD WAVETABLE with the operations LOAD TO TBL1 and LOAD TO TBL2" width="256" height="128"><figcaption>LOAD: push RIGHT for TBL1 or TBL2</figcaption></figure>
+    <figure><img class="capture" src="art/waverider/wt_manage_ops.png" alt="WAVETABLE MANAGER with two tables ticked and the operations ADD TO POOL, DELETE, SELECT ALL and DESELECT ALL" width="256" height="128"><figcaption>MANAGE: two tables ticked, then RIGHT</figcaption></figure>
+    <figure><img class="capture" src="art/waverider/wt_pool_ops.png" alt="WAVETABLE POOL with slot 003 MISSING and the operations CLEAR SLOT, SELECT ALL and DESELECT ALL" width="256" height="128"><figcaption>POOL: a MISSING slot and CLEAR SLOT</figcaption></figure>
+  </div>
 
   <h2>P-locks, LFOs and SAVE</h2>
   <ul>
@@ -490,7 +510,7 @@
 </section>
 
 <section id="tech" role="tabpanel" aria-labelledby="tab-tech" hidden>
-  <p class="small">Documentation version 1.0, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
+  <p class="small">Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
   <h2>Technical</h2>
   <p>This tab is for people who make tables, and for people who want to know how Waverider makes its
   sound. A script computes every figure and every table on this tab from the code that runs on the
