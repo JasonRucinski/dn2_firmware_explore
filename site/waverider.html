@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="Waverider, a sixth synth machine for the Digitone II: two wavetable oscillators, a sub-oscillator and noise, with tables on the +Drive. Alpha, OS 1.11, built in your browser.">
+<meta name="description" content="Waverider is a sixth synth machine for the Digitone II. Waverider has two wavetable oscillators, a sub-oscillator and noise. The tables are on the +Drive. Alpha, OS 1.11. Your browser builds the file.">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/tool.css">
 <style>
@@ -60,14 +60,14 @@
       <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / waverider</p>
       <h1>Waverider</h1>
       <p class="lede">
-        A sixth synth machine for the Digitone II. Two wavetable oscillators, a sub-oscillator
-        and a noise generator, with MOVE to sweep each oscillator through its table. Tables come
-        from DNX and live on the +Drive.
+        A sixth synth machine for the Digitone II. Waverider has two wavetable oscillators, a
+        sub-oscillator and a noise generator. MOVE sweeps each oscillator through its table.
+        You put the tables on the +Drive with DNX.
       </p>
       <div class="tags">
         <span class="tag untested">alpha 1</span>
         <span class="tag research">OS 1.11 only</span>
-        <span class="tag research">page 5 is work in progress</span>
+        <span class="tag research">page 5 is not complete</span>
       </div>
     </div>
     <img class="capture" src="art/waverider/page2.png" alt="Waverider's page 2: oscillator 2 on the Harm. table" width="256" height="128">
@@ -78,29 +78,30 @@
   <button type="button" role="tab" id="tab-try" aria-controls="try" aria-selected="true">Try it</button>
   <button type="button" role="tab" id="tab-manual" aria-controls="manual" aria-selected="false">The manual</button>
   <button type="button" role="tab" id="tab-tests" aria-controls="tests" aria-selected="false">Tests and performance</button>
-  <button type="button" role="tab" id="tab-inside" aria-controls="inside" aria-selected="false">How it is made</button>
+  <button type="button" role="tab" id="tab-inside" aria-controls="inside" aria-selected="false">How it works</button>
 </div>
 
 <!-- ================================================================= Try it -->
 <section id="try" role="tabpanel" aria-labelledby="tab-try">
   <div class="note">
-    <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-    uploaded: this page has no server to upload it to. It is static files on
-    GitHub Pages; you can read every line in the
+    <p><strong>This tab does all the work in your browser.</strong> The page does not
+    upload your firmware file, because the page has no server. The page is a set of static
+    files on GitHub Pages. You can read all of its code in the
     <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-    <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-    Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-    before you flash a modified one, and back up your +Drive with <a href="https://noiseandmatter.github.io/DNX/">DNX</a>.</p>
+    <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+    The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the
+    stock file before you flash a modified file. Back up your +Drive with
+    <a href="https://noiseandmatter.github.io/DNX/">DNX</a>.</p>
   </div>
 
   <section class="step">
     <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
-    <p>Elektron's Digitone&nbsp;II OS 1.11 <code>.syx</code>, or a file another page here has
-    already built, to combine mods (see below).</p>
+    <p>Use Elektron's Digitone&nbsp;II OS 1.11 <code>.syx</code> file. To combine mods, you
+    can also use a file from a different page on this site (refer to "Combines with" below).</p>
     <div class="drop" id="drop">
-      <p><label class="filebtn" for="syx">Choose a .syx file</label>
+      <p><label class="filebtn" for="syx">Select a .syx file</label>
         <input type="file" id="syx" accept=".syx,.SYX" hidden></p>
-      <p class="hint">or drag it here</p>
+      <p class="hint">Or drag the file here.</p>
     </div>
     <div id="loaded" class="hidden">
       <dl class="facts" id="facts"></dl>
@@ -112,60 +113,71 @@
     <div class="step-head"><span class="step-num">2</span><h2>What changes</h2></div>
     <dl class="facts">
       <dt>MACHINE SEL</dt><dd>WAVERIDER, after SWARMER</dd>
-      <dt>A Waverider track</dt><dd>five SYN pages of its own; the rest of the unit is as before</dd>
-      <dt>Writes</dt><dd id="writes">&mdash;</dd>
+      <dt>A Waverider track</dt><dd>Five SYN pages. All other functions of the unit do not change.</dd>
+      <dt>Changes</dt><dd id="writes">&mdash;</dd>
     </dl>
   </section>
 
   <section class="step hidden" id="step3">
     <div class="step-head"><span class="step-num">3</span><h2>Build it</h2></div>
-    <p>The image is rebuilt, re-signed with the key derived from your own file, and every
-    integrity field is checked again. Nothing downloads unless all of them pass.</p>
+    <p>The page builds the file again and signs it with a key from your own file. Then the page
+    does all the integrity checks again. If one check fails, the page does not let you
+    download the file.</p>
     <div class="verdict" id="buildVerdict"></div>
   </section>
 
   <div class="bar hidden" id="bar">
     <button class="primary" id="buildBtn">Build firmware</button>
-    <button id="resetBtn">Start over</button>
+    <button id="resetBtn">Start again</button>
     <span class="status" id="status"></span>
   </div>
 
-  <h3>You will need DNX</h3>
-  <p><a href="https://noiseandmatter.github.io/DNX/">DNX</a> runs in your browser too. It backs up the +Drive, puts wavetables on it from WAV
-  files, manages each project's pool, and removes Waverider's data when you go back to stock.</p>
+  <h3>Get DNX</h3>
+  <p><a href="https://noiseandmatter.github.io/DNX/">DNX</a> also runs in your browser. Use DNX
+  to back up the +Drive and to put wavetables from WAV files on it. DNX also controls the pool of
+  each project. When you go back to stock, DNX erases the Waverider data.</p>
 
-  <h3>Then, on the unit</h3>
+  <h3>Install the file on the unit</h3>
   <ol>
     <li>Back up the +Drive with DNX.</li>
-    <li>Open Elektron Transfer, connect the Digitone&nbsp;II over USB and drop the patched file onto it. The unit updates and restarts.</li>
-    <li>MACHINE SEL lists WAVERIDER, after SWARMER.</li>
+    <li>Open Elektron Transfer.</li>
+    <li>Connect the Digitone&nbsp;II to the computer with a USB cable.</li>
+    <li>Drag the patched file onto the Digitone&nbsp;II in Transfer. The unit updates and starts again.</li>
+    <li>Make sure that MACHINE SEL shows WAVERIDER after SWARMER.</li>
   </ol>
-  <p>Nothing else needs setting up. The +Drive has no wavetables until you add one with DNX;
-  the first table you add with <a href="https://noiseandmatter.github.io/DNX/">DNX</a> sets up the storage.</p>
+  <p>No other steps are necessary. At first, the +Drive has no wavetables. When you add the
+  first table with <a href="https://noiseandmatter.github.io/DNX/">DNX</a>, the unit prepares
+  the storage.</p>
 
   <h3>Before you start</h3>
   <ul>
-    <li>Digitone II OS 1.11 only.</li>
-    <li>Try it alone first, on a new project. If something goes wrong, that tells us it is the
-      new machine and not a combination.</li>
-    <li>When you report a problem, say which mods your file has.</li>
-    <li>If the unit does not boot: hold FUNC at power on, open the Early Start-up Menu and
-      upgrade with the stock 1.11 file over MIDI DIN.</li>
+    <li>Use Digitone II OS 1.11 only.</li>
+    <li>First, use Waverider alone, on a new project. If a problem occurs, we then know that
+      the cause is Waverider and not a combination of mods.</li>
+    <li>When you report a problem, tell us which mods are in your file.</li>
+    <li>If the unit does not start:
+      <ol>
+        <li>Push and hold FUNC when you turn on the power.</li>
+        <li>Open the Early Start-up Menu.</li>
+        <li>Do an OS upgrade with the stock 1.11 file over MIDI DIN.</li>
+      </ol>
+    </li>
   </ul>
 
   <section class="combines">
     <h3>Combines with</h3>
-    <p>Waverider combines with the other mods, except the LFO modulation of the FX, the fourth
-    LFO and the FM drum transients, which the pages refuse. Combinations have been checked in
-    the emulator, not on an instrument. This mod's row of the
-    <a href="index.html#compatibility">compatibility table</a>: &#10003; combines in either
-    order; &#10003;* in one order only; &#10007; cannot be combined. Hover a cell for the reason.</p>
+    <p>You can combine Waverider with the other mods, but not with the LFO modulation of the FX,
+    the fourth LFO and the FM drum transients. The pages do not let you combine Waverider with these
+    three mods. We examined the combinations in the emulator, not on an instrument.</p>
+    <p>The table below is the Waverider row of the <a href="index.html#compatibility">compatibility
+    table</a>. &#10003;: you can combine the two mods in either order. &#10003;*: you can combine them
+    in one order only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
 <!-- dnfw:matrix-row waverider -->
 <div class="scroll">
 <table class="matrix">
-  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">Waverider, a sixth machine <code>waverider</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td></tr>
+    <tr><th scope="row">Waverider, a sixth machine <code>waverider</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-no" title="both use the same RAM">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="both use the same code cave">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td></tr>
   </tbody>
 </table>
 </div>
@@ -177,135 +189,144 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
-  <h2>Choosing it</h2>
-  <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages; the
-  header reads Waverider (1/5) to (5/5).</p>
+  <h2>Select Waverider</h2>
+  <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
+  header shows Waverider (1/5) to Waverider (5/5).</p>
 
   <h2>Pages 1 and 2: the oscillators</h2>
-  <p>Both pages have the same controls. Page 1 is oscillator 1, page 2 is oscillator 2.</p>
+  <p>Page 1 is for oscillator 1. Page 2 is for oscillator 2. The two pages have the same controls.</p>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page1.png" alt="Page 1 with a rounded saw" width="256" height="128"><figcaption>Page 1: oscillator 1 on Prim. at POS 40</figcaption></figure>
     <figure><img class="capture" src="art/waverider/page2.png" alt="Page 2 with a harmonic wave" width="256" height="128"><figcaption>Page 2: oscillator 2 on Harm. at POS 30</figcaption></figure>
   </div>
   <div class="scroll"><table>
-    <thead><tr><th>Knob</th><th>Control</th><th>What it does</th></tr></thead>
+    <thead><tr><th>Knob</th><th>Control</th><th>Function</th></tr></thead>
     <tbody>
-      <tr><td class="num">A</td><td><code>TUNE</code> / <code>DETN</code></td><td>Pitch in semitones. DETN is the offset from oscillator 1; TUNE moves both</td></tr>
-      <tr><td class="num">B</td><td><code>LEV</code></td><td>Level, 0 to 127. 100 is unity</td></tr>
-      <tr><td class="num">C</td><td><code>POS</code></td><td>Position in the table, 0 to 120</td></tr>
-      <tr><td class="num">D</td><td><code>TBL</code></td><td>The table: Prim., Harm., then T:001 and up for the pool</td></tr>
-      <tr><td class="num">E</td><td><code>RATE</code></td><td>How fast MOVE runs, 0 to 100. With SYN1 or SYN2 on it reads as a note length</td></tr>
-      <tr><td class="num">F</td><td><code>MLEV</code></td><td>How much MOVE lowers the level, 0 to 127. 0 is none</td></tr>
-      <tr><td class="num">G</td><td><code>MPOS</code></td><td>How far MOVE moves the position, 0 to 100. 50 is none</td></tr>
-      <tr><td class="num">H</td><td><code>MOVE</code></td><td>The shape MOVE follows, one of eleven</td></tr>
+      <tr><td class="num">A</td><td><code>TUNE</code> / <code>DETN</code></td><td>The pitch in semitones. TUNE changes the pitch of the two oscillators. DETN is the difference from oscillator 1</td></tr>
+      <tr><td class="num">B</td><td><code>LEV</code></td><td>The level, 0 to 127. At 100, the gain is 1</td></tr>
+      <tr><td class="num">C</td><td><code>POS</code></td><td>The position in the table, 0 to 120</td></tr>
+      <tr><td class="num">D</td><td><code>TBL</code></td><td>The table: Prim., Harm., then the pool tables from T:001</td></tr>
+      <tr><td class="num">E</td><td><code>RATE</code></td><td>The speed of MOVE, 0 to 100. When SYN1 or SYN2 is on, RATE shows a note length</td></tr>
+      <tr><td class="num">F</td><td><code>MLEV</code></td><td>How much MOVE decreases the level, 0 to 127. At 0, MOVE does not change the level</td></tr>
+      <tr><td class="num">G</td><td><code>MPOS</code></td><td>How much MOVE changes the position, 0 to 100. At 50, MOVE does not change the position</td></tr>
+      <tr><td class="num">H</td><td><code>MOVE</code></td><td>The shape that MOVE follows. There are eleven shapes</td></tr>
     </tbody>
   </table></div>
-  <p class="small">The wave shows one voice at a time, not all of them: usually the newest note, otherwise the first voice it picked. Every voice is still computed and heard. One cursor per note is under Coming next.</p>
-  <p>MOVE shapes: Ramp Up, Ramp Down, Exp Up, Exp Down, Tri Once, Up Loop, Down Loop, Tri Loop,
-  Square, Rnd Hold, Rnd Glide. The first five stop at their end; the rest repeat.</p>
+  <p class="small">The wave shows only one voice. Usually, this is the voice of the newest note. If not, it is the first voice that the page selected. The unit calculates all the voices, and you hear all of them. One cursor for each note is in "Plans".</p>
+  <p>There are eleven MOVE shapes. These five shapes stop at their end: Ramp Up, Ramp Down,
+  Exp Up, Exp Down and Tri Once. These six shapes repeat: Up Loop, Down Loop, Tri Loop, Square,
+  Rnd Hold and Rnd Glide.</p>
 
   <h2>Page 3: sub and noise</h2>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page3.png" alt="Page 3 with the sub and noise drawn" width="256" height="128"><figcaption>Page 3: SUB at 100 and NOIS at 60</figcaption></figure>
   </div>
   <div class="scroll"><table>
-    <thead><tr><th>Knob</th><th>Control</th><th>What it does</th></tr></thead>
+    <thead><tr><th>Knob</th><th>Control</th><th>Function</th></tr></thead>
     <tbody>
-      <tr><td class="num">A</td><td><code>SUB</code></td><td>Sub-oscillator level, 0 to 127. 0 is off</td></tr>
-      <tr><td class="num">B</td><td><code>OCT</code></td><td>-1, -2 or -3 octaves below the oscillator it follows</td></tr>
-      <tr><td class="num">C</td><td><code>WAVE</code></td><td>SIN, TRI, SQR or PLS (a 25 % pulse)</td></tr>
-      <tr><td class="num">D</td><td><code>SRC</code></td><td>Follows OSC1 or OSC2</td></tr>
-      <tr><td class="num">E</td><td><code>NOIS</code></td><td>Noise level, 0 to 127. 0 is off</td></tr>
-      <tr><td class="num">F</td><td><code>TYPE</code></td><td>WHT, PNK, BRN or DIG</td></tr>
-      <tr><td class="num">G</td><td><code>COLR</code></td><td>Tilt of the spectrum, -64 to +63. Negative adds low end, positive removes it</td></tr>
-      <tr><td class="num">H</td><td><code>DEC</code></td><td>Decay after each note, 0 to 126 (5 ms to 10 s). Inf holds the noise at full level</td></tr>
+      <tr><td class="num">A</td><td><code>SUB</code></td><td>The level of the sub-oscillator, 0 to 127. At 0, the sub-oscillator is off</td></tr>
+      <tr><td class="num">B</td><td><code>OCT</code></td><td>-1, -2 or -3 octaves below the oscillator that it follows</td></tr>
+      <tr><td class="num">C</td><td><code>WAVE</code></td><td>The wave: SIN, TRI, SQR or PLS (a 25 % pulse)</td></tr>
+      <tr><td class="num">D</td><td><code>SRC</code></td><td>The oscillator that the sub-oscillator follows: OSC1 or OSC2</td></tr>
+      <tr><td class="num">E</td><td><code>NOIS</code></td><td>The level of the noise, 0 to 127. At 0, the noise is off</td></tr>
+      <tr><td class="num">F</td><td><code>TYPE</code></td><td>The noise type: WHT, PNK, BRN or DIG</td></tr>
+      <tr><td class="num">G</td><td><code>COLR</code></td><td>The tilt of the spectrum, -64 to +63. A negative value adds low frequencies. A positive value removes them</td></tr>
+      <tr><td class="num">H</td><td><code>DEC</code></td><td>The decay of the noise after each note, 0 to 126 (5 ms to 10 s). At Inf, the noise stays at full level</td></tr>
     </tbody>
   </table></div>
-  <p>The middle of the page draws the sub and the noise.</p>
+  <p>The middle of the page shows the sub-oscillator and the noise.</p>
 
   <h2>Page 4: sound options</h2>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page4.png" alt="Page 4 with the scope" width="256" height="128"><figcaption>Page 4: the scope</figcaption></figure>
   </div>
   <div class="scroll"><table>
-    <thead><tr><th>Knob</th><th>Control</th><th>What it does</th></tr></thead>
+    <thead><tr><th>Knob</th><th>Control</th><th>Function</th></tr></thead>
     <tbody>
-      <tr><td class="num">A</td><td><code>PRST</code></td><td>The phase on a note: Off, On (restarts at 0, so the same note sounds the same each time) or Random</td></tr>
-      <tr><td class="num">B</td><td><code>TRIG</code></td><td>Retrig restarts MOVE on every note; Free lets it run</td></tr>
-      <tr><td class="num">C</td><td><code>DCLK</code></td><td>A crossfade when TBL or POS jumps: Off, or 1 to 100 ms. New sounds start at 3 ms</td></tr>
-      <tr><td class="num">D</td><td><code>TRIM</code></td><td>Output level of the machine, -15.0 to 0.0 dB. -11.0 dB, the default, matches a default WaveTone</td></tr>
-      <tr><td class="num">E</td><td><code>SYN1</code></td><td>Locks oscillator 1's MOVE to the tempo (Off, On)</td></tr>
-      <tr><td class="num">F</td><td><code>SYN2</code></td><td>The same for oscillator 2</td></tr>
-      <tr><td class="num">G</td><td><code>SMT1</code></td><td>Glide time on oscillator 1's POS. Off at 127</td></tr>
-      <tr><td class="num">H</td><td><code>SMT2</code></td><td>The same for oscillator 2</td></tr>
+      <tr><td class="num">A</td><td><code>PRST</code></td><td>The phase at the start of a note: Off, On or Random. With On, the phase starts at 0 and the same note has the same sound each time</td></tr>
+      <tr><td class="num">B</td><td><code>TRIG</code></td><td>With Retrig, MOVE starts again on each note. With Free, MOVE does not start again on a note</td></tr>
+      <tr><td class="num">C</td><td><code>DCLK</code></td><td>A crossfade when TBL or POS changes suddenly: Off, or 1 to 100 ms. A new sound starts at 3 ms</td></tr>
+      <tr><td class="num">D</td><td><code>TRIM</code></td><td>The output level of the machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone</td></tr>
+      <tr><td class="num">E</td><td><code>SYN1</code></td><td>Off or On. With On, the MOVE of oscillator 1 follows the tempo</td></tr>
+      <tr><td class="num">F</td><td><code>SYN2</code></td><td>The same as SYN1, for oscillator 2</td></tr>
+      <tr><td class="num">G</td><td><code>SMT1</code></td><td>The glide time of POS on oscillator 1. At 127, the glide is off</td></tr>
+      <tr><td class="num">H</td><td><code>SMT2</code></td><td>The same as SMT1, for oscillator 2</td></tr>
     </tbody>
   </table></div>
-  <p>The middle of the page shows the track's sound as a scope.</p>
+  <p>The middle of the page shows the sound of the track as a scope.</p>
 
   <h2>Page 5: Shape</h2>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page5.png" alt="Page 5 with the Shape knobs" width="256" height="128"><figcaption>Page 5: Shape's knobs and the scope</figcaption></figure>
   </div>
-  <p>FOLD, WARP, FM and NPOS on top; TYPE, AMT, P1 and P2 below. They are reserved for the sound
-  features that come next and <strong>do not change the sound yet</strong>. You can set and
-  p-lock them. The middle of the page shows the scope, as on page 4.</p>
+  <p>The top row has FOLD, WARP, FM and NPOS. The bottom row has TYPE, AMT, P1 and P2. These
+  controls are for sound functions in a future version. <strong>They do not change the sound
+  now.</strong> You can set and p-lock them. The middle of the page shows the scope, as on page 4.</p>
 
   <h2>The wavetable pool</h2>
   <ul>
-    <li><strong>Tables:</strong> 1 to 64 frames of 64 to 4096 points each, in powers of two. Two are built in, Prim. and Harm.</li>
-    <li><strong>Names:</strong> the header names the table as you turn TBL, as "T:004 name".</li>
-    <li><strong>Adding and removing:</strong> with DNX, or from the wavetable page on the unit (press PRESET/KIT twice). A project keeps its own pool of up to 128 tables.</li>
-    <li><strong>Your project file stays a normal project:</strong> the pool is kept beside the project on the +Drive, not inside it, so stock firmware can still load a project you saved. Its Waverider tracks come up as FM Tone, with their settings read as FM Tone's, so they sound different. Checked in the emulator; not yet on an instrument.</li>
-    <li><strong>An empty pool:</strong> a project with no pool plays no wavetable. CREATE NEW starts that way, and so does a project saved before pools existed: its Waverider tracks play Prim. until you add tables.</li>
-    <li><strong>A deleted table:</strong> its pool slots read MISSING and play Prim. They keep the slot until you CLEAR SLOT it, so a sound set to that slot never jumps to another table on its own.</li>
-    <li><strong>Replacing a table while it plays:</strong> the old table keeps playing until the new one is ready, then it crossfades into the new one over the DCLK time. A slot whose first table is still loading plays Prim. until it is ready.</li>
+    <li><strong>Tables:</strong> each table has 1 to 64 frames. Each frame has 64 to 4096 points, in powers of two. Waverider has two built-in tables: Prim. and Harm.</li>
+    <li><strong>Names:</strong> when you turn TBL, the header shows the table name, for example "T:004 name".</li>
+    <li><strong>Add and remove tables:</strong> use DNX, or use the wavetable page on the unit. To open the wavetable page, push PRESET/KIT two times. Each project has its own pool of up to 128 tables.</li>
+    <li><strong>Your project file is a normal project:</strong> the pool is on the +Drive, next to the project and not in it. Because of this, the stock firmware can load a project that you saved. Its Waverider tracks show as FM Tone, and the stock firmware reads their settings as FM Tone settings. Thus they have a different sound. We examined this in the emulator only, not on an instrument.</li>
+    <li><strong>An empty pool:</strong> a project with no pool has no pool tables. Its Waverider tracks play Prim. until you add tables. A new project (CREATE NEW) has an empty pool. A project that you saved before you installed Waverider also has an empty pool.</li>
+    <li><strong>A deleted table:</strong> its pool slot shows MISSING and plays Prim. The slot stays until you clear it with CLEAR SLOT. Because the slot stays, a sound that uses the slot does not change to a different table.</li>
+    <li><strong>When you replace a table that plays:</strong> the old table continues to play until the new table is ready. Then the old table crossfades into the new table, in the DCLK time. If the first table of a slot is not ready, the slot plays Prim. until the table is ready.</li>
   </ul>
 
-  <h2>P-locks, LFOs and saving</h2>
+  <h2>P-locks, LFOs and SAVE</h2>
   <ul>
-    <li><strong>P-locks:</strong> every control on pages 1 to 5 can be p-locked. The locks stay through a reboot and through SAVE and reload.</li>
-    <li><strong>LFO destinations:</strong> every control except Shape's TYPE, AMT and P1 is in the LFO's DEST list, in two groups both headed SYN.</li>
+    <li><strong>P-locks:</strong> you can p-lock all the controls on pages 1 to 5. The p-locks stay after a reboot, and after SAVE and LOAD.</li>
+    <li><strong>LFO destinations:</strong> all the controls except TYPE, AMT and P1 on page 5 are in the DEST list of the LFO. The controls are in two groups. Each group has the header SYN.</li>
   </ul>
 
   <h2>Modulation on the page</h2>
-  <p>When an LFO or MOVE moves POS or TBL, the page shows the value you hear beside the value
-  you set. Only POS and TBL, on both oscillators, show it; every other control shows the value
-  you set. Nothing extra is drawn while a control is not moving, and the range fades about two
-  seconds after the movement stops.</p>
+  <p>When an LFO or MOVE changes POS or TBL, the page shows the value that you hear next to the
+  value that you set. Only POS and TBL show this, on the two oscillators. All other controls show
+  only the value that you set. When a control does not move, the page shows nothing more. The
+  page removes the range about two seconds after the movement stops.</p>
   <ul>
-    <li><strong>Slow, under 3 Hz:</strong> a dot under POS at the value heard, a dotted line over the range it sweeps, and a dotted cursor under the position bar. The wave is the frame you hear.</li>
-    <li><strong>Medium, 3 to 12 Hz:</strong> the dot over a grey band. The wave shows the two frames at the ends of the sweep.</li>
-    <li><strong>Fast, over 12 Hz:</strong> the band and the two frames, no dot, and &#8776; beside POS.</li>
-    <li><strong>TBL:</strong> the wave shows the table you hear; the label stays on the table you set.</li>
+    <li><strong>Slow, less than 3 Hz:</strong> a dot under POS shows the value that you hear. A dotted line shows the range of the sweep. A dotted cursor is under the position bar. The wave is the frame that you hear.</li>
+    <li><strong>Medium, 3 to 12 Hz:</strong> the dot is on a grey band. The wave shows the two frames at the ends of the sweep.</li>
+    <li><strong>Fast, more than 12 Hz:</strong> the page shows the band and the two frames, but no dot. The symbol &#8776; is next to POS.</li>
+    <li><strong>TBL:</strong> the wave shows the table that you hear. The label shows the table that you set.</li>
   </ul>
   <div class="figs">
-    <figure><img class="capture" src="art/waverider/mod_none.png" alt="POS not modulated" width="256" height="128"><figcaption>Not moving</figcaption></figure>
+    <figure><img class="capture" src="art/waverider/mod_none.png" alt="POS not modulated" width="256" height="128"><figcaption>No modulation</figcaption></figure>
     <figure><img class="capture" src="art/waverider/mod_slow.png" alt="POS modulated slowly" width="256" height="128"><figcaption>Slow</figcaption></figure>
     <figure><img class="capture" src="art/waverider/mod_medium.png" alt="POS modulated at a medium rate" width="256" height="128"><figcaption>Medium</figcaption></figure>
     <figure><img class="capture" src="art/waverider/mod_fast.png" alt="POS modulated fast" width="256" height="128"><figcaption>Fast</figcaption></figure>
   </div>
-  <p class="small">Why 3 and 12 Hz: the page redraws up to 24 times a second. A dot moves smoothly
-  up to an eighth of that, 3 Hz, and jerkily up to half, 12 Hz. Faster than half the redraw rate,
-  a moving dot would show a false, slower motion, so past 12 Hz the page shows only the range.</p>
-  <p class="small">Captured in the emulator. It runs no LFOs, so the value heard was written in by
-  hand. The scopes on pages 4 and 5 show Waverider's own output, rendered outside the
-  instrument, since the emulator makes no sound.</p>
+  <p class="small">The reason for 3 Hz and 12 Hz: the page updates the screen up to 24 times a
+  second. Up to 3 Hz (1/8 of that rate), the dot moves smoothly. Up to 12 Hz (1/2 of that rate),
+  the dot moves in steps. Above 12 Hz, a dot that moves shows an incorrect, slower movement. For this
+  reason, above 12 Hz the page shows only the range.</p>
+  <p class="small">We made these captures in the emulator. The emulator does not run LFOs. For
+  this reason, we wrote the value that you hear into the capture by hand. The emulator makes no
+  sound. For this reason, the scopes on pages 4 and 5 show Waverider output that we rendered
+  outside the instrument.</p>
 
-  <h2>Going back to stock</h2>
+  <h2>Go back to the stock firmware</h2>
   <ol>
-    <li>In DNX, back up the device, then open Settings and press <strong>Erase…</strong> under Erase the wavetable region, then <strong>Erase the region</strong>. It removes every stored table and every pool from the +Drive, and saves each table as a file in your DNX folder first. To put a table back later, drag its file onto a free slot in DNX's Wavetables list.</li>
+    <li>In DNX, back up the device.</li>
+    <li>In DNX, open Settings.</li>
+    <li>Under Erase the wavetable region, click <strong>Erase…</strong>.</li>
+    <li>Click <strong>Erase the region</strong>. DNX saves each table as a file in your DNX folder. Then DNX erases all the stored tables and all the pools from the +Drive.</li>
     <li>Flash the stock 1.11 file.</li>
   </ol>
-  <p>Do step 1 first: stock 1.11 cannot reach the wavetable region, so once it is on, the data
-  stays where it is. Your projects, presets, kits and samples are not touched. A project saved
-  with Waverider tracks stays on the unit.</p>
+  <p>Do steps 1 to 4 before step 5. The stock firmware 1.11 cannot get access to the wavetable
+  region. If you flash the stock firmware first, the data stays on the +Drive. To remove it, flash
+  Waverider again, do steps 1 to 4, and then flash the stock firmware again.</p>
+  <p>The erase does not change your projects, presets, kits and samples. A project that you saved
+  with Waverider tracks stays on the unit. To put a table back later, drag its file onto a free
+  slot in the Wavetables list of DNX.</p>
 
   <h2>Known limits in this alpha</h2>
   <ul>
-    <li>Page 5 does not change the sound yet.</li>
-    <li>A pool reload while a note plays on a pool table may click. Tell us if you hear it.</li>
-    <li>4096-point tables have not been measured on the unit.</li>
-    <li>A sound made before page 5 existed shows FOLD, WARP, FM and NPOS at 64.</li>
+    <li>Page 5 does not change the sound now.</li>
+    <li>A click may occur if the pool loads again while a note plays on a pool table. If you hear a click, tell us.</li>
+    <li>We did not measure 4096-point tables on the unit.</li>
+    <li>In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64.</li>
   </ul>
 
   <p class="next"><button type="button" data-go="tests">Next: tests and performance</button></p>
@@ -313,43 +334,43 @@
 
 <!-- ================================================================= Tests and performance -->
 <section id="tests" role="tabpanel" aria-labelledby="tab-tests" hidden>
-  <h2>What was tested</h2>
-  <p>Each row is one test: what was varied, where it ran, and what came out. "Instrument" means a
-  Digitone II on OS 1.11, the maintainer's own.</p>
+  <h2>Tests</h2>
+  <p>Each row is one test. The row shows the test, where it ran and the result. "Instrument" is
+  the Digitone II of the maintainer, with OS 1.11.</p>
   <div class="scroll"><table>
     <thead><tr><th>What</th><th>Where</th><th>Result</th><th>Date</th></tr></thead>
     <tbody>
-      <tr><td>A project with no pool of its own shows an empty pool; one added table survives SAVE and LOAD; CREATE NEW is empty</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
-      <tr><td>DNX stores a table, deletes one, and changes the working project's pool, on the file this page builds</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
-      <tr><td>Erase the wavetable region from DNX: no tables and an empty pool on the unit; a saved table written back plays</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
-      <tr><td>The page builds the same file as the command line, and the file boots from reset with no fault</td><td>browser and emulator</td><td>identical, 21 of 21 integrity checks</td><td class="num">2026-10-14</td></tr>
-      <tr><td>Stock 1.11 loads a project saved with a Waverider track</td><td>emulator</td><td>loads, no fault; the track comes up as FM Tone</td><td class="num">2026-10-14</td></tr>
-      <tr><td>One second of the DSP code's output, every block against the model (48,000 samples)</td><td>emulator (SHARC)</td><td>0 samples differ</td><td class="num">2026-10-14</td></tr>
-      <tr><td>The erase: tables and pools gone, wrong requests refused</td><td>emulator</td><td>11 of 11 checks</td><td class="num">2026-10-13</td></tr>
-      <tr><td>LFO DEST list: order and cell labels for every control</td><td>instrument</td><td>passed</td><td class="num">2026-10-13</td></tr>
+      <tr><td>A project with no pool shows an empty pool. A table that you add stays after SAVE and LOAD. CREATE NEW has an empty pool</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
+      <tr><td>On the file from this page: DNX stores a table, deletes a table and changes the pool of the working project</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
+      <tr><td>DNX erases the wavetable region: the unit shows no tables and an empty pool. A saved table that DNX writes back plays</td><td>instrument</td><td>passed</td><td class="num">2026-10-14</td></tr>
+      <tr><td>The page builds the same file as the command line. The file starts from reset with no fault</td><td>browser and emulator</td><td>the same file. 21 of 21 integrity checks pass</td><td class="num">2026-10-14</td></tr>
+      <tr><td>Stock 1.11 loads a project saved with a Waverider track</td><td>emulator</td><td>the project loads with no fault. The track shows as FM Tone</td><td class="num">2026-10-14</td></tr>
+      <tr><td>One second of output from the DSP code (48,000 samples), each block compared with the model</td><td>emulator (SHARC)</td><td>0 samples are different</td><td class="num">2026-10-14</td></tr>
+      <tr><td>The erase removes the tables and the pools, and refuses incorrect requests</td><td>emulator</td><td>11 of 11 checks pass</td><td class="num">2026-10-13</td></tr>
+      <tr><td>The LFO DEST list: the order and the labels of all the controls</td><td>instrument</td><td>passed</td><td class="num">2026-10-13</td></tr>
       <tr><td>Ten minutes of a 16-note chord on a 64x2048 table</td><td>instrument</td><td>0 overruns in 600 s</td><td class="num">2026-10-12</td></tr>
-      <tr><td>High notes on Prim. without aliasing (mip-maps), pool tables</td><td>instrument</td><td>passed</td><td class="num">2026-10-09</td></tr>
-      <tr><td>Pools per project: SAVE AS, LOAD, CREATE NEW, the wavetable page</td><td>instrument</td><td>passed</td><td class="num">2026-10-06</td></tr>
-      <tr><td>SYNC to the tempo, POS glide, the DCLK crossfade</td><td>instrument</td><td>passed</td><td class="num">2026-10-06</td></tr>
-      <tr><td>A table written by DNX to the +Drive, listed, read back identical, played from TBL</td><td>instrument</td><td>passed, all 6 steps</td><td class="num">2026-10-05</td></tr>
-      <tr><td>MOVE: eleven shapes on both oscillators</td><td>instrument</td><td>passed</td><td class="num">2026-10-04</td></tr>
-      <tr><td>Two oscillators, LEV, DETN as a detune, page 2</td><td>instrument</td><td>passed</td><td class="num">2026-10-02</td></tr>
+      <tr><td>High notes on Prim. and on pool tables, with no aliasing (mip-maps)</td><td>instrument</td><td>passed</td><td class="num">2026-10-09</td></tr>
+      <tr><td>A pool for each project: SAVE AS, LOAD, CREATE NEW and the wavetable page</td><td>instrument</td><td>passed</td><td class="num">2026-10-06</td></tr>
+      <tr><td>SYNC to the tempo, the POS glide and the DCLK crossfade</td><td>instrument</td><td>passed</td><td class="num">2026-10-06</td></tr>
+      <tr><td>DNX writes a table to the +Drive. The unit lists it, reads it back with no change and plays it from TBL</td><td>instrument</td><td>passed, 6 of 6 steps</td><td class="num">2026-10-05</td></tr>
+      <tr><td>MOVE: the eleven shapes on the two oscillators</td><td>instrument</td><td>passed</td><td class="num">2026-10-04</td></tr>
+      <tr><td>Two oscillators, LEV, DETN as a detune and page 2</td><td>instrument</td><td>passed</td><td class="num">2026-10-02</td></tr>
     </tbody>
   </table></div>
   <h3>Not tested yet</h3>
   <ul>
-    <li>Waverider together with other mods on an instrument (checked in the emulator only).</li>
-    <li>Stock 1.11 loading a Waverider project on an instrument.</li>
-    <li>Stock 1.11 reflashed after the erase.</li>
+    <li>Waverider with other mods on an instrument. We examined this in the emulator only.</li>
+    <li>Stock 1.11 loads a Waverider project on an instrument.</li>
+    <li>A flash of stock 1.11 after the erase.</li>
     <li>4096-point tables on the unit.</li>
-    <li>A click during a pool reload while a note plays.</li>
-    <li>Any OS other than 1.11.</li>
+    <li>A click when the pool loads again while a note plays.</li>
+    <li>An OS other than 1.11.</li>
   </ul>
 
   <h2>Performance</h2>
-  <p><strong>A 16-note chord on Waverider loads the DSP about as much as FM Tone does: 65.0 %
-  against 62.9 %.</strong> Each bar is the median load on a Digitone II, one-second readings,
-  16 voices.</p>
+  <p><strong>With a 16-note chord, the DSP load of Waverider is almost the same as the load of
+  FM Tone: 65.0 % and 62.9 %.</strong> Each bar shows the median load on a Digitone II, from
+  readings of one second, with 16 voices.</p>
   <div class="bars" role="img" aria-label="DSP load: WaveTone 58.0 %, FM Tone 62.9 %, FM Tone heavy patch 63.1 %, Waverider on Prim. 64.8 %, Waverider on a 64x2048 table 65.0 %">
     <div class="bar-row"><span class="label">WaveTone</span><span class="track"><span class="fill" style="width: 58.0%"></span></span><span class="value">58.0 %</span></div>
     <div class="bar-row"><span class="label">FM Tone</span><span class="track"><span class="fill" style="width: 62.9%"></span></span><span class="value">62.9 %</span></div>
@@ -357,60 +378,65 @@
     <div class="bar-row"><span class="label">Waverider, Prim.</span><span class="track"><span class="fill ours" style="width: 64.8%"></span></span><span class="value">64.8 %</span></div>
     <div class="bar-row"><span class="label">Waverider, 64x2048 table</span><span class="track"><span class="fill ours" style="width: 65.0%"></span></span><span class="value">65.0 %</span></div>
   </div>
-  <p class="small">The bars run from 0 to 100 %. Waverider measured 2026-10-12, both oscillators on,
-  sub and noise as in the test project. The factory machines measured 2026-10-09 in an earlier
-  project. Ten minutes on the 64x2048 table stayed flat at 65.0 %, with no overruns.</p>
-  <h3>What costs what</h3>
+  <p class="small">The scale of the bars is 0 to 100 %. We measured Waverider on 2026-10-12, with
+  the two oscillators on, and the sub-oscillator and the noise as in the test project. We measured
+  the factory machines on 2026-10-09, in an earlier project. For ten minutes on the 64x2048 table,
+  the load stayed at 65.0 %, with no overruns.</p>
+  <h3>The cost of each part</h3>
   <div class="scroll"><table>
-    <thead><tr><th>Part</th><th>Cycles per voice per block</th></tr></thead>
+    <thead><tr><th>Part</th><th>Cycles for each voice in each block</th></tr></thead>
     <tbody>
       <tr><td>Sub-oscillator</td><td class="num">+742</td></tr>
       <tr><td>Noise, WHT</td><td class="num">+905</td></tr>
       <tr><td>Noise, PNK with a decay</td><td class="num">+2,022</td></tr>
       <tr><td>Sub and noise together</td><td class="num">+2,764</td></tr>
-      <tr><td>FM Tone's whole voice, for comparison</td><td class="num">+11,113</td></tr>
+      <tr><td>A full FM Tone voice, for comparison</td><td class="num">+11,113</td></tr>
     </tbody>
   </table></div>
-  <p class="small">A table in the pool costs nothing while no voice plays it. Building one 64x2048
-  table takes about 0.16 s, in the DSP's spare time.</p>
+  <p class="small">A table in the pool uses no DSP time when no voice plays it. The DSP builds a
+  64x2048 table in about 0.16 s, in time that it does not use for the sound.</p>
 
-  <p class="next"><button type="button" data-go="inside">Next: how it is made</button></p>
+  <p class="next"><button type="button" data-go="inside">Next: how it works</button></p>
 </section>
 
 <!-- ================================================================= How it is made -->
 <section id="inside" role="tabpanel" aria-labelledby="tab-inside" hidden>
-  <h2>How it is made</h2>
+  <h2>How it works</h2>
   <ul>
-    <li><strong>The sound is made on the DSP.</strong> Waverider adds its own code to the Digitone II's sound processor; the main processor runs its pages, the pool and the +Drive.</li>
-    <li><strong>The reader.</strong> Each table is kept in several versions, each with fewer harmonics for higher notes (mip-maps), and read with a smooth curve between points (Hermite). High notes stay clean without aliasing.</li>
-    <li><strong>Tables are built on the unit.</strong> When a pool loads, the DSP builds each table's versions in its spare time: about 0.16 s for a 64x2048 table. Until then that slot plays Prim.</li>
-    <li><strong>The +Drive store.</strong> Tables live in a region of the +Drive that the factory firmware's code does not read or write. Two copies of its index are kept, so a write cut short leaves the last good one.</li>
-    <li><strong>Level.</strong> TRIM starts at -11 dB, so a new Waverider sound is as loud as a new WaveTone.</li>
+    <li><strong>The DSP makes the sound.</strong> Waverider adds its code to the sound processor (DSP) of the Digitone II. The main processor runs the pages, the pool and the +Drive access.</li>
+    <li><strong>The reader.</strong> The unit keeps each table in a set of versions (mip-maps). For higher notes, a version has fewer harmonics. The reader uses a smooth curve between the points (Hermite). Because of this, high notes have no aliasing.</li>
+    <li><strong>The unit builds the tables.</strong> When a pool loads, the DSP builds the versions of each table, in time that it does not use for the sound. A 64x2048 table takes about 0.16 s. Until the table is ready, its slot plays Prim.</li>
+    <li><strong>The +Drive store.</strong> The tables are in a region of the +Drive that the factory firmware does not read or write. The store keeps two copies of its index. If a write stops before its end, the last good copy stays.</li>
+    <li><strong>Level.</strong> The default TRIM is -11 dB. At this value, a new Waverider sound has the same loudness as a new WaveTone sound.</li>
   </ul>
 
-  <h2>Changes</h2>
-  <div class="scroll"><table>
-    <thead><tr><th>Version</th><th>What changed</th></tr></thead>
-    <tbody>
-      <tr><td class="num">alpha 1</td><td>The first public build: two oscillators, MOVE, sub and noise, sound options, wavetable pools from the +Drive. Page 5 reserved.</td></tr>
-    </tbody>
-  </table></div>
+  <section class="changes">
+  <h2>Version and changes</h2>
+  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.1.0<!-- /dnfw:version --></strong> (alpha).
+  The list shows the changes in each version, with the newest first.</p>
+<!-- dnfw:changes waverider -->
+<dl class="changes">
+  <dt><span class="version">v0.1.0</span> <time datetime="2026-10-15">2026-10-15</time></dt>
+  <dd><ul><li>The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a sub-oscillator, noise, sound options and wavetable pools from the +Drive. Page 5 is for a future version.</li></ul></dd>
+</dl>
+<!-- /dnfw:changes -->
+  </section>
 
-  <h2>Coming next</h2>
-  <p>What we are working towards. No dates, and the order may change.</p>
+  <h2>Plans</h2>
+  <p>We plan these functions. We do not give dates, and the order may change.</p>
   <ul>
-    <li>Page 5 comes alive: wavefolding, phase warp, FM between the oscillators, noise into POS, and a shaper.</li>
-    <li>One cursor per note in the oscillator's wave, so a chord shows where each voice is in the table, and the summed wave of all of them.</li>
-    <li>Tags on stored tables, with a tag filter and a search on the wavetable page.</li>
-    <li>Ring and AM between the oscillators, and a formant or comb filter.</li>
+    <li>Page 5 changes the sound: wavefolding, phase warp, FM between the oscillators, noise to POS, and a shaper.</li>
+    <li>One cursor for each note in the oscillator wave. With a chord, the page shows the position of each voice in the table. The page also shows the sum of the waves of all the voices.</li>
+    <li>Tags for stored tables, and a tag filter and a search on the wavetable page.</li>
+    <li>Ring modulation and AM between the oscillators, and a formant filter or a comb filter.</li>
   </ul>
 
   <h2>Credits</h2>
   <ul>
-    <li>Built and tested by the maintainer of dn2_firmware_explore.</li>
-    <li>digikit's Digitone II emulator, for the boot checks and the DSP runner.</li>
-    <li>DNX, which writes the tables to the +Drive and manages the pools.</li>
-    <li>The USB SysEx route follows irpina's protocol (GPL-2.0-or-later).</li>
+    <li>The maintainer of dn2_firmware_explore built and tested Waverider.</li>
+    <li>The Digitone II emulator of digikit: we used it for the boot checks and the DSP runner.</li>
+    <li>DNX: it writes the tables to the +Drive and controls the pools.</li>
+    <li>The USB SysEx route uses the protocol of irpina (GPL-2.0-or-later).</li>
   </ul>
 
   <p class="next"><button type="button" data-go="try">Back to Try it</button></p>

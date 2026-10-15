@@ -25,10 +25,10 @@ const BASE = 0x40000400;
 export class ModError extends Error {}
 
 /** What the page lists under "Writes": the edits, the two CODE chunks and the DSP stream. */
-export const CODE_SUMMARY = `${CODE.edits.length} places in section 3, two blocks of code in the `
-  + `platform's area, and the DSP boot stream rebuilt with Waverider's code (section 7, `
-  + `${CODE.dsp.stock_length.toLocaleString("en-US")} B in, `
-  + `${(CODE.dsp.stock_length + CODE.dsp.insert.length / 2).toLocaleString("en-US")} B out)`;
+export const CODE_SUMMARY = `Section 3: ${CODE.edits.length} changes. The platform area: two blocks `
+  + `of code. Section 7, the DSP boot stream: Waverider's code is added (`
+  + `${CODE.dsp.stock_length.toLocaleString("en-US")} B before, `
+  + `${(CODE.dsp.stock_length + CODE.dsp.insert.length / 2).toLocaleString("en-US")} B after).`;
 
 const hex = (s) => Uint8Array.from(s.match(/../g) ?? [], (b) => parseInt(b, 16));
 const toHex = (a) => Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
