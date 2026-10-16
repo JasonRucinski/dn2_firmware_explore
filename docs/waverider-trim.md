@@ -49,6 +49,27 @@ oscillators add 6 dB. WaveTone's own oscillators sit about 11 dB lower at the sa
 - ColdFire: `pages.TRIM_ID`, its label and name, `RANGES[262]`, a dB text formatter
   (`trim_text` in `page.c`, the same steps as `live.trim_db`).
 
+## The slew (0.1.2, 2026-10-17)
+
+A user reported clicks when TRIM moved while a stock table played. The gain changed once a
+block, in one step, so a fast turn changed the level by several dB between two samples.
+
+- **What the emulator showed:** a turn of TRIM changes only the TRIM word of each voice in the
+  ColdFire's frame (offset 266 + 146t). The note words and every other byte stay as they were,
+  as for the control, DCLK on the same page (`scripts/emu_trim_frames.py`). So the click is in
+  the DSP.
+- **The change:** `trim.asm` keeps the factor that each voice and oscillator used in the last
+  block, in word 8 of DCLK's state (DM 0x2e1420 + 128t + 64 osc). Each block, the factor moves
+  toward the knob's by 0.1 dB at most. The full 15 dB takes about 150 blocks, 100 ms. A note on
+  the voice, or no factor yet, takes the knob's factor at once.
+- **The table moved** to DM 0x2e2500, the free tail of the sub's state. The slew made
+  `trim.asm` 238 bytes, and the old place of the table left it fewer than 64 bytes of padding.
+- **The model:** `live.trim_slew`, and `render_two(..., trims=)`. A held TRIM renders as
+  before, bit for bit (`test_a_held_trim_renders_as_before_the_slew`).
+- **The runner:** `scripts/sharc_waverider_m5.py` runs the run `trim_jump` (TRIM to 0 dB, then to
+  -15 dB, no note). Its tap is bit-exact to the slewed model and differs from the model
+  without the slew.
+
 ## Not checked
 
 - Whether the ColdFire folds FINE into the note before the frame is built. The DSP side is

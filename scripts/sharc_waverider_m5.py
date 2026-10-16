@@ -110,6 +110,7 @@ SYNC1, SYNC2 = live.SYNC_SLOTS                        # M10b-2: MOD, CHAR (Off /
 SMTH1, SMTH2 = live.SMTH_SLOTS                        # DEC, WDTH: 127 no glide
 DCLK = live.DCLK_SLOT                                 # HOLD, shared: 0 Off, else On
 JUMP_AT = 3                                           # the SMTH / DCLK runs' POS jump
+TRIM_SLOT = live.TRIM_PARAM                           # FINE, the level trim (page 4 D)
 SYNC_TEMPO = 14400                                    # BPM x 120: 120 BPM
 SYNC_P0 = 0xFFFD0000                                  # a position that wraps in block 4
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
@@ -243,6 +244,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                               "smth": (frame_word(r.state, FR.slot_offset(t, SMTH1)),
                                        frame_word(r.state, FR.slot_offset(t, SMTH2))),
                               "dclk": frame_word(r.state, FR.slot_offset(t, DCLK)),
+                              "trim": frame_word(r.state, FR.slot_offset(t, TRIM_SLOT)),
                               "triggered": bool(frame_word(r.state, FR.TRIG_NOTE) >> t & 1)}
             tap["t5_inputs"] = ins
 
@@ -343,7 +345,18 @@ def reference_for(run, t, tables, precision="float32") -> list[float]:
             (*i[t]["osc2"], *i[t]["move2"], i[t]["sync"][1], i[t]["smth"][1]),
             (i[t]["trig"], i[t]["triggered"], i[t]["prst"], i[t]["song"], i[t]["tempo"], i[t]["dclk"]))
            for i in run["t5_inputs"] if t in i]
-    return live.render_two(tables, seq, BLOCK, precision)
+    trims = [i[t]["trim"] for i in run["t5_inputs"] if t in i]
+    return live.render_two(tables, seq, BLOCK, precision, trims=trims)
+
+
+def reference_unslewed(run, t, tables) -> list[float]:
+    """reference_for with TRIM's factor taken as the knob's every block, as before 0.1.2."""
+    keep = live.trim_slew
+    live.trim_slew = lambda last, target, note_on: target
+    try:
+        return reference_for(run, t, tables)
+    finally:
+        live.trim_slew = keep
 
 
 def mismatches(a, b) -> int:
@@ -674,9 +687,11 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
 # -- step 3 -------------------------------------------------------------------------------------------
 
 def step_voice(init, sound, machines, blocks, tables) -> dict:
-    def frames(song=None, jump=None, **kw):
+    def frames(song=None, jump=None, trim=None, **kw):
         def fb(b):
             f = base_frame(sound, machines, trigger=(b == 1), **kw)
+            if trim is not None:                # 0.1.2: TRIM's word for this block
+                f.param(0, TRIM_SLOT, trim(b))
             if jump is not None and b >= JUMP_AT:      # M10b-2: POS jumps, no note
                 f.param(0, WAV1, jump)
             if song is not None:                # M10b-2: what the ColdFire's sync.c writes
@@ -691,6 +706,9 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         return (SYNC_P0 + b * live.trunc(SYNC_TEMPO * live.SYNC_K)) & 0xFFFFFFFF
 
     solo = {LEV2: 0}                    # osc 1 alone: the loop skips osc 2 (M9b)
+
+    def trim_steps(b):
+        return live.TRIM_DEFAULT_WORD if b < JUMP_AT else 0x7F00 if b < JUMP_AT + 2 else 0
     runs = {"init": run_blocks(init, frames(), blocks),
             "init_solo": run_blocks(init, frames(overrides=solo), blocks),
             "pos120": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800}), blocks),
@@ -760,6 +778,9 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             "prst_random": run_blocks(init, frames(overrides={**solo, PRST: 0x200}), blocks),
             # M9b: DETN is a detune from osc 1, so TUNE +12 moves both oscillators
             "tune_both": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO + 12 * 256}), blocks),
+            # 0.1.2: TRIM jumps to 0 dB at JUMP_AT and to -15 dB two blocks on, no note: the
+            # factor slews 0.1 dB a block (a jump popped until then)
+            "trim_jump": run_blocks(init, frames(trim=trim_steps, overrides={**solo, WAV1: 0x7800}), blocks),
             "silent": run_blocks(init, lambda b: base_frame(sound, machines).to_bytes(), blocks)}
     ok_runs = all(r["ok"] for r in runs.values())
     n, mism = {}, {}
@@ -914,6 +935,10 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             bool(n["machine_peak_pos120"]) and n["machine_peak_lev50"] is not None
             and abs(n["machine_peak_lev50"] / n["machine_peak_pos120"] - 0.5) < 1e-6,
         "LEV1 0 silences the machine tap (peak 0) (M9a)": n["machine_peak_lev0"] == 0,
+        "TRIM jumping to 0 dB, then to -15 dB, slews: the tap is bit-exact to the slewed model "
+        "and differs from the same model with no slew (0.1.2)":
+            runs["trim_jump"]["ok"] and mism.get("trim_jump") == 0
+            and mismatches(track_series(runs["trim_jump"], 0), reference_unslewed(runs["trim_jump"], 0, tables)) > 0,
         "LEV2 0 skips osc 2: no osc-2 reader call in any solo run (M9b)":
             all(r["ok"] and not any(r["reader_blocks2"]) for k, r in runs.items()
                 if k in ("init_solo", "pos120", "slot1", "note72", "tune_up12", "tune_down12", "lev50", "lev0")),

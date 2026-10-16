@@ -160,7 +160,7 @@ SYNC_DM = 0x2E0000                           # sync.asm (M10b-2): MOVE locked to
 SYNC_SW = SYNC_DM // 2                       # 0x170000
 TRIM_DM = 0x2E0200                          # trim.asm (the level trim): one gain factor per voice, from FINE (record 262)
 TRIM_SW = TRIM_DM // 2                       # 0x170100
-TRIM_TABLE_DM = 0x2E0300                     # its factors, 64 float32 (live.trim_table)
+TRIM_TABLE_DM = 0x2E2500                     # its factors, 64 float32 (live.trim_table), in the sub's state tail (0.1.2)
 TRIM_FACTOR_DM = 0x2DE6C8                    # the factor for the voice in hand: loop, sub.asm and noise.asm read it
 SYNC_TABLE_DM = 0x2E0400                     # its table: a word per RATE 0..100 (live.sync_table)
 SMOOTH_DM = 0x2E0600                         # smooth.asm (M10b-2): SMTH, the glide on POS
@@ -333,7 +333,6 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("pool.asm (wr_pool)", POOL_DM, obj["pool"]),
         ("sync.asm (wr_sync)", SYNC_DM, obj["sync"]),
         ("trim.asm (wr_trim)", TRIM_DM, obj["trim"]),
-        ("the trim's gain factors, 64 float32", TRIM_TABLE_DM, struct.pack("<64f", *live.trim_table())),
         ("SYNC's note table, a word per RATE", SYNC_TABLE_DM, struct.pack("<101I", *live.sync_table())),
         ("smooth.asm (wr_smooth)", SMOOTH_DM, obj["smooth"]),
         ("dclk.asm (wr_dclk_pre)", DCLK_DM, obj["dclk"]),
@@ -343,6 +342,7 @@ def spans() -> list[tuple[str, int, bytes]]:
         ("SMTH's and DCLK's state (zeros)", SMOOTH_STATE_DM, bytes(DCLK_STATE_END - SMOOTH_STATE_DM)),
         ("sub.asm (wr_sub_ran)", SUB_DM, obj["sub"]),
         ("the sub-oscillator's phases and scratch (zeros)", SUB_STATE_DM, bytes(SUB_STATE_BYTES)),
+        ("the trim's gain factors, 64 float32", TRIM_TABLE_DM, struct.pack("<64f", *live.trim_table())),
         ("noise.asm (wr_noise)", NOISE_DM, obj["noise"]),
         ("the noise's decay factors, 128 float32", NOISE_DECAY_DM, struct.pack("<128f", *live.noise_decay_table())),
         ("the noise's state (seeds, then zeros)", NOISE_STATE_DM, noise_state()),

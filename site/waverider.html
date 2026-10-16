@@ -85,7 +85,7 @@
         You put the tables on the +Drive with DNX.
       </p>
       <div class="tags">
-        <span class="tag untested">alpha 2</span>
+        <span class="tag untested">alpha 3</span>
         <span class="tag research">OS 1.11 only</span>
         <span class="tag research">page 5 is not complete</span>
       </div>
@@ -210,7 +210,7 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
-  <p class="small">Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
+  <p class="small">Documentation version 1.2, 2026-10-17. It describes Waverider 0.1.2 (alpha 3).</p>
   <h2>Select Waverider</h2>
   <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
   header shows Waverider (1/5) to Waverider (5/5).</p>
@@ -268,7 +268,7 @@
       <tr><td class="num">A</td><td><code>PRST</code></td><td>The phase at the start of a note: Off, On or Random. With On, the phase starts at 0 and the same note has the same sound each time</td></tr>
       <tr><td class="num">B</td><td><code>TRIG</code></td><td>With Retrig, MOVE starts again on each note. With Free, MOVE does not start again on a note</td></tr>
       <tr><td class="num">C</td><td><code>DCLK</code></td><td>A crossfade when TBL or POS changes suddenly: Off, or 1 to 100 ms. A new sound starts at 3 ms</td></tr>
-      <tr><td class="num">D</td><td><code>TRIM</code></td><td>The output level of the machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone</td></tr>
+      <tr><td class="num">D</td><td><code>TRIM</code></td><td>The output level of the machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone. When you turn TRIM, the level moves to the new value over up to 0.1 s</td></tr>
       <tr><td class="num">E</td><td><code>SYN1</code></td><td>Off or On. With On, the MOVE of oscillator 1 follows the tempo. SYN does not change the LFOs, which have their own tempo settings</td></tr>
       <tr><td class="num">F</td><td><code>SYN2</code></td><td>The same as SYN1, for oscillator 2</td></tr>
       <tr><td class="num">G</td><td><code>SLW1</code></td><td>Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 127, the slew is off. The Technical tab has the details</td></tr>
@@ -478,10 +478,12 @@
 
   <section class="changes">
   <h2>Version and changes</h2>
-  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.1.1<!-- /dnfw:version --></strong> (alpha).
+  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.1.2<!-- /dnfw:version --></strong> (alpha).
   The list shows the changes in each version, with the newest first.</p>
 <!-- dnfw:changes waverider -->
 <dl class="changes">
+  <dt><span class="version">v0.1.2</span> <time datetime="2026-10-17">2026-10-17</time></dt>
+  <dd><ul><li>Alpha 3. A turn of TRIM no longer clicks while a sound plays. The level now moves to the knob&#x27;s value over up to 0.1 s.</li></ul></dd>
   <dt><span class="version">v0.1.1</span> <time datetime="2026-10-15">2026-10-15</time></dt>
   <dd><ul><li>Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.</li><li>The page has a Technical tab: the table formats, the files that DNX accepts, how the reader plays a table, DCLK, SLW and SYN, and the noise.</li></ul></dd>
   <dt><span class="version">v0.1.0</span> <time datetime="2026-10-15">2026-10-15</time></dt>
@@ -511,7 +513,7 @@
 </section>
 
 <section id="tech" role="tabpanel" aria-labelledby="tab-tech" hidden>
-  <p class="small">Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).</p>
+  <p class="small">Documentation version 1.2, 2026-10-17. It describes Waverider 0.1.2 (alpha 3).</p>
   <h2>Technical</h2>
   <p>This tab is for people who make tables, and for people who want to know how Waverider makes its
   sound. A script computes every figure and every table on this tab from the code that runs on the
@@ -619,6 +621,8 @@
     <li>the gain changes by more than 0.1. At TRIM 0 dB, this is 10 LEV steps. At the default TRIM of
     &minus;11 dB, it is 36 LEV steps.</li>
   </ul>
+  <p>A turn of TRIM is never sudden. The trim moves the level by 0.1 dB at most in each block, so the
+  full 15 dB takes about 0.1 s. At a new note, the trim goes to the knob's value at once.</p>
   <p>Then the oscillator plays the old settings and the new settings together, at the same phase. The
   old settings fade out and the new settings fade in, in a straight line over the DCLK time. A smaller
   change does not start a crossfade.</p>
