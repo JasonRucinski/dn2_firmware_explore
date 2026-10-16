@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.1, 2026-10-15. It describes Waverider 0.1.1 (alpha 2).
+Documentation version 1.2, 2026-10-17. It describes Waverider 0.1.2 (alpha 3).
 
 Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
 oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each
@@ -91,7 +91,7 @@ The middle of the page shows the sub-oscillator and the noise.
 | A | PRST | The phase of the oscillators at the start of a note: Off, On or Random. With On, the phase starts at 0 and the same note has the same sound each time |
 | B | TRIG | With Retrig, MOVE starts again on each note. With Free, MOVE does not start again on a note |
 | C | DCLK | A crossfade when TBL or POS changes suddenly: Off, or 1 to 100 ms. A new sound starts at 3 ms |
-| D | TRIM | The output level of the whole machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone |
+| D | TRIM | The output level of the whole machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone. When you turn TRIM, the level moves to the new value over up to 0.1 s |
 | E | SYN1 | Off or On. With On, the MOVE of oscillator 1 follows the tempo. SYN does not change the LFOs, which have their own tempo settings |
 | F | SYN2 | The same as SYN1, for oscillator 2 |
 | G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 127, the slew is off. The Technical tab of the Waverider page has the details |

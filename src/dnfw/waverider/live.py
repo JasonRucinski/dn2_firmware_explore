@@ -447,11 +447,27 @@ def trim_factor(word: int = TRIM_DEFAULT_WORD) -> float:
     return trim_table()[min((word & 0xFFFF) >> 9, TRIM_STEPS - 1)]
 
 
-def gain(lev1: int, trim: int = TRIM_DEFAULT_WORD) -> float:
+def gain(lev1: int, trim: int = TRIM_DEFAULT_WORD, factor: float | None = None) -> float:
     """A source's gain for its 16-bit level word (LEV1 in Milestone 9a, SUB and NOIS the same
     way) and the sound's TRIM word: the level x the trim's factor in float32, as the loop
-    computes it. At LEV 100 and the default trim, 10^(-11/20) = 0.282."""
-    return _f32(_f32(float(lev1 & 0xFFFF)) * trim_factor(trim))
+    computes it. At LEV 100 and the default trim, 10^(-11/20) = 0.282. FACTOR, when given,
+    is the factor itself (the slewed one, `trim_slew`)."""
+    return _f32(_f32(float(lev1 & 0xFFFF)) * (trim_factor(trim) if factor is None else factor))
+
+
+# 0.1.2 (2026-10-17: a fast turn of TRIM popped, the gain jumping between two blocks): the
+# factor a voice and oscillator use slews toward the knob's by at most 0.1 dB a block, so the
+# full 15 dB takes about 100 ms (trim.asm, wr_trim_set). A note on the voice, or no factor
+# kept yet (0 at boot), takes the knob's as it is.
+TRIM_SLEW_UP = _f32(10 ** (0.1 / 20))
+TRIM_SLEW_DOWN = _f32(10 ** (-0.1 / 20))
+
+
+def trim_slew(last: float, target: float, note_on: bool) -> float:
+    """The factor for this block from the one used last block, in trim.asm's float32 order."""
+    if last <= 0 or note_on:
+        return target
+    return max(min(target, _f32(last * TRIM_SLEW_UP)), _f32(last * TRIM_SLEW_DOWN))
 
 
 # Page 3 (docs/waverider-pages34.md): the sub-oscillator, on FM Tone's records in slots
@@ -480,11 +496,12 @@ def sub_value(phase: int, wave: int) -> float:
     return 1.0 if phase < 0x40000000 else _f32(SUB_THIRD)
 
 
-def render_sub(phase: int, inc: int, sub: tuple, block: int) -> tuple[list[float], int]:
+def render_sub(phase: int, inc: int, sub: tuple, block: int,
+               factor: float | None = None) -> tuple[list[float], int]:
     """One block of the sub-oscillator at gain SUB from PHASE: (its samples x gain, the
-    next phase). INC is the followed oscillator's own."""
+    next phase). INC is the followed oscillator's own. FACTOR: the trim's, as `gain`."""
     lev, octave, wave = sub[0], sub[1], sub[2]
-    g = gain(lev)
+    g = gain(lev, factor=factor)
     step = inc >> (1 + min((octave & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
     w = min((wave & 0xFFFF) >> 8, 3)
     out = []
@@ -539,15 +556,17 @@ class NoiseVoice:
     def __init__(self, seed: int):
         self.x, self.pink, self.brown, self.lp, self.env = seed, [0.0, 0.0, 0.0], 0.0, 0.0, 0.0
 
-    def render(self, noise: tuple, triggered: bool, block: int) -> list[float] | None:
+    def render(self, noise: tuple, triggered: bool, block: int,
+               factor: float | None = None) -> list[float] | None:
         """One block at (NOIS, TYPE, COLR, DEC), the frame's words: the samples to add,
-        or None at NOIS 0. A note restarts the envelope, whatever NOIS is."""
+        or None at NOIS 0. A note restarts the envelope, whatever NOIS is. FACTOR: the
+        trim's, as `gain`."""
         nois, typ, colr, dec = (w & 0xFFFF for w in noise)
         if triggered:
             self.env = 1.0
         if not nois:
             return None
-        g = gain(nois)
+        g = gain(nois, factor=factor)
         typ = min(typ >> 8, 3)
         c = _f32(_f32(float((colr >> 8) - 64)) * NOISE_COLR_STEP)
         dec = min(dec >> 8, NOISE_INF)
@@ -598,7 +617,7 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
 
 
 def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
-               noises=None) -> list[float]:
+               noises=None, trims=None) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
     (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
     osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
@@ -612,7 +631,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
     follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
     skipped osc 2 has none). NOISES, one (NOIS, TYPE, COLR, DEC) per block or None: the
-    noise (`NoiseVoice`, voice 0's seed) adds in after the sub."""
+    noise (`NoiseVoice`, voice 0's seed) adds in after the sub. TRIMS, one TRIM word per
+    block or None (the default word): each oscillator's factor slews (`trim_slew`), and the
+    sub and the noise take the factor of the last oscillator that ran, as trim.asm leaves it."""
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
@@ -623,6 +644,7 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     table_t = increment_table()
     sub_phase = 0
     noise = NoiseVoice(noise_seeds()[0])
+    trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
     for b, blk in enumerate(blocks):
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
@@ -648,7 +670,9 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
                 if (prst & 0xFFFF) >> 8 != 1:
                     raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")
                 phase[k] = 0                    # PRST On: the oscillator restarts
-            g = gain(lev)
+            target = trim_factor(trims[b] if trims else TRIM_DEFAULT_WORD)
+            factor = trimmed[k] = trim_slew(trimmed[k], target, triggered)
+            g = gain(lev, factor=factor)
             pos = position(wav)
             if len(osc) > 9:                    # M10b-2: SMTH, the glide on POS
                 smoothed[k] = smooth(smoothed[k], pos, osc[9], triggered)
@@ -683,10 +707,10 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
         sub = subs[b] if subs else None
         if sub and sub[0] & 0xFFFF:
             src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
-            ys, sub_phase = render_sub(sub_phase, incs[src], sub, block)
+            ys, sub_phase = render_sub(sub_phase, incs[src], sub, block, factor)
             mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
         if noises:
-            ys = noise.render(noises[b], triggered, block)
+            ys = noise.render(noises[b], triggered, block, factor)
             if ys is not None:
                 mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
         out += mixed

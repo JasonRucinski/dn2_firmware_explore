@@ -743,3 +743,46 @@ def test_dclk_holds_a_jump_until_the_fade_ends():
     assert run(1, 0) > 4 * own                                  # DCLK Off: the switch clicks
     for period in (1, 2, 4):
         assert run(period, live.DCLK_DEFAULT) <= own
+
+
+
+def test_trim_slews_at_most_a_tenth_of_a_db_a_block():
+    # 0.1.2: a jump of TRIM reaches the knob's factor in steps of 0.1 dB at most, a note
+    # (or no factor yet) takes it as it is, and a held knob does not move it
+    lo, hi = live.trim_factor(0), live.trim_factor(0x7F00)
+    assert live.trim_slew(0.0, lo, False) == lo
+    assert live.trim_slew(lo, hi, True) == hi
+    for start, end in ((lo, hi), (hi, lo)):
+        f, steps = start, 0
+        while f != end:
+            g = live.trim_slew(f, end, False)
+            assert 0 < abs(20 * math.log10(g / f)) <= 0.1 + 1e-6
+            f, steps = g, steps + 1
+        assert 140 <= steps <= 160                     # 15 dB: about 100 ms of 32-sample blocks
+    assert live.trim_slew(hi, hi, False) == hi
+
+
+def _trim_blocks(n, note_at=None):
+    osc1 = (0x4000, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0x7F00)
+    return [(48.0, osc1, (0, 0, 0x4000, 0), (0, b == note_at, live.PRST_OFF, 0, 0, 0)) for b in range(n)]
+
+
+def test_a_held_trim_renders_as_before_the_slew():
+    t = dsp.tables()
+    assert live.render_two(t, _trim_blocks(6)) == live.render_two(t, _trim_blocks(6), trims=[0x4000] * 6)
+
+
+def test_a_trim_jump_slews_and_a_note_snaps():
+    t = dsp.tables()
+    jump = [0x4000, 0x4000, 0x7F00, 0x7F00, 0x7F00, 0x7F00]
+    slewed = live.render_two(t, _trim_blocks(6), trims=jump)
+    noted = live.render_two(t, _trim_blocks(6, note_at=2), trims=jump)
+    full = live.render_two(t, _trim_blocks(6), trims=[0x7F00] * 6)
+    held = live.render_two(t, _trim_blocks(6))
+    assert slewed[:64] == held[:64]
+    # the same waveform, so the ratio to the held render is the factor's: 0.1 dB a block more
+    for blk in range(2, 6):
+        ratios = {round(x / y, 4) for x, y in zip(slewed[32 * blk:32 * blk + 32], held[32 * blk:32 * blk + 32]) if abs(y) > 1e-3}
+        assert ratios == {round(10 ** (0.1 * (blk - 1) / 20), 4)}
+    assert noted[64:] == full[64:]                   # a note on: the knob's factor at once
+    assert full != slewed

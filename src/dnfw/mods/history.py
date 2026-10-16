@@ -81,6 +81,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.1.2", "2026-10-17", (
+            "Alpha 3. A turn of TRIM no longer clicks while a sound plays. The level now moves to the "
+            "knob's value over up to 0.1 s.",
+        )),
         Release("0.1.1", "2026-10-15", (
             "Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 "
             "POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.",
