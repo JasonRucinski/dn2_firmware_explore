@@ -54,7 +54,9 @@ The owner flashed `accelprobe1-usbprobe` on 2026-10-17, and `tools/dn2accel.py` 
 
 All five runs finished. Only 22 of the 76 words equalled the models. Three things were different on the chip:
 
-- **IIR0 adds stored word 5 to the output.** The HWR lists the two stored states of a biquad as Dk2, Dk1. The model used word 6 as the state that feeds the output. Let s1 be word 5 and s2 be word 6. The chip computes y = A0 x + s1 first. Then it computes s1 = (A1 x + s2) + B1 y and s2 = A2 x + B2 y. Each product and each sum rounds to float32. This order matches all 40 outputs and all 4 saved states.
+- **IIR0 adds stored word 5 to the output.** The HWR lists the two stored states of a biquad as Dk2, Dk1. The model used word 6 as the state that feeds the output.
+
+  Let s1 be word 5 and s2 be word 6. The chip computes y = A0 x + s1 first. Then it computes s1 = (A1 x + s2) + B1 y and s2 = A2 x + B2 y. Each product and each sum rounds to float32. This order matches all 40 outputs and all 4 saved states.
 - **FIR0 adds its four sums in pairs**, as (acc0 + acc1) + (acc2 + acc3). This order ("pairs") matches all 24 outputs. The model added the sums one after another.
 - **In ACM, the chip writes 0xFFFFFFFF to INIDX and 0 to OUTIDX** in the TCB, on both accelerators. The HWR gives the two values the other way round.
 
