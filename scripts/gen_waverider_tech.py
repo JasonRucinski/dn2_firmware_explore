@@ -120,11 +120,21 @@ class Plot:
                    f'{html.escape(self.ylabel)}</text>')
         out += self.parts
         if self.where == "below":
-            lx = bx
+            rows, lx = [[]], bx                       # wrap onto a new row when an entry would pass the edge
             for cls, label in self.legend:
-                out.append(f'<line class="{cls}" x1="{lx}" y1="{self.H - 10}" x2="{lx + 22}" y2="{self.H - 10}"/>')
-                out.append(f'<text class="legend" x="{lx + 28}" y="{self.H - 6}">{html.escape(label)}</text>')
-                lx += 40 + 7 * len(label)
+                step = 40 + 7 * len(label)
+                if rows[-1] and lx + step - 12 > self.W:
+                    rows.append([])
+                    lx = bx
+                rows[-1].append((lx, cls, label))
+                lx += step
+            for r, row in enumerate(rows):
+                y = self.H - 6 + 18 * r
+                for lx, cls, label in row:
+                    out.append(f'<line class="{cls}" x1="{lx}" y1="{y - 4}" x2="{lx + 22}" y2="{y - 4}"/>')
+                    out.append(f'<text class="legend" x="{lx + 28}" y="{y}">{html.escape(label)}</text>')
+            if len(rows) > 1:                          # the extra rows lie below: grow the canvas, not the plot
+                out[0] = out[0].replace(f'viewBox="0 0 {self.W} {self.H}"', f'viewBox="0 0 {self.W} {self.H + 18 * (len(rows) - 1)}"')
             out.append("</svg>")
             return "".join(out)
         width = 44 + 7 * max((len(label) for _, label in self.legend), default=0)
@@ -242,10 +252,10 @@ def interp_response() -> str:
     keep = f <= 3
     p = Plot((0, 3), (-80, 5), "frequency, in multiples of the table's sample rate (points x note frequency)",
              "response (dB)", xticks=[0, 0.5, 1, 1.5, 2, 2.5, 3], yticks=[0, -20, -40, -60, -80],
-             xfmt=lambda v: f"{v:g}", height=260, legend="tr")
+             xfmt=lambda v: f"{v:g}", height=280, legend="below")
     p.line(f[keep], resp["linear"][keep], "s2", "linear (the plain-table reader)")
     p.line(f[keep], resp["Hermite"][keep], "s0", "4-point Hermite (the shipped reader)")
-    p.vline(1, "the first image", low=True)
+    p.vline(1, "the first image")              # at the top: the curves are low there
     return p.svg("The response of linear and Hermite interpolation")
 
 
@@ -349,8 +359,8 @@ def dclk_figure() -> str:
         out[v] = y
     t_ms = np.arange(len(out[0])) / RATE * 1000
     p = Plot((0, t_ms[-1]), (-1.1, 1.1), "time (ms)", "level",
-             xticks=[0, 2, 4, 6, 8, 10, 12], yticks=[-1, 0, 1], height=240, xfmt=lambda v: f"{v:g}",
-             legend="bl")
+             xticks=[0, 2, 4, 6, 8, 10, 12], yticks=[-1, 0, 1], height=260, xfmt=lambda v: f"{v:g}",
+             legend="below")
     p.line(t_ms, out[0], "s2", "DCLK Off: the wave jumps")
     p.line(t_ms, out[31], "s0", "DCLK 3.0 ms (the default): a crossfade")
     p.vline(switch * BLOCK / RATE * 1000, "TBL changes")
@@ -400,7 +410,7 @@ def smt_response() -> str:
         target.append(pos)
         glided.append(s / live.position(256))
     p = Plot((0, 1.2), (0, 120), "time (s)", "POS", xticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
-             yticks=[0, 30, 60, 90, 120], height=260, xfmt=lambda v: f"{v:g}", legend="tr")
+             yticks=[0, 30, 60, 90, 120], height=280, xfmt=lambda v: f"{v:g}", legend="below")
     p.line(t, target, "s2", "POS from the knob, the LFO and the p-lock")
     p.line(t, glided, "s0", "POS the reader plays, SLW 56 (62.5 ms)")
     p.vline(0.1, "knob jump", low=True)
