@@ -7,12 +7,13 @@
 // Entered by `JUMP` from machine9_live.asm in place of its `DM(3, I4) = R4` (the reader
 // block's pos), once per voice and oscillator, after MOVE and the clamp; left by `JUMP`
 // back to wr_t5v_smoothed. SMTH is osc 1's DEC (slot 42, frame offset 252 + 146t) and
-// osc 2's WDTH (45, 258 + 146t), 0..127, default 127: a one-pole glide per block,
+// osc 2's WDTH (45, 258 + 146t), 0..127, a new sound's 0: a one-pole glide per block,
 //
 //   s = s + (POS - s) x k[SMTH]     (float32, k from the table at DM 0x2e0c00)
 //
-// with k[127] = 1.0 exactly, so SMTH 127 -- every sound saved before SMTH -- plays POS
-// itself, bit for bit. A note on this voice (the frame's note mask, offset 34, bit t)
+// with k[0] = 1.0 exactly, so SMTH 0 (Off) plays POS itself, bit for bit. Since 0.3.1 the
+// table runs Off at 0 to the longest glide at 127 (live.smth_table); until then 127 was Off.
+// The code is the same: only the table's order changed. A note on this voice (the frame's note mask, offset 34, bit t)
 // snaps s to POS. The state, a float per voice and oscillator, is at DM 0x2e1200 +
 // 4 (2t + osc), zeros at boot.
 //
@@ -91,6 +92,6 @@ wr_smooth_set.:
       DM(0, I0) = R1;
       R4 = TRUNC F1;
       DM(3, I4) = R4;                   // the reader block's pos
-      JUMP 0x16ee23;                    // -> wr_t5v_smoothed.
+      JUMP 0x16ee26;                    // -> wr_t5v_smoothed.
 .wr_smooth..end:
       .type wr_smooth.,STT_FUNC;

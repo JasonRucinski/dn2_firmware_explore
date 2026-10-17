@@ -32,6 +32,26 @@ The 16-note chord on 16 voices, measured 2026-10-09 in an earlier project.
 | FM Tone | 62.9 % | 66.2 % | 0 |
 | FM Tone, heavy patch | 63.1 % | 69.2 % (worst) | 0 |
 
+## Page 5, estimated against the factory machines (2026-10-16)
+
+These numbers are estimates, not readings. Each row starts from the 16-note chord on a pool table above
+(65.0 %, longest stretch up to 69.6 %). It adds 16 times the runner's cost of the control (the next table)
+against a frame of 666,667 cycles. Runner instructions are not silicon cycles, so the instrument's reading decides.
+
+| 16-note chord, 16 voices | Load (median) | Longest stretch |
+|---|---|---|
+| Waverider, page 5 at 0 (0.3.0) | about 65.2 % | about 69.8 % |
+| WARP on | about 66.9 % | about 71.5 % |
+| FM on | about 66.4 % | about 71.0 % |
+| WARP and FM on | about 67.9 % | about 72.5 % |
+| FOLD, AM, WARP and FM on | about 69.8 % | about 74.4 % |
+| WaveTone (measured) | 58.0 % | 61.2 % |
+| FM Tone (measured) | 62.9 % | 66.2 % |
+| FM Tone, heavy patch (measured) | 63.1 % | 69.2 % |
+
+With all of page 5 on every voice, the median stays under 70 %. The longest stretch is about 5 points
+above FM Tone's worst. WARP or FM alone stays within about 3 points of it.
+
 ## What costs what
 
 Per voice and block, measured in the SHARC runner (`scripts/sharc_waverider_p3_cost.py`):
@@ -42,6 +62,16 @@ Per voice and block, measured in the SHARC runner (`scripts/sharc_waverider_p3_c
 | Noise, WHT | +905 |
 | Noise, PNK with a decay | +2,022 |
 | Sub and noise together | +2,764 (about 6.6 % of a frame on 16 voices) |
+| Page 5: FOLD | +369 |
+| Page 5: Ring | +363 |
+| Page 5: AM | +431 |
+| Page 5: WARP (both oscillators) | +710 |
+| Page 5: FM | +482 |
+| Page 5: WARP and FM | +1,138 |
+| Page 5: AM, FOLD, WARP and FM together | +1,898 (about 4.6 % of a frame on 16 voices) |
+| Page 5 at 0, against the build before WARP and FM | +87 (WARP's word read once a voice, and a test before each reader call) |
+| One oscillator (osc 2's whole pass) | +2,822 |
+| NPOS (branch `wip/waverider-npos`, not shipped), NPOS 64, both oscillators at POS 64: DCLK's crossfades of its jumps | +5,614 |
 | FM Tone's whole voice, for comparison | +11,113 |
 
 A table in the pool costs nothing per frame unless a voice plays it; what it costs is

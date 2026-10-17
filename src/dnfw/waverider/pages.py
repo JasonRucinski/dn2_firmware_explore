@@ -54,6 +54,7 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
+from .live import SHAPE_TYPES as LIVE_SHAPE_TYPES
 from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
                    dclk_names, smth_names)
 
@@ -95,7 +96,7 @@ SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1
 SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
 SHAPE_TYPE = 235
 TRIM_ID = 262                      # WaveTone's FINE (slot 49): the level trim, page 4 place D (docs/waverider-trim.md)
-SHAPE_TYPES = ("Off", "Ring", "AM", "Formant", "Comb")     # more later: the list grows, no slot
+SHAPE_TYPES = LIVE_SHAPE_TYPES           # Off, Ring, AM (page5.asm); more later: the list grows, no slot
 SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
@@ -110,7 +111,7 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # the two spare records whose default is 0, so a saved sound reads Off)
           248: "SYN1", 260: "SYN2",
           # DCLK (HOLD: the crossfade, 0 Off, 1..127 = 1..100 ms) and SMTH (DEC, WDTH: the
-          # glide, 127 Off, the records' default)
+          # glide, 0 Off, the default a new sound gets since 0.3.1)
           254: "DCLK", 255: "SLW1", 258: "SLW2",       # SMT1/SMT2 until 0.1.1 (owner, 2026-10-15)
           # pages 3 and 4 (owner, 2026-10-07; docs/waverider-pages34.md): page 3 the
           # sub-oscillator and the noise, on FM Tone's records in slots 50..57, which a
@@ -168,6 +169,7 @@ RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)
 RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000), 234: (0, 0x7F00, 0x7F00)})   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
 RANGES.update({rid: (0, 0x7F00, 0) for rid in SHAPE_PLAIN})   # the shape's knobs: 0..127, off at 0
 RANGES[TRIM_ID] = (0, 0x7F00, 0x4000)   # TRIM: -15..0 dB, -11 dB at the stock default (live.trim_table)
+RANGES.update({rid: (0, 0x7F00, 0) for rid in (255, 258)})   # SLW1, SLW2: Off at 0 since 0.3.1 (live.smth_table)
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
@@ -242,7 +244,7 @@ def c_header() -> str:
 
 TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the page's (the pool)
 RATE_IDS = (240, 244)             # RATE1, RATE2: named as note lengths while SYNC is on (the page's)
-SMTH_IDS = (255, 258)             # SMT1, SMT2: named by the C page's table (a time, Off at 127)
+SMTH_IDS = (255, 258)             # SLW1, SLW2: named by the C page's table (Off at 0, then a time)
 DCLK_ID = 254                     # DCLK: likewise (Off at 0, then 1..100 ms)
 TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128 (csrc/waverider/pool.h)
 
