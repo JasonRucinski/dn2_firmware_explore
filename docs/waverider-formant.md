@@ -50,7 +50,7 @@ How long one biquad takes on IIR0. The reading of 2026-10-17 gives an upper boun
 
 IIR0's real cost may be near the bound. Then layout B, with the sub and noise off, makes the core wait longer than the filter takes on the core. Then the core version, or layout A, is the better choice.
 
-A second probe build, `accelprobe2`, can measure it. Its IIR0 jobs would be 1 biquad on 32 samples, 5 biquads on 32 samples and 5 biquads on 8 samples. A fourth job, one ACM chain of 16 channels of 5 biquads, has the shape of layout A. The differences between the runs separate the setup from the cost of each biquad-sample.
+A second probe build, `accelprobe2`, can measure it. Its first three IIR0 jobs would be 1 biquad on 32 samples, then 5 biquads on 32 samples, then 5 biquads on 8 samples. A fourth job runs one ACM chain of 16 channels of 5 biquads, as layout A would run it. The differences between the runs separate the setup from the cost of each biquad-sample.
 
 ## The choices for the owner
 
