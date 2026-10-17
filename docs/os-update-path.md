@@ -11,7 +11,7 @@ what an update through Elektron Transfer does:
 3. Only when reception and the checks both succeed does the unit erase flash
    and write the new OS.
 
-The code agrees with all three, with one correction to point 2: the running OS
+The code agrees with all three, with one correction to point 2. The running OS
 **verifies** the file before it erases, but it does **not unpack** it. The
 sections are decompressed on the next boot, after the old OS is gone.
 
@@ -56,8 +56,8 @@ It returns 1 for a good file, 3 or 4 for a bad one:
    constant at `0x4021b537`, and checks the digest over the container. A failure
    returns 4.
 
-This answers an open question in `docs/ele3-format.md`. The running OS does
-check the HMAC trailer, not only the checksums.
+This answers an open question in `docs/ele3-format.md`. The running OS checks
+the HMAC trailer as well as the checksum.
 
 ### Flashing (`performFlashInBackground`)
 
@@ -74,10 +74,10 @@ The background routine at `0x40108e64` is reached only from
 The writer runs the file check a **third** time and returns early if it fails.
 Then it:
 
-1. erases the flash blocks from `0x80000` that the container covers
-   (`0x401354ee`, one call per block, the block size from `0x40135f2a`);
-2. writes the container from `+8` in pages (`0x40135dc6`);
-3. waits (`0x4013464c(3000000)`), masks the interrupts (`SR = 0x2700`), writes 0
+1. Erases the flash blocks from `0x80000` that the container covers
+   (`0x401354ee`, one call per block, the block size from `0x40135f2a`).
+2. Writes the container from `+8` in pages (`0x40135dc6`).
+3. Waits (`0x4013464c(3000000)`), masks the interrupts (`SR = 0x2700`), writes 0
    to `0x48000000`, and writes `0x80` to `0xec090000`. That is the same reset
    the recovery bootstrap uses.
 
@@ -105,13 +105,13 @@ Not covered by these checks:
 
 Not read:
 
-- whether a failure reboots or only closes the view. The fail dialog's button
-  (`0x4010871c`) calls the delegate's virtual function at `+16` with 0 or 1, and
-  the delegate's class is not resolved;
-- what makes the view open `UPGRADE OS NOW?` (the delegate's virtual function at
-  `+12`), so whether the unit asks for a confirmation;
-- how a stopped reception is detected (a timeout or a cancel);
-- where codes 5 and 6 come from.
+- Whether a failure reboots or only closes the view. The fail dialog's button
+  (`0x4010871c`) calls the delegate's virtual function at `+16` with 0 or 1.
+  The delegate's class is not resolved.
+- What makes the view open `UPGRADE OS NOW?` (the delegate's virtual function at
+  `+12`), so whether the unit asks for a confirmation.
+- How the receiver finds a stopped reception (a timeout or a cancel).
+- Where codes 5 and 6 come from.
 
 ## The maintenance-mode path is different
 
