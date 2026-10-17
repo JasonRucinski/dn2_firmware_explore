@@ -293,8 +293,11 @@ def _bits(x: float) -> int:
     return struct.unpack("<I", struct.pack("<f", x))[0]
 
 
-def expected(iir_order: str = "silicon", fir_order: str = "pairs") -> dict[str, int]:
-    """name -> the word each published output and write-back should hold (RESULTS aside)."""
+def expected(iir_order: str = "silicon", fir_order: str = "pairs",
+             acm_writeback: tuple[int, int] = (0xFFFFFFFF, 0)) -> dict[str, int]:
+    """name -> the word each published output and write-back should hold (RESULTS aside).
+    ACM_WRITEBACK is (INIDX, OUTIDX) after an ACM window: the chip's by default; (0, 0xFFFFFFFF)
+    is the HWR's, which digikit's models wrote before ElekLabs/digikit#122."""
     out = {}
     a, sa = iir_expected(IIR_A, iir_order)
     out.update({f"iir_a.out[{k}]": _bits(v) for k, v in enumerate(a)})
@@ -308,5 +311,5 @@ def expected(iir_order: str = "silicon", fir_order: str = "pairs") -> dict[str, 
     out["fir_c.tcb.outidx"] = word_address(_at(FIR_C, "out")) + FIR_C["window"]
     out["fir_c.tcb.inidx"] = word_address(_at(FIR_C, "inp")) + FIR_C["window"]
     for name in ("iir_b", "fir_d"):                     # ACM: all ones and 0 (the chip; the HWR has 0 and all ones)
-        out[f"{name}.tcb.inidx"], out[f"{name}.tcb.outidx"] = 0xFFFFFFFF, 0
+        out[f"{name}.tcb.inidx"], out[f"{name}.tcb.outidx"] = acm_writeback
     return out

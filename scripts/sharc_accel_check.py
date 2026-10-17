@@ -21,6 +21,7 @@ the silicon rounds as the models do.
 from __future__ import annotations
 
 import argparse
+import importlib
 import pathlib
 import struct
 import sys
@@ -80,14 +81,21 @@ def main(argv=None) -> int:
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path, default=sharcemu.path())
     p.add_argument("--instructions", type=int, default=3_000_000)
+    p.add_argument("--before-122", action="store_true",
+                   help="compare with the order digikit's models had before ElekLabs/digikit#122 (an older runner)")
+    p.add_argument("--probe", default="accelprobe", choices=("accelprobe", "accelprobe2"),
+                   help="the probe's job set (dnfw.waverider.<probe>)")
     a = p.parse_args(argv)
+    global accelprobe
+    accelprobe = importlib.import_module(f"dnfw.waverider.{a.probe}")
     dk = m5.m1.Digikit(a.digikit)
     m5.fx.bind(str(a.digikit / "tools"))
     m5.m4.IMAGE = a.image
     stock = m5.m1.dn2_section7(a.image)
 
     res, tops, entries, exits, replies, memory = run(dk, stock, a.instructions)
-    want = accelprobe.expected()
+    want = (accelprobe.expected(iir_order="model", fir_order="model", acm_writeback=(0, 0xFFFFFFFF))
+            if a.before_122 else accelprobe.expected())
     wrong = [k for k in want if memory.get(k) != want[k]]
     halves = {}
     for w in replies:

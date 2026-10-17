@@ -73,3 +73,23 @@ The time of each run, in core cycles from the start to ACDONE (the core polled a
 | 5 | FIR0 in ACM, 37 taps, 8 samples | 1,344 |
 
 Each time includes the setup of the run, so these five runs do not give a cost per biquad or per tap on their own.
+
+## The second probe: `accelprobe2-usbprobe`
+
+accelprobe1's times include the setup of each run, so they bound the cost of one biquad-sample (at most 22 cycles) and do not measure it. `dnfw.waverider.accelprobe2` runs seven IIR0 jobs with the same `accel.asm`:
+
+| run | mode | job | biquad-samples |
+|---|---|---|---|
+| 1 | legacy | 1 biquad, 32 samples | 32 |
+| 2 | legacy | 5 biquads, 32 samples | 160 |
+| 3 | legacy | 5 biquads, 8 samples | 40 |
+| 4 | ACM | 16 channels of 5 biquads, 32 samples each, IMASK | 2,560 |
+| 5, 6 | legacy | runs 1 and 2 again, on TCBs of their own | |
+| 7 | legacy | 1 biquad, 8 samples | 8 |
+
+Runs 1, 2, 3 and 7 are the four corners of 1 or 5 biquads and 8 or 32 samples. Their times solve the setup, the cost of a biquad, the cost of a sample and the cost of a biquad-sample. Run 4 has the shape of the Formant type's layout A, so its time is the figure for that layout. Runs 5 and 6 show the spread of a time.
+
+    python scripts/build_accelprobe.py --probe accelprobe2 STOCK.syx -o OUT.syx --probe-tag accelprobe2
+    python tools/dn2accel.py --probe accelprobe2 --save out/accel2_reading.json
+
+The tool prints the fit after the words. In the SHARC runner (`scripts/sharc_accel_check.py --probe accelprobe2`), every job finishes and all 226 halves reach the probe's word. `--before-122` compares the outputs with digikit's models as they were before ElekLabs/digikit#122, when an older runner checkout is used: 92 of 92 words match.
