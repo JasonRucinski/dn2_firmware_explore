@@ -33,6 +33,18 @@ My recommendation is the cascade. It is the form IIR0 runs as it is. The coeffic
 
 The filter takes the mix of the two oscillators, after FOLD, the place where Ring and AM work. The sub and the noise add in after it, so they are not filtered.
 
+### The two forms by ear
+
+`scripts/waverider_formant_wav.py` renders both forms on the model's oscillator: table Prim. at POS 0, 110 Hz, the five vowels and then a sweep from A to U. The vowels use the published bass-voice formant values. The script writes `out/waverider/formant/`.
+
+| | Cascade | Parallel |
+|---|---|---|
+| The spread of loudness across the five vowels | 5 dB | 8 dB |
+| The valley between F1 and F2, below the lower of the two peaks (A, E, I, O) | 4.6, 15.0, 16.9, 1.6 dB | 14.9, 31.7, 7.6, 13.8 dB |
+| The level of each formant | follows from its frequency and bandwidth | set by the table, one level for each formant |
+
+The parallel form gives deeper valleys between the formants for A, E and O. Each formant stands out more, and the sound is more hollow. The cascade blends formants that are close, so O and U have one strong, round low resonance. Both forms need a gain for each vowel, or a sweep gets louder and quieter. The files ending in `_level` have that gain.
+
 ## Layout B on the instrument
 
 The DSP renders the 16 voices one at a time, in stock's chain for each voice. Each voice's amp stage runs after Waverider's loop for that voice: the SHARC runner reads a voice at the amp's input and output (`scripts/sharc_waverider_m5.py`). So the formant result of a voice must be ready before that voice's amp stage. Layout B cannot let the run go on while other voices render.
