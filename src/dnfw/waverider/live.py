@@ -188,41 +188,44 @@ def sync_table() -> tuple[int, ...]:
 
 
 # -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the crossfade (dclk.asm) --
-# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 127, the record's default,
-# is no glide. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
+# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 0 is no glide, and the
+# glide grows with the knob, 127 the longest (since 0.3.1: a user found Off at the right
+# inverted; until then 127, the record's stock default, was Off). A new Waverider sound gets
+# 0 at MACHINE SEL (pages.RANGES); a sound saved before 0.3.1 reads its value the other way. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
 # Waverider sound starts at 3 ms (owner, 2026-10-06; sounds saved before read 127, 100 ms).
 SMTH_SLOTS = (42, 45)
 DCLK_SLOT = 41
-SMTH_OFF = 127
+SMTH_OFF = 0
+SMTH_MAX = 127
 SMTH_RATE = 1500.0                 # the glide steps once a block
 
 
 def smth_tau(v: int) -> float:
-    """SMTH v (0..126) -> the glide's time constant in seconds: 1 s at 0, halving every
-    14 steps, 2 ms at 126."""
-    return 2.0 ** (-v / 14)
+    """SMTH v (1..127) -> the glide's time constant in seconds: 2 ms at 1, doubling every
+    14 steps, 1 s at 127."""
+    return 2.0 ** (-(SMTH_MAX - v) / 14)
 
 
 def smth_table() -> tuple[float, ...]:
-    """The glide's coefficient per SMTH 0..127, float32: 1 - e^(-1 / (1500 tau)), and
-    exactly 1.0 at 127, where POS + (target - POS) x 1 is the target exactly."""
-    return tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(SMTH_OFF)) + (1.0,)
+    """The glide's coefficient per SMTH 0..127, float32: exactly 1.0 at 0 (Off), where
+    POS + (target - POS) x 1 is the target exactly, then 1 - e^(-1 / (1500 tau))."""
+    return (1.0,) + tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(1, SMTH_MAX + 1))
 
 
 def smth_names() -> tuple[str, ...]:
-    """What the header shows for SMTH 0..127: the time constant, Off at 127."""
-    out = []
-    for v in range(SMTH_OFF):
+    """What the header shows for SMTH 0..127: Off at 0, then the time constant."""
+    out = ["Off"]
+    for v in range(1, SMTH_MAX + 1):
         ms = smth_tau(v) * 1000
         out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
-    return tuple(out) + ("Off",)
+    return tuple(out)
 
 
 def smooth(s: float, target: int, smth: int, note: bool) -> float:
     """One block of the glide, in smooth.asm's float32 order: a note snaps to the target."""
     if note:
         return _f32(float(target))
-    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_OFF)]
+    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_MAX)]
     d = _f32(_f32(float(target)) - s)
     return _f32(s + _f32(d * k))
 
@@ -597,10 +600,11 @@ class NoiseVoice:
         return out
 
 
-# Page 5, the shape (docs/waverider-shape.md): FOLD, TYPE and AMT, frame words like the others
-# (sound slots 58, 62 and 48: records 208, 235 and 261). page5.asm runs them. NPOS (slot 61) is
-# kept in the tuple and changes nothing yet (branch wip/waverider-npos has it, owner 2026-10-16).
-SHAPE_SLOTS = (58, 61, 62, 48)          # FOLD, NPOS, TYPE, AMT
+# Page 5, the shape (docs/waverider-shape.md): FOLD, TYPE, AMT, WARP and FM, frame words like the
+# others (sound slots 58, 62, 48, 59 and 60: records 208, 235, 261, 209 and 210). page5.asm runs
+# them. NPOS (slot 61) is kept in the tuple and changes nothing yet (branch wip/waverider-npos has
+# it, owner 2026-10-16).
+SHAPE_SLOTS = (58, 61, 62, 48, 59, 60)  # FOLD, NPOS, TYPE, AMT, WARP, FM
 SHAPE_MAX = 0x7F00                       # 127 << 8: the knobs' top
 SHAPE_TYPES = ("Off", "Ring", "AM")     # TYPE's values; more types grow the list
 SHAPE_PEAK = 10 ** (-11 / 20)            # one oscillator's peak at LEV 100 and TRIM -11 dB: the fold point
@@ -643,6 +647,68 @@ def shaper(mix: list[float], osc1: list[float], kind: int, word: int) -> list[fl
             s = _f32(_f32(o1 * _f32(_f32(o2 * inv) + 1.0)) * 0.5)
         out.append(_f32(b + _f32(a * _f32(s - b))))
     return out
+
+
+# WARP (knob B): each oscillator reads its wave at a bent phase, p' = min(k1 p, 1 - k2 (1 - p)),
+# two straight lines that meet at (d, 1/2): the wave's first half plays in the first d of the
+# cycle. WARP v = 0 .. 127 (the frame word >> 8) sets k1 = 1 + 9 v / 127, so d = 1/(2 k1) goes
+# from 1/2 (no bend) to 1/20, and k2 = 1/(2 (1 - d)). The DSP has no divide: the pairs are a table.
+WARP_K1_TOP = 10.0
+# FM (knob C): osc 2's samples move osc 1's phase, sample by sample, by o2 x FM / 127 / T cycles:
+# at FM 127 and LEV2 100 (osc 2's peak T), one whole cycle each way. Osc 2 then plays first.
+FM_SCALE = 1 / (SHAPE_MAX * SHAPE_PEAK)  # cycles per unit of o2, per FM word
+FM_SEL = 2 * math.pi / SHAPE_MAX              # the level's increment: + 2 pi FM/127 x osc 2's
+PHASE_MAX = 128                           # longer blocks play without WARP and FM (the buffer's size)
+
+
+def warp_table() -> list[tuple[float, float]]:
+    """(k1, k2) for WARP 0 .. 127, float32; 0 is (1, 1) and is never read (WARP 0 skips the bend)."""
+    out = []
+    for v in range(128):
+        k1 = 1 + (WARP_K1_TOP - 1) * v / 127
+        d = 0.5 / k1
+        out.append((_f32(k1), _f32(0.5 / (1 - d))))
+    return out
+
+
+def warp_value(word: int) -> int:
+    return min((word & 0xFFFF) >> 8, 127)
+
+
+def warp_phase(ph: int, k1: float, k2: float) -> int:
+    """One phase through the bend, in page5.asm's order: p = (ph >> 1) x 2^-31 (FLOAT, rounded),
+    min(p k1, 1 - (1 - p) k2), TRUNC BY 31, << 1."""
+    p = _f32((ph >> 1) * 2.0 ** -31)
+    a = _f32(p * k1)
+    b = _f32(1.0 - _f32(_f32(1.0 - p) * k2))
+    return (_trunc_by(min(a, b), 31) << 1) & 0xFFFFFFFF
+
+
+def fm_offsets(o2: list[float], word: int) -> list[int]:
+    """Osc 2's samples as phase offsets for osc 1: TRUNC (o2 x c) BY 24, << 8 (cycles, mod 1)."""
+    c = _f32(float(word & 0xFFFF) * _f32(FM_SCALE))
+    return [(_trunc_by(_f32(m * c), 24) << 8) & 0xFFFFFFFF for m in o2]
+
+
+def read_phases(phase: int, inc: int, count: int, warp=None, offsets=None) -> list[int]:
+    """Each sample's read phase: the running phase, + the FM offset, then the WARP bend (k1, k2)."""
+    out = []
+    for n in range(count):
+        p = phase if offsets is None else (phase + offsets[n]) & 0xFFFFFFFF
+        out.append(p if warp is None else warp_phase(p, *warp))
+        phase = (phase + inc) & 0xFFFFFFFF
+    return out
+
+
+def phase_sel(inc: int, warp=None, inc2: int | None = None, fm_word: int = 0) -> int:
+    """The increment that chooses the mip level under WARP and FM: (inc + 2 pi FM/127 inc2) x k1,
+    in float32, TRUNC (saturated)."""
+    f = _f32(float(inc))
+    if inc2 is not None:
+        f = _f32(f + _f32(_f32(float(inc2)) * _f32(float(fm_word & 0xFFFF) * _f32(FM_SEL))))
+    if warp is not None:
+        f = _f32(f * warp[0])
+    return _trunc_by(f, 0) & 0xFFFFFFFF
 
 
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
@@ -695,15 +761,20 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
     trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
     osc1: list[float] = []
     for b, blk in enumerate(blocks):
-        shp = shapes[b] if shapes else (0, 0, 0, 0)       # page 5: FOLD, NPOS (no effect yet), TYPE, AMT
+        shp = (tuple(shapes[b]) + (0,) * 6)[:6] if shapes else (0,) * 6   # page 5: FOLD, NPOS (no effect yet), TYPE, AMT, WARP, FM
         incs = [None, None]
         note, oscs = blk[0], blk[1:3]
+        wv = warp_value(shp[4]) if block <= PHASE_MAX else 0
+        bend = warp_table()[wv] if wv else None
+        fm = shp[5] & 0xFFFF if block <= PHASE_MAX and oscs[1][3] & 0xFFFF else 0
+        ys: list = [None, None]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
         song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
         dclk = rest[3] & 0xFFFF if len(rest) > 3 else 0
         mixed: list[float] = []
-        for k, osc in enumerate(oscs):
+        for k in ((1, 0) if fm else (0, 1)):    # FM: osc 2 plays first, into its own buffer
+            osc = oscs[k]
             wav, tbl, tun, lev = osc[:4]
             if k and not lev & 0xFFFF:
                 continue
@@ -740,20 +811,25 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
             incs[k] = inc
             phase0 = phase[k]
-            samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision)
+            ph = sel = None
+            if bend or (fm and k == 0):         # page 5: WARP on both oscillators, FM on osc 1
+                offs = fm_offsets(ys[1], fm) if fm and k == 0 else None
+                ph = read_phases(phase0, inc, block, bend, offs)
+                sel = phase_sel(inc, bend, incs[1] if offs else None, fm)
+            samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision, ph, sel)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
             if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
                 (otab, opos, og), rem = fade[k]
-                old, _ = mip.read(otab, phase0, inc, opos, block, precision)
+                old, _ = mip.read(otab, phase0, inc, opos, block, precision, ph, sel)
                 y = crossfade(y, [_f32(og * v) for v in old], rem, dclk_inverses()[min(dclk >> 8, 127)])
                 fade[k][1] = rem - block
                 if fade[k][1] <= 0:
                     fade[k] = None
-            if k == 0:
-                mixed = osc1 = y
-            else:
-                mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
-                         else [a + b for a, b in zip(mixed, y)])
+            ys[k] = y
+        mixed = osc1 = ys[0]
+        if ys[1] is not None:
+            mixed = ([_f32(a + b) for a, b in zip(mixed, ys[1])] if precision == "float32"
+                     else [a + b for a, b in zip(mixed, ys[1])])
         kind = (shp[2] & 0xFFFF) >> 8
         if kind in (1, 2) and shp[3] & 0xFFFF:  # page 5: TYPE Ring or AM, by AMT
             mixed = shaper(mixed, osc1, kind, shp[3])

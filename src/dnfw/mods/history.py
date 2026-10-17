@@ -89,6 +89,16 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.1", "2026-10-17", (
+            "SLW1 and SLW2 on page 4 now turn the other way: Off is at the far left, and the slew gets "
+            "longer to the right. A new sound starts with the slew off. A sound saved with an earlier "
+            "version plays its SLW the other way round, so set SLW1 and SLW2 again on it.",
+        )),
+        Release("0.3.0", "2026-10-17", (
+            "Alpha 5. WARP bends the phase of the two oscillators, and FM lets osc 2 change the phase of "
+            "osc 1. NPOS, P1 and P2 do not change the sound yet.",
+            "A sound with WARP and FM at 0 sounds as before.",
+        )),
         Release("0.2.0", "2026-10-17", (
             "Page 5 plays: FOLD folds the oscillators' wave, and TYPE Ring or AM mixes osc 1 with osc 2 "
             "by AMT. WARP, FM, NPOS, P1 and P2 do not change the sound yet.",

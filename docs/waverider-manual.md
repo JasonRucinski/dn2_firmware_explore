@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.4, 2026-10-17. It describes Waverider 0.2.0 (alpha 4).
+Documentation version 1.6, 2026-10-17. It describes Waverider 0.3.1 (alpha 5).
 
 Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
 oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each
@@ -94,21 +94,21 @@ The middle of the page shows the sub-oscillator and the noise.
 | D | TRIM | The output level of the whole machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone. When you turn TRIM, the level moves to the new value over up to 0.1 s |
 | E | SYN1 | Off or On. With On, the MOVE of oscillator 1 follows the tempo. SYN does not change the LFOs, which have their own tempo settings |
 | F | SYN2 | The same as SYN1, for oscillator 2 |
-| G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 127, the slew is off. The Technical tab of the Waverider page has the details |
-| H | SLW2 | The same as SLW1, for oscillator 2. Before version 0.1.1, SLW1 and SLW2 were called SMT1 and SMT2 |
+| G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 0, the slew is off. The slew gets longer as you turn the knob to the right, up to 1 s at 127. The Technical tab of the Waverider page has the details |
+| H | SLW2 | The same as SLW1, for oscillator 2. Before version 0.1.1, SLW1 and SLW2 were called SMT1 and SMT2. Before version 0.3.1, Off was at 127. A sound saved with an earlier version plays its SLW value the other way round, so set SLW1 and SLW2 again on it |
 
 The middle of the page shows the sound of the track as a scope.
 
 ## Page 5: Shape
 
-FOLD, TYPE and AMT change the sound. WARP, FM, NPOS, P1 and P2 are for a future version: you can set
+FOLD, WARP, FM, TYPE and AMT change the sound. NPOS, P1 and P2 are for a future version: you can set
 and p-lock them, but they do not change the sound yet.
 
 | Knob | Control | Function |
 |---|---|---|
 | A | FOLD | Folds the wave of the two oscillators back on itself. 0 is off. A higher value gives more folds and a brighter sound |
-| B | WARP | No effect yet |
-| C | FM | No effect yet |
+| B | WARP | Bends the phase of the two oscillators. The first half of each wave plays in a shorter part of the cycle, and the second half in a longer part. 0 is off. A higher value gives a brighter sound |
+| C | FM | Osc 2 changes the phase of osc 1 (frequency modulation). 0 is off. A higher value gives more overtones and a brighter sound |
 | D | NPOS | No effect yet |
 | E | TYPE | The shaper: Off, Ring or AM. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1 |
 | F | AMT | How much of the shaper you hear: 0 is none, 127 is the shaper only |
@@ -119,6 +119,11 @@ and p-lock them, but they do not change the sound yet.
   quieter and AM halves it.
 - **AMT starts at 64** on a new sound. With TYPE at Off, AMT changes nothing.
 - **FOLD follows the level.** A higher LEV1, LEV2 or TRIM gives more folds.
+- **FM needs osc 2.** On page 2, set LEV2 above 0. A higher LEV2 gives more FM. With osc 2 off, FM
+  changes nothing.
+- **FM and DETN:** the interval between the two oscillators sets the overtones. DETN at 0, +12, +19 or
+  +24 semitones gives a harmonic sound. Most other values give a metallic sound.
+- **WARP and FM change where the oscillator reads its wave.** They do not change POS or the table.
 
 ## The wavetable pool
 
@@ -230,10 +235,13 @@ To put a saved table back later, with Waverider on the unit:
 
 ## Known limits in this alpha
 
-- Page 5 does not change the sound now.
+- NPOS, P1 and P2 on page 5 do not change the sound yet.
 - A click may occur if the pool loads again while a note plays on a pool table. Nobody has measured
   this on the unit. If you hear a click, tell us.
 - We did not measure 4096-point tables on the unit.
-- In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64.
+- In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64. FOLD, WARP and FM then
+  change the sound. To get the sound from before, set them to 0.
 - With a 16-note chord, both oscillators, the sub-oscillator and noise, the DSP load is about 65 %.
+  With FOLD, AM, WARP and FM on all 16 voices too, we estimate about 70 %. We did not measure this on
+  the unit yet.
   Refer to `docs/waverider-performance.md`.
