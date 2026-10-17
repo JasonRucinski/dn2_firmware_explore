@@ -123,7 +123,7 @@ wr_miph2_level.:
       R11 = PASS R7;                    // row b
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x171b66;              // -> wr_miph2_done. (count 0: write nothing)
+      IF EQ JUMP 0x171b63;              // -> wr_miph2_done. (count 0: write nothing)
       R0 = PASS R12;                    // the count, for LCNTR
       R12 = PASS R6;                    // row a
       LCNTR = R0, DO wr_miph2_last. UNTIL LCE;   // E2-active (the mix branch is in the body)
@@ -194,19 +194,17 @@ wr_miph2_loop.:
       F0 = F0 + F2;
       F0 = F0 * F4;
       F0 = F0 + F6;                     // + c1
-      F0 = F0 * F10;
 .NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
+      F0 = F0 * F10;
       F0 = F0 + F5;                     // y
       R1 = DM(0x2de6c0);                // the gain, LEV / 100
       F0 = F1 * F0;                     // y * gain
-      // osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1)
+      // osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1). Step 1b: a conditional add in
+      // place of a branch round it; the read is harmless for osc 1, whose F2 is not used
       R1 = DM(0x2de6c4);
       R1 = PASS R1;
-      IF EQ JUMP 0x171b5a;              // -> wr_miph2_store.
       R2 = DM(0, I2);                   // what osc 1 wrote
-      F0 = F0 + F2;
-.GLOBAL wr_miph2_store.;
-wr_miph2_store.:
+      IF NE F0 = F0 + F2;
       DM(I2, M6) = F0;
       R0 = DM(2, I4);                   // inc
 .GLOBAL wr_miph2_last.;
