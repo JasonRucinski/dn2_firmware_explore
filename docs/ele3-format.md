@@ -275,8 +275,10 @@ parameter label is a different string and is harmless.
 
 ## Open questions
 
-- Whether the bootloader checks the HMAC trailer at all, or only the checksums.
-  We produce a correct one either way; the experiment is cheap and unrecorded.
+- ~~Whether the bootloader checks the HMAC trailer at all, or only the checksums.~~
+  **Answered for the USB update (1.11, 2026-10-17):** the running OS checks the
+  checksum and the HMAC before it erases (`docs/os-update-path.md`). The
+  recovery bootstrap is still unread on this point.
 - What `blob` contains.
 - Whether the `updater` section (`0x80000400`, raw, 32,776 bytes on both
   devices) is the code that performs the flash. It is the same size on both,
