@@ -202,7 +202,14 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
     """BLOCKS calls of sw 0x1c2712, FRAMES(b) -> frame bytes. Records, per block: every
     track buffer after the type-5 loop (at 0x1c944c) and at the end of the dispatch;
     track 0 at the amp's input and output; each type-5 track's inputs as the DSP holds
-    them at the loop's entry; the reader blocks the loop filled; loop entries."""
+    them at the loop's entry; the reader blocks the loop filled; loop entries.
+
+    A Python runner INIT runs in digikit's Rust engine (a new engine each call), the default for
+    every gate (owner, 2026-10-17). DNFW_WAVERIDER_PYTHON=1 runs the Python runner instead, as a
+    second opinion: where the two differ, the Python runner decides (scripts/sharc_native.py)."""
+    if os.environ.get("DNFW_WAVERIDER_PYTHON") != "1" and not hasattr(init, "block_call"):
+        import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
+        init = sharc_native.Engine(sharcemu.native_library(), init.data, init)
     state = init
     out = {"machine": [], "amp_in": [], "amp_out": [], "buffers": [], "buffer_bits": [], "t5_inputs": [],
            "reader_blocks": [], "reader_blocks2": [], "loop_entries": 0, "setup": [],

@@ -1,7 +1,7 @@
 """Waverider's page 5 (page5.asm and phase.asm: FOLD, TYPE Ring / AM with AMT, WARP, FM) in
 digikit's SHARC runner, bit for bit.
 
-    python scripts/sharc_waverider_shape.py [--digikit DIR] [--blocks 8] [--seconds 2.5]
+    python scripts/sharc_waverider_shape.py [--digikit DIR] [--blocks 8] [--seconds 2.5] [--python]
 
 From the Milestone 2 post-init snapshot, on the section 7 the mod ships
 (`dnfw.waverider.dsp.section7`), type-5 render blocks as `scripts/sharc_waverider_m5.py`
@@ -64,7 +64,10 @@ def main(argv=None) -> int:
     ap.add_argument("--blocks", type=int, default=8)
     ap.add_argument("--seconds", type=float, default=2.5)
     ap.add_argument("--only", action="append", default=[], metavar="TEXT")
+    ap.add_argument("--python", action="store_true", help="the Python runner, a second opinion (default: digikit's Rust engine)")
     a = ap.parse_args(argv)
+    if a.python:
+        g.os.environ["DNFW_WAVERIDER_PYTHON"] = "1"
 
     dk = g.m1.Digikit(a.digikit)
     g.fx.bind(str(a.digikit / "tools"))
@@ -114,7 +117,8 @@ def main(argv=None) -> int:
                 subs.append(tuple(g.frame_word(r.state, FR.slot_offset(0, s)) for s in live.SUB_SLOTS))
                 shapes.append(tuple(g.frame_word(r.state, FR.slot_offset(0, s)) for s in live.SHAPE_SLOTS))
 
-            run = g.run_blocks(init, fb, a.blocks, extra_hooks={dsp.COUNT_SW: at_loop})
+            start = init if a.python else g.native_on(init, wr)    # one Rust engine a case
+            run = g.run_blocks(start, fb, a.blocks, extra_hooks={dsp.COUNT_SW: at_loop})
             if not run["ok"]:
                 checks[name] = False
                 report["cases"][name] = {"halt": run.get("halt")}
