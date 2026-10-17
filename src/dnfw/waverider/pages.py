@@ -54,6 +54,7 @@ This module is pure: it builds the source; `coldfire.compose` assembles and plac
 
 from __future__ import annotations
 
+from .live import SHAPE_TYPES as LIVE_SHAPE_TYPES
 from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX, SYNC_NOTES,
                    dclk_names, smth_names)
 
@@ -95,7 +96,7 @@ SHAPE_LABELS = dict(zip(SHAPE, ("FOLD", "WARP", "FM", "NPOS", "TYPE", "AMT", "P1
 SHAPE_RUNS = ((58, 208, 4), (62, 235, 3))      # (first sound slot, its record id, how many): 58..61, 62..64
 SHAPE_TYPE = 235
 TRIM_ID = 262                      # WaveTone's FINE (slot 49): the level trim, page 4 place D (docs/waverider-trim.md)
-SHAPE_TYPES = ("Off", "Ring", "AM", "Formant", "Comb")     # more later: the list grows, no slot
+SHAPE_TYPES = LIVE_SHAPE_TYPES           # Off, Ring, AM (page5.asm); more later: the list grows, no slot
 SHAPE_PLAIN = tuple(rid for rid in SHAPE if rid != SHAPE_TYPE)   # 0..127 (wr_rate_fmt row 4)
 
 # record id -> Waverider's label (the records stay WaveTone's: their slots are the
@@ -110,7 +111,7 @@ LABELS = {238: "TUNE", 241: "LEV", 239: "POS", 247: "TBL",
           # the two spare records whose default is 0, so a saved sound reads Off)
           248: "SYN1", 260: "SYN2",
           # DCLK (HOLD: the crossfade, 0 Off, 1..127 = 1..100 ms) and SMTH (DEC, WDTH: the
-          # glide, 127 Off, the records' default)
+          # glide, 0 Off, the default a new sound gets since 0.3.1)
           254: "DCLK", 255: "SLW1", 258: "SLW2",       # SMT1/SMT2 until 0.1.1 (owner, 2026-10-15)
           # pages 3 and 4 (owner, 2026-10-07; docs/waverider-pages34.md): page 3 the
           # sub-oscillator and the noise, on FM Tone's records in slots 50..57, which a
@@ -168,6 +169,7 @@ RANGES[254] = (0, 0x7F00, DCLK_DEFAULT)
 RANGES.update({227: (0, 0x7F00, 0), 231: (0, 0x7F00, 0), 233: (0, 0x7F00, 0x4000), 234: (0, 0x7F00, 0x7F00)})   # DCLK: 3 ms for a new sound (owner, 2026-10-06)
 RANGES.update({rid: (0, 0x7F00, 0) for rid in SHAPE_PLAIN})   # the shape's knobs: 0..127, off at 0
 RANGES[TRIM_ID] = (0, 0x7F00, 0x4000)   # TRIM: -15..0 dB, -11 dB at the stock default (live.trim_table)
+RANGES.update({rid: (0, 0x7F00, 0) for rid in (255, 258)})   # SLW1, SLW2: Off at 0 since 0.3.1 (live.smth_table)
 FORMAT_S = 0x40219C2D             # "%s", the stock naming routines' format
 HEAD_FORMAT = 0x40216CEE          # "%s=%s", the header's name and value (used once, at 0x40067820)
 RECORD_TABLE = 0x401F7F94         # record id N at + 60 N (the naming routine at + 0x34)
@@ -175,7 +177,7 @@ SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming r
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
               "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
-              "wr_group", "wr_tie", "wr_list_name", "wr_minilabel")
+              "wr_group", "wr_group_displaced", "wr_tie", "wr_list_name", "wr_minilabel")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -242,7 +244,7 @@ def c_header() -> str:
 
 TBL_IDS = (247, 251)              # TBL1, TBL2: their range and names are the page's (the pool)
 RATE_IDS = (240, 244)             # RATE1, RATE2: named as note lengths while SYNC is on (the page's)
-SMTH_IDS = (255, 258)             # SMT1, SMT2: named by the C page's table (a time, Off at 127)
+SMTH_IDS = (255, 258)             # SLW1, SLW2: named by the C page's table (Off at 0, then a time)
 DCLK_ID = 254                     # DCLK: likewise (Off at 0, then 1..100 ms)
 TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128 (csrc/waverider/pool.h)
 
@@ -250,14 +252,15 @@ TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128
 SLOT_RUNS = ((SUBNOISE_SLOT0, SUBNOISE[0], len(SUBNOISE)),) + SHAPE_RUNS   # the sound slots Waverider answers
 
 
-def slot_id_runs() -> str:
-    """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot is in it, else
-    on to the next run; past the last, to the stock answer (label 9). Ends at label 6 with d0 = id."""
+def slot_id_runs(slot_at: int) -> str:
+    """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot (at
+    %sp@(SLOT_AT)) is in it, else on to the next run; past the last, to label 9, not taken.
+    Ends at label 6 with d0 = id."""
     lines = []
     for k, (first, record, count) in enumerate(SLOT_RUNS):
         last = k == len(SLOT_RUNS) - 1
         head = f"{k + 3}:  " if k else "    "
-        lines += [f"{head}move.l  %sp@(8),%d0",
+        lines += [f"{head}move.l  %sp@({slot_at}),%d0",
                   f"    subi.l  #{first},%d0",
                   f"    moveq   #{count - 1},%d1",
                   "    cmp.l   %d0,%d1",
@@ -496,7 +499,9 @@ wr_sortkey:
 | -- the group getter 0x400dbce8(entry), from its first instruction by jmp (its first two
 | instructions, 10 bytes, are replaced). On a Waverider track the records its pages hold
 | answer WaveTone's group (1), FM Tone's borrowed ones (group 0) included, so the list shows
-| one SYN group. Otherwise the displaced `move.l %sp@(4),%d0 ; cmpi.l #321,%d0` and on.
+| one SYN group. Otherwise the displaced `move.l %sp@(4),%d0 ; cmpi.l #321,%d0` and on. They
+| are the stock bytes unchanged (wr_group_displaced, recorded with platform.displace), so the
+| platform writes the parameter count's bound here when lfo4 adds its records.
 wr_group:
     bsr.w   is_wr
     tst.l   %d0
@@ -506,6 +511,7 @@ wr_group:
     bmi.s   9f
     moveq   #1,%d0
     rts
+wr_group_displaced:
 9:  move.l  %sp@(4),%d0
     cmpi.l  #321,%d0
     jmp     0x400dbcf2
@@ -767,33 +773,28 @@ head_value: .asciz "%s%s"
     .align 2
 
 | -- param_set_slot_to_id(slot, type, filter) at 0x400dc02a, every per-machine list's
-| source (p-locks, LFO destinations, CC): its first two instructions (`move.l %d2,-(%sp)
-| ; moveq #100,%d1`, 4 bytes) and the next (`movea.l %sp@(8),%a0`, 4) now jsr here and a
-| nop. Slot 50..57 of a Waverider sound: page 3's record, 227 + slot - 50; slots 58..61 and
-| 62..64: page 5's, 208 + slot - 58 and 235 + slot - 62; straight back to the caller. A Waverider sound is type 5 (its own type: the engine's callers), or type
-| 1 on a Waverider track (the UI reports 5 as WaveTone, 1). Anything else: the three
-| displaced instructions, then on after them (the return address, site + 6, is the nop:
-| back through a1, which the stock code loads only after), with the stack as stock's.
+| source (p-locks, LFO destinations, CC): the bus's ev_param_slot handler (dnfw.mods.bus),
+| int f(slot, type, filter), nonzero when taken. Slot 50..57 of a Waverider sound: page 3's
+| record, 227 + slot - 50; slots 58..61 and 62..64: page 5's, 208 + slot - 58 and 235 + slot
+| - 62. A Waverider sound is type 5 (its own type: the engine's callers), or type 1 on a
+| Waverider track (the UI reports 5 as WaveTone, 1). Anything else: 0, and the bus asks the
+| next handler, then the stock routine.
 wr_slot_id:
-{slot_id_runs()}
+{slot_id_runs(4)}
 6:  move.l  %d0,%a0
     moveq   #{NEW_TYPE},%d1
-    cmp.l   %sp@(12),%d1
+    cmp.l   %sp@(8),%d1
     beq.s   2f
     moveq   #1,%d1
-    cmp.l   %sp@(12),%d1
+    cmp.l   %sp@(8),%d1
     bne.s   9f
     bsr.w   is_wr
     tst.l   %d0
     beq.s   9f
 2:  move.l  %a0,%d0
-    addq.l  #4,%sp
     rts
-9:  movea.l %sp@+,%a1
-    move.l  %d2,%sp@-
-    moveq   #100,%d1
-    movea.l %sp@(8),%a0
-    jmp     %a1@
+9:  moveq   #0,%d0
+    rts
 
     .align 2
 fmt_table:
