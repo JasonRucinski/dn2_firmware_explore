@@ -42,10 +42,29 @@ The type-5 loop renders one voice at a time, inside stock's chain for each track
 
 A suits the noise and a Formant type. A note restarts the decay envelope on the core, so the envelope stays on time. The filtered noise is one block late, which nobody can hear in noise.
 
+## What the chip showed (2026-10-17)
+
+The owner flashed `accelprobe1-usbprobe`, and the probe read every word (`docs/sharc-accelerators.md` on #229).
+
+- **The order.** The models had three things wrong. IIR0 adds stored word 5 of a biquad to the output, not word 6. FIR0 adds its four sums in pairs. ElekLabs/digikit#122 corrects both models, and the emulator now matches all 76 words of the chip.
+- **The write-back in ACM.** After a window, the chip writes 0xFFFFFFFF to each TCB's INIDX and 0 to its OUTIDX. The HWR gives the two values the other way round. Layout A runs one ACM chain each block, so it writes both words again in every voice's TCB before each run.
+- **The speed.** Run 1 did 2 biquads on 16 samples, 32 biquad-samples, in 706 cycles with its setup. So one biquad-sample costs at most 22 cycles. Run 4 did 11 taps on 16 samples in 791 cycles, so one tap-sample costs at most 4.5 cycles. The five runs do not separate the setup from the work, so these are upper bounds.
+
+What the bound means for a Formant type with 5 biquads, on 16 voices:
+
+| | Per frame (32 samples) |
+|---|---|
+| Biquad-samples | 16 x 5 x 32 = 2,560 |
+| IIR0's time, at most | about 56,000 cycles, about 8 % of a frame, beside the core |
+| The core's work, estimated | write 32 inputs, write 2 TCB words, mix 32 outputs, for each voice |
+| The same filters on the core (the estimate above) | about 12,800 cycles, about 1.9 % of a frame |
+
+IIR0 is slower per biquad than the core's estimate, but it runs beside the core. The core keeps only the copies and the TCB words. With layout A, IIR0 has the rest of the frame to finish, so its time fits in every case.
+
 ## The choices for the owner
 
 1. **The first user of IIR0:** the noise, for a small saving now. Or a Formant type on page 5 that runs on IIR0 from the start, a new sound at little core cost. My recommendation is the Formant type: the noise saves at most about 2.7 % of a frame.
 2. **The layout:** A (one block late) or B (same block). My recommendation is A for the first user.
 3. **FIR0 for the mip levels:** now, or after the first IIR0 user. My recommendation is after, because it frees idle time and not frame load.
 
-All three wait for the accelprobe1 reading. If the chip's rounding order differs from the models', the models change first, in digikit.
+The accelprobe1 reading is in, and the models are corrected (see above). The three choices are open.
