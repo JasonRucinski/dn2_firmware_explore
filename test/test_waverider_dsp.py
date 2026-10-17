@@ -733,8 +733,8 @@ def test_dclk_holds_a_jump_until_the_fade_ends():
         blocks = []
         for b in range(n):
             tbl = 0x0100 if period and (b // period) % 2 else 0x0000
-            osc1 = (0x3000, tbl, 0x4000, 0x6400, 0, 0x3200, 0x3200, 0, 0, 0x7F00)
-            osc2 = (0, 0, 0x4000, 0, 0, 0x3200, 0x3200, 0, 0, 0x7F00)
+            osc1 = (0x3000, tbl, 0x4000, 0x6400, 0, 0x3200, 0x3200, 0, 0, 0)
+            osc2 = (0, 0, 0x4000, 0, 0, 0x3200, 0x3200, 0, 0, 0)
             blocks.append((48.0, osc1, osc2, (0, b == 0, 0, 0, 0, dclk)))
         y = live.render_two(t, blocks, 32)
         return max(abs(a - b) for a, b in zip(y[32:], y[33:]))
@@ -763,7 +763,7 @@ def test_trim_slews_at_most_a_tenth_of_a_db_a_block():
 
 
 def _trim_blocks(n, note_at=None):
-    osc1 = (0x4000, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0x7F00)
+    osc1 = (0x4000, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0)
     return [(48.0, osc1, (0, 0, 0x4000, 0), (0, b == note_at, live.PRST_OFF, 0, 0, 0)) for b in range(n)]
 
 

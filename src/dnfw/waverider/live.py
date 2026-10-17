@@ -188,41 +188,44 @@ def sync_table() -> tuple[int, ...]:
 
 
 # -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the crossfade (dclk.asm) --
-# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 127, the record's default,
-# is no glide. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
+# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 0 is no glide, and the
+# glide grows with the knob, 127 the longest (since 0.3.1: a user found Off at the right
+# inverted; until then 127, the record's stock default, was Off). A new Waverider sound gets
+# 0 at MACHINE SEL (pages.RANGES); a sound saved before 0.3.1 reads its value the other way. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
 # Waverider sound starts at 3 ms (owner, 2026-10-06; sounds saved before read 127, 100 ms).
 SMTH_SLOTS = (42, 45)
 DCLK_SLOT = 41
-SMTH_OFF = 127
+SMTH_OFF = 0
+SMTH_MAX = 127
 SMTH_RATE = 1500.0                 # the glide steps once a block
 
 
 def smth_tau(v: int) -> float:
-    """SMTH v (0..126) -> the glide's time constant in seconds: 1 s at 0, halving every
-    14 steps, 2 ms at 126."""
-    return 2.0 ** (-v / 14)
+    """SMTH v (1..127) -> the glide's time constant in seconds: 2 ms at 1, doubling every
+    14 steps, 1 s at 127."""
+    return 2.0 ** (-(SMTH_MAX - v) / 14)
 
 
 def smth_table() -> tuple[float, ...]:
-    """The glide's coefficient per SMTH 0..127, float32: 1 - e^(-1 / (1500 tau)), and
-    exactly 1.0 at 127, where POS + (target - POS) x 1 is the target exactly."""
-    return tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(SMTH_OFF)) + (1.0,)
+    """The glide's coefficient per SMTH 0..127, float32: exactly 1.0 at 0 (Off), where
+    POS + (target - POS) x 1 is the target exactly, then 1 - e^(-1 / (1500 tau))."""
+    return (1.0,) + tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(1, SMTH_MAX + 1))
 
 
 def smth_names() -> tuple[str, ...]:
-    """What the header shows for SMTH 0..127: the time constant, Off at 127."""
-    out = []
-    for v in range(SMTH_OFF):
+    """What the header shows for SMTH 0..127: Off at 0, then the time constant."""
+    out = ["Off"]
+    for v in range(1, SMTH_MAX + 1):
         ms = smth_tau(v) * 1000
         out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
-    return tuple(out) + ("Off",)
+    return tuple(out)
 
 
 def smooth(s: float, target: int, smth: int, note: bool) -> float:
     """One block of the glide, in smooth.asm's float32 order: a note snaps to the target."""
     if note:
         return _f32(float(target))
-    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_OFF)]
+    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_MAX)]
     d = _f32(_f32(float(target)) - s)
     return _f32(s + _f32(d * k))
 

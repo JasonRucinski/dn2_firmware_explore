@@ -107,7 +107,7 @@ RATE2, MPOS2, MLEV2, MOVE2 = live.MOVE_SLOTS[1][:4]   # PD2, OFS2, NLEV, BASE
 TRIG = live.MOVE_SLOTS[0][4]                          # TYPE, shared (0: restart on a note)
 PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscillators Off/On/Random
 SYNC1, SYNC2 = live.SYNC_SLOTS                        # M10b-2: MOD, CHAR (Off / On)
-SMTH1, SMTH2 = live.SMTH_SLOTS                        # DEC, WDTH: 127 no glide
+SMTH1, SMTH2 = live.SMTH_SLOTS                        # DEC, WDTH: 0 no glide (since 0.3.1)
 DCLK = live.DCLK_SLOT                                 # HOLD, shared: 0 Off, else On
 JUMP_AT = 3                                           # the SMTH / DCLK runs' POS jump
 TRIM_SLOT = live.TRIM_PARAM                           # FINE, the level trim (page 4 D)
@@ -168,7 +168,8 @@ def base_frame(sound, machines, *, t0=5, others=None, overrides=None, note=0x3C0
     OTHERS = {track: machine type} for tracks 1-15 (default MIDI)."""
     # machines' defaults are the sound's scale, which is what the instrument's frame
     # carries (read through the USB probe, 2026-09-30)
-    track0 = {**machines.get(1, {}), TUN1: TUN1_ZERO, **(overrides or {})}
+    # SLW Off (0), as MACHINE SEL gives a new Waverider sound since 0.3.1: the stock sound holds 127
+    track0 = {**machines.get(1, {}), TUN1: TUN1_ZERO, SMTH1: 0, SMTH2: 0, **(overrides or {})}
     f = FR.init_frame(sound, t0, trigger=trigger, track0=track0)
     f.header(FR.NOTE, 0, note)
     for t, m in (others or {}).items():
@@ -763,11 +764,11 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             "sync_off": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
                                                                       MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             # M10b-2: SMTH and DCLK, osc 1 alone, POS jumping from 0 to 120 at JUMP_AT with no
-            # note: SMTH 127 (the default) does not glide, SMTH 60 does; DCLK 3 ms crossfades
+            # note: SMTH 0 (the default since 0.3.1) does not glide, SMTH 67 does; DCLK 3 ms crossfades
             # the jump, Off does not, and the same without the jump is the old frame alone
             "smth_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
             "smth_glide": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0,
-                                                                          SMTH1: 0x3c00}), blocks),
+                                                                          SMTH1: 0x4300}), blocks),
             "dclk_on": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: live.DCLK_DEFAULT}),
                                   blocks),
             "dclk_stay": run_blocks(init, frames(overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
@@ -1016,11 +1017,11 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             runs["sync_off"]["ok"] and runs["move_free"]["ok"]
             and phases("sync_off", 0) == phases("move_free", 0)
             and track_series(runs["sync_off"], 0) == track_series(runs["move_free"], 0),
-        "SMTH 127 (the default) is no glide: osc 1's pos is WAV1's, jumping to frame 15 at the "
+        "SMTH 0 (the default) is no glide: osc 1's pos is WAV1's, jumping to frame 15 at the "
         "jump block (M10b-2)":
             len(p_soff) == blocks and all(p == (live.position(0x7800) if b >= JUMP_AT else 0)
                                           for b, p in enumerate(p_soff)),
-        "SMTH 60 glides: after the jump osc 1's pos rises block by block and stays below "
+        "SMTH 67 glides: after the jump osc 1's pos rises block by block and stays below "
         "frame 15 (M10b-2)":
             len(p_sglide) == blocks and p_sglide[:JUMP_AT] == [0] * JUMP_AT
             and 0 < p_sglide[JUMP_AT] < p_sglide[-1] < live.position(0x7800)

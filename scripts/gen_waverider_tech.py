@@ -380,9 +380,9 @@ def dclk_curve() -> str:
 # ---------------------------------------------------------------- 4. SLW, the slew (SMTH in the code; SMT1/SMT2 before 0.1.1)
 
 def smt_curve() -> str:
-    vs = list(range(0, 127))
-    p = Plot((0, 126), (1, 1000), "SLW (the knob's value; 127 is Off)", "time constant (ms)", logy=True,
-             xticks=[0, 14, 28, 42, 56, 70, 84, 98, 112, 126], yticks=[1, 3, 10, 30, 100, 300, 1000],
+    vs = list(range(1, 128))
+    p = Plot((1, 127), (1, 1000), "SLW (the knob's value; 0 is Off)", "time constant (ms)", logy=True,
+             xticks=[1, 15, 29, 43, 57, 71, 85, 99, 113, 127], yticks=[1, 3, 10, 30, 100, 300, 1000],
              height=220, yfmt=lambda v: f"{v:g}")
     p.line(vs, [live.smth_tau(v) * 1000 for v in vs], "s0")
     return p.svg("The slew's time constant for each SLW value")
@@ -390,8 +390,8 @@ def smt_curve() -> str:
 
 def smt_response() -> str:
     """What the glide does to each source of POS: a jump of the knob, a sine LFO at 4 Hz,
-    and a p-lock that comes with a note (the glide snaps). SMT 56 (62.5 ms), 1,500 steps a second."""
-    smt = 56 << 8
+    and a p-lock that comes with a note (the glide snaps). SLW 71 (62.5 ms), 1,500 steps a second."""
+    smt = 71 << 8
     blocks = int(1.2 * 1500)
     t = np.arange(blocks) / 1500
     target, glided = [], []
@@ -412,7 +412,7 @@ def smt_response() -> str:
     p = Plot((0, 1.2), (0, 120), "time (s)", "POS", xticks=[0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2],
              yticks=[0, 30, 60, 90, 120], height=280, xfmt=lambda v: f"{v:g}", legend="below")
     p.line(t, target, "s2", "POS from the knob, the LFO and the p-lock")
-    p.line(t, glided, "s0", "POS the reader plays, SLW 56 (62.5 ms)")
+    p.line(t, glided, "s0", "POS the reader plays, SLW 71 (62.5 ms)")
     p.vline(0.1, "knob jump", low=True)
     p.vline(0.45, "LFO 4 Hz", low=True)
     p.vline(0.95, "trig with a lock", low=True)
@@ -423,7 +423,7 @@ def smt_values_table() -> str:
     """For a few SMT values: the time constant, the filter's coefficient k (the DSP's float32
     table), its cutoff, and the time to reach 95 % of a jump."""
     rows = []
-    for v in (0, 14, 28, 42, 56, 70, 84, 98, 112, 126, 127):
+    for v in (0, 1, 15, 29, 43, 57, 71, 85, 99, 113, 127):
         k = live.smth_table()[v]
         if v == live.SMTH_OFF:
             rows.append([v, "Off", f"{k:.6f}", "none", "at once"])
@@ -438,7 +438,7 @@ def smt_values_table() -> str:
 def smt_lfo_table() -> str:
     """How much of an LFO's sweep on POS remains after the glide, by LFO rate and SMT."""
     rows = []
-    for v in (98, 84, 70, 56, 42):
+    for v in (29, 43, 57, 71, 85):
         tau = live.smth_tau(v)
         k = 1 - math.exp(-1 / (1500 * tau))
         cells = [v, f"{tau * 1000:.1f} ms"]

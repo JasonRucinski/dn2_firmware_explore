@@ -39,7 +39,7 @@ def trim_words() -> list[int]:
 
 
 def render(words: list[int], slew: bool) -> list[float]:
-    osc1 = (0x4000, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0x7F00)
+    osc1 = (0x4000, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0)
     blocks = [(48.0, osc1, (0, 0, 0x4000, 0), (0, b == 0, live.PRST_OFF, 0, 0, 0)) for b in range(len(words))]
     keep = live.trim_slew
     if not slew:
