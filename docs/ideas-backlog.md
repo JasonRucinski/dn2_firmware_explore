@@ -51,6 +51,7 @@ Where they disagree, they win and this table is wrong.
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
 | 35 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
 | 36 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
+| 37 | Bloom: a decelerating filter pulse, as a machine | **designed, not started** | `docs/bloom-machine.md` | P0: the modulator hard-coded in the LFO evaluators for track 1, then the machine type and its pages |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -4075,3 +4076,24 @@ Part B.
   a `+Drive` pool, change only where the bank lives.
 - D0, the kit packer and a reference player to audition, is offline and needs
   no firmware.
+
+## 37. Bloom: a decelerating filter pulse, as a machine
+
+**Asked by the fork owner, 2026-10-17:** the effect in RÜFÜS DU SOL's
+*Innerbloom* (5:10-5:18), as a machine.
+- A sustained saw sound.
+- A triangle modulator opens and closes a resonant low-pass, and its rate
+  falls from about 12 Hz to 1 Hz over about 8 s, phase-continuous.
+- The same modulator can also chop the volume, for a future-bass version.
+- Their words: not the amp envelope, and not retriggered notes, but the speed
+  of a modulation oscillator.
+
+**State: designed, not started.** The plan is `docs/bloom-machine.md`.
+- The voice is Waverider's two-oscillator loop.
+- The modulator runs on the ColdFire inside the LFO evaluators, where
+  `lfo4-tick6a` put a fourth LFO aimed at the filter, which passed on the
+  instrument.
+- Writes into FREQ (67) and VOL (90) move the stock filter and amp through
+  the path stock LFOs use. The stock filter's setup runs before any machine
+  renders, so a DSP-side modulator would need a filter of its own.
+- P0 asks one question with no machine type, no UI and no DSP change.
