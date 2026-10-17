@@ -1,8 +1,8 @@
 """SMTH (the glide on POS) and DCLK (the declick) in the reference model (M10b-2)."""
 
-from dnfw.waverider import dsp, live, render
+from dnfw.waverider import dsp, live, pages, render
 
-OFF = 0x7F00                       # SMTH 127: what every sound saved before SMTH holds
+OFF = 0                           # SMTH 0: Off, a new sound's value since 0.3.1
 OSC2_OFF = (0, 0, 0x4000, 0)
 
 
@@ -15,8 +15,8 @@ def blocks(wavs, smth=OFF, dclk=0, note_at=None):
              (0, b == note_at, live.PRST_OFF, 0, 0, dclk)) for b, w in enumerate(wavs)]
 
 
-def test_smth_127_is_the_target_exactly():
-    assert live.smth_table()[127] == 1.0
+def test_smth_0_is_the_target_exactly():
+    assert live.smth_table()[0] == 1.0
     for s in (0.0, 12345.0, 983040.0):
         for t in (0, 77, 983040):
             assert live.smooth(s, t, OFF, False) == float(t)
@@ -34,8 +34,8 @@ def test_smth_glides_and_a_note_snaps():
 
 def test_smth_names_and_times():
     names = live.smth_names()
-    assert len(names) == 128 and names[127] == "Off" and names[0] == "1000 ms"
-    assert abs(live.smth_tau(126) - 2 ** -9) < 1e-12
+    assert len(names) == 128 and names[0] == "Off" and names[127] == "1000 ms"
+    assert abs(live.smth_tau(1) - 2 ** -9) < 1e-12
 
 
 def test_smth_off_renders_as_before_smth():
@@ -80,3 +80,16 @@ def test_dclk_range_and_names():
     n = live.dclk_names()
     assert n[0] == "Off" and n[1] == "1.0 ms" and n[31] == "3.0 ms" and n[127] == "100 ms"
     assert live.dclk_lengths()[1] == 48 and live.dclk_lengths()[127] == 4800
+
+
+def test_slw_grows_clockwise_from_off_at_0():
+    """0.3.1: a user found Off at the right inverted. Off is 0, and the slew grows to 1 s at 127."""
+    taus = [live.smth_tau(v) for v in range(1, 128)]
+    assert taus == sorted(taus) and live.smth_names()[1] == "2.0 ms"
+    k = live.smth_table()
+    assert k[0] == 1.0 and list(k[1:]) == sorted(k[1:], reverse=True)
+
+
+def test_a_new_sound_starts_with_slw_off():
+    for rid in pages.SMTH_IDS:
+        assert pages.RANGES[rid] == (0, 0x7F00, 0)

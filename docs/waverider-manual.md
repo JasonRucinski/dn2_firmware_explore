@@ -1,6 +1,6 @@
 # Waverider, alpha
 
-Documentation version 1.5, 2026-10-17. It describes Waverider 0.3.0 (alpha 5).
+Documentation version 1.6, 2026-10-17. It describes Waverider 0.3.1 (alpha 5).
 
 Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
 oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each
@@ -94,8 +94,8 @@ The middle of the page shows the sub-oscillator and the noise.
 | D | TRIM | The output level of the whole machine, -15.0 to 0.0 dB. The default is -11.0 dB. At this value, the level is the same as a default WaveTone. When you turn TRIM, the level moves to the new value over up to 0.1 s |
 | E | SYN1 | Off or On. With On, the MOVE of oscillator 1 follows the tempo. SYN does not change the LFOs, which have their own tempo settings |
 | F | SYN2 | The same as SYN1, for oscillator 2 |
-| G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 127, the slew is off. The Technical tab of the Waverider page has the details |
-| H | SLW2 | The same as SLW1, for oscillator 2. Before version 0.1.1, SLW1 and SLW2 were called SMT1 and SMT2 |
+| G | SLW1 | Slew: the slew time of POS on oscillator 1. It slews the POS that you hear: the knob, p-locks, LFOs and MOVE together. A new note starts at its POS without a slew. At 0, the slew is off. The slew gets longer as you turn the knob to the right, up to 1 s at 127. The Technical tab of the Waverider page has the details |
+| H | SLW2 | The same as SLW1, for oscillator 2. Before version 0.1.1, SLW1 and SLW2 were called SMT1 and SMT2. Before version 0.3.1, Off was at 127. A sound saved with an earlier version plays its SLW value the other way round, so set SLW1 and SLW2 again on it |
 
 The middle of the page shows the sound of the track as a scope.
 
