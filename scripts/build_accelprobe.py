@@ -14,6 +14,7 @@ passes.
 from __future__ import annotations
 
 import argparse
+import importlib
 import hashlib
 import json
 import pathlib
@@ -92,8 +93,12 @@ def main(argv=None) -> int:
     p.add_argument("image", type=pathlib.Path, nargs="?")
     p.add_argument("-o", "--out", type=pathlib.Path)
     p.add_argument("--probe-tag", default="accelprobe")
+    p.add_argument("--probe", default="accelprobe", choices=("accelprobe", "accelprobe2"),
+                   help="the probe's job set (dnfw.waverider.<probe>)")
     p.add_argument("--assemble", action="store_true")
     a = p.parse_args(argv)
+    global accelprobe
+    accelprobe = importlib.import_module(f"dnfw.waverider.{a.probe}")
     if a.assemble:
         assemble()
     if a.image:

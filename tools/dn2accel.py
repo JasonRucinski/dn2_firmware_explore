@@ -19,6 +19,7 @@ word 2. `--save` keeps the words read, so a reading can be compared again offlin
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import pathlib
 import struct
@@ -65,6 +66,8 @@ def compare(words: dict[str, int]) -> list[str]:
     lines.append(f"  words equal to the reference: {len(same)} of {len(have)} read ({len(want)} in all)")
     for prefix, orders, key in (("iir", accelprobe.IIR_ORDERS, "iir_order"), ("fir", accelprobe.FIR_ORDERS, "fir_order")):
         names = [k for k in have if k.startswith(prefix) and (".out[" in k or ".coef[" in k)]
+        if not orders:                                  # a probe with no jobs on this accelerator
+            continue
         bad = [k for k in names if have[k] != want[k]]
         if not bad:
             lines.append(f"  {prefix.upper()}0 outputs: all {len(names)} equal to the reference")
@@ -78,6 +81,8 @@ def compare(words: dict[str, int]) -> list[str]:
     for k in sorted(k for k in have if ".tcb." in k):
         mark = "ok" if have[k] == want[k] else f"model {want[k]:#010x}"
         lines.append(f"  {k}: {have[k]:#010x} {mark}")
+    if hasattr(accelprobe, "timing"):                   # accelprobe2: the fit of the run times
+        lines += accelprobe.timing(words)
     return lines
 
 
@@ -88,7 +93,11 @@ def main(argv=None) -> int:
     p.add_argument("--port", default="Digitone II")
     p.add_argument("--save", type=pathlib.Path)
     p.add_argument("--load", type=pathlib.Path, help="compare a saved reading, without the instrument")
+    p.add_argument("--probe", default="accelprobe", choices=("accelprobe", "accelprobe2"),
+                   help="the probe's job set (dnfw.waverider.<probe>)")
     a = p.parse_args(argv)
+    global accelprobe
+    accelprobe = importlib.import_module(f"dnfw.waverider.{a.probe}")
     if a.load:
         words = json.loads(a.load.read_text(encoding="utf-8"))
     else:
