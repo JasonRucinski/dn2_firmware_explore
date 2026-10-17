@@ -208,10 +208,14 @@ def words(halves: dict[int, int]) -> dict[str, int]:
     return out
 
 
-# The reference: what each published word should hold. ORDER "model" is digikit's documented
-# order (fir.py, iir.py); the others are candidates for the silicon if the model's misses.
-IIR_ORDERS = ("model", "y_then_state", "x_state_first", "unrounded_products")
-FIR_ORDERS = ("model", "pairs", "newest_first", "one_accumulator", "one_accumulator_newest", "quarters")
+# The reference: what each published word should hold. The defaults are what the chip did
+# on 2026-10-17 (accelprobe1 on the owner's Digitone II, every word; test/test_accel_reading.py),
+# which digikit's models compute since ElekLabs/digikit#122: IIR0 "silicon" (stored word 5 is
+# the state added to y, then x_state_first's order) and FIR0 "pairs". "model" is the models'
+# order before that PR; the others were the candidates the reading chose from.
+IIR_ORDERS = ("silicon", "model", "y_then_state", "x_state_first", "unrounded_products")
+FIR_ORDERS = ("pairs", "model", "newest_first", "one_accumulator", "one_accumulator_newest", "quarters")
+SILICON = {"iir_order": "silicon", "fir_order": "pairs"}
 
 
 def _r(x: float) -> float:
@@ -239,19 +243,21 @@ def _biquad(order: str, c, d, x):
     return y
 
 
-def iir_expected(job: dict, order: str = "model") -> tuple[list[float], list[float]]:
-    """(the outputs over every input, the biquads' Dk2, Dk1 after them)."""
+def iir_expected(job: dict, order: str = "silicon") -> tuple[list[float], list[float]]:
+    """(the outputs over every input, each biquad's words 5 and 6 after them)."""
     co = job["coefs"]
-    sections = [(co[7 * k:7 * k + 5], [co[7 * k + 5], co[7 * k + 6]]) for k in range(job["biquads"])]
+    swap = order == "silicon"                           # _biquad adds d[1] to y: word 5 on the chip
+    sections = [(co[7 * k:7 * k + 5], [co[7 * k + 6], co[7 * k + 5]] if swap else [co[7 * k + 5], co[7 * k + 6]])
+                for k in range(job["biquads"])]
     out = []
     for x in job["x"]:
         for c, d in sections:
-            x = _biquad(order, c, d, x)
+            x = _biquad("x_state_first" if swap else order, c, d, x)
         out.append(x)
-    return out, [v for _, d in sections for v in d]
+    return out, [v for _, d in sections for v in (d[::-1] if swap else d)]
 
 
-def fir_expected(job: dict, order: str = "model") -> list[float]:
+def fir_expected(job: dict, order: str = "pairs") -> list[float]:
     """The window's outputs: y[j] = sum C[N-1-i] x[j + i] in ORDER's rounding."""
     mem = list(reversed(job["c"]))                      # memory order: C[N-1] first
     taps, xs = len(mem), job["x"]
@@ -287,7 +293,7 @@ def _bits(x: float) -> int:
     return struct.unpack("<I", struct.pack("<f", x))[0]
 
 
-def expected(iir_order: str = "model", fir_order: str = "model") -> dict[str, int]:
+def expected(iir_order: str = "silicon", fir_order: str = "pairs") -> dict[str, int]:
     """name -> the word each published output and write-back should hold (RESULTS aside)."""
     out = {}
     a, sa = iir_expected(IIR_A, iir_order)
@@ -301,6 +307,6 @@ def expected(iir_order: str = "model", fir_order: str = "model") -> dict[str, in
         out.update({f"{name}.out[{k}]": _bits(v) for k, v in enumerate(fir_expected(job, fir_order))})
     out["fir_c.tcb.outidx"] = word_address(_at(FIR_C, "out")) + FIR_C["window"]
     out["fir_c.tcb.inidx"] = word_address(_at(FIR_C, "inp")) + FIR_C["window"]
-    for name in ("iir_b", "fir_d"):                     # ACM: 0 and all ones (HWR)
-        out[f"{name}.tcb.inidx"], out[f"{name}.tcb.outidx"] = 0, 0xFFFFFFFF
+    for name in ("iir_b", "fir_d"):                     # ACM: all ones and 0 (the chip; the HWR has 0 and all ones)
+        out[f"{name}.tcb.inidx"], out[f"{name}.tcb.outidx"] = 0xFFFFFFFF, 0
     return out

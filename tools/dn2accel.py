@@ -9,8 +9,8 @@ pass), rebuilds the words and prints:
 
 - each job's timing: the cycles from its start to ACDONE, the DMASTAT read, and the reads
   (1,000,000 means the job never finished);
-- how many output and write-back words equal digikit's models bit for bit
-  (`accelprobe.expected()`, the models' documented order);
+- how many output and write-back words equal the reference bit for bit
+  (`accelprobe.expected()`: the chip's order, read on 2026-10-17);
 - if any do not: which candidate order of the float operations matches them instead.
 
 All zeros with no tag seen means the build has no accel code, or the word is not reply
@@ -62,14 +62,14 @@ def compare(words: dict[str, int]) -> list[str]:
     want = accelprobe.expected()
     have = {k: words[k] for k in want if k in words}
     same = [k for k in have if have[k] == want[k]]
-    lines.append(f"  words equal to digikit's models: {len(same)} of {len(have)} read ({len(want)} in all)")
+    lines.append(f"  words equal to the reference: {len(same)} of {len(have)} read ({len(want)} in all)")
     for prefix, orders, key in (("iir", accelprobe.IIR_ORDERS, "iir_order"), ("fir", accelprobe.FIR_ORDERS, "fir_order")):
         names = [k for k in have if k.startswith(prefix) and (".out[" in k or ".coef[" in k)]
         bad = [k for k in names if have[k] != want[k]]
         if not bad:
-            lines.append(f"  {prefix.upper()}0 outputs: all {len(names)} equal to the model")
+            lines.append(f"  {prefix.upper()}0 outputs: all {len(names)} equal to the reference")
             continue
-        lines.append(f"  {prefix.upper()}0 outputs: {len(bad)} of {len(names)} differ from the model, e.g. "
+        lines.append(f"  {prefix.upper()}0 outputs: {len(bad)} of {len(names)} differ from the reference, e.g. "
                      f"{bad[0]} {have[bad[0]]:#010x} (model {want[bad[0]]:#010x})")
         for o in orders:
             alt = accelprobe.expected(**{key: o})
