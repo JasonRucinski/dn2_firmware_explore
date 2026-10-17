@@ -152,11 +152,15 @@ _REFERENCE = None
 
 
 def level_exact(position: float, shift: float = 1.0) -> float:
-    """The gain, float32, that gives the cascade at POSITION and SHIFT the power gain of A at no
-    shift (for LEVEL_TILT's source), so a sweep through the vowels keeps about one loudness."""
+    """The gain, float32, that gives the cascade at POSITION and SHIFT the power of the dry source
+    (LEVEL_TILT's, no filter): TYPE Formant about as loud as TYPE Off, every vowel about the same.
+
+    Until formant2 the reference was the cascade at A, no shift, which is 7.83 dB above dry, and on
+    a 16-voice unison the owner heard the mix crackle (2026-10-17): its peaks were 10 to 13 dB above
+    the plain sound's (00_Resources/07_DataCapture/Formant_Modulation_Artifact_Unison_16.wav)."""
     global _REFERENCE
     if _REFERENCE is None:
-        _REFERENCE = power_gain(cascade_exact(0.0))
+        _REFERENCE = power_gain([])
     return _f32(math.sqrt(_REFERENCE / power_gain(cascade_exact(position, shift))))
 
 
@@ -199,19 +203,52 @@ def level_at(position: float, v: int) -> float:
 
 
 # The vowel's glide: a p-lock or a fast LFO can move the position by up to 4 (A to U) between two
-# blocks. With `level`, the loudness changes by under 2 dB either way. An instant jump from I to O
-# leaves one waveform step 2.1 times the sound's 99th-percentile step (Prim. at 110 Hz); with the
-# glide it is 0.7 times, as for the other jumps. The position moves toward the knob's by at most
-# GLIDE_STEP a block, so A to U takes 32 blocks (21 ms). A note on the voice takes the knob's
-# position at once, as TRIM's slew does (live.trim_slew).
-GLIDE_STEP = 0.125
+# blocks. Until formant2 the position moved toward the knob's by at most 0.125 a block (A to U in
+# 32 blocks, 21 ms). The owner heard a crackle that follows AMT and P1 on formant1 (2026-10-17,
+# 00_Resources/07_DataCapture/Formant_Modulation_Artifact.wav): energy at 3 to 5 kHz, where the
+# source had none, only while the knob moved. Its cause is in `retune` below. With the states
+# rebuilt, a one-pole toward the knob (FOLLOW of the distance a block, 90 % in 18 blocks, 12 ms)
+# leaves the band at -59 dB of the total for a 1 s AMT sweep, where the 0.125 limit left -53 dB
+# (scripts/waverider_formant_crackle.py). A note on the voice takes the knob's position at once.
+FOLLOW = 0.125
 
 
 def glide(last: float | None, target: float, note_on: bool) -> float:
-    """This block's position, from LAST (None before the first block) toward TARGET."""
+    """This block's position, from LAST (None before the first block) toward TARGET:
+    last + FOLLOW (target - last), float32."""
     if last is None or note_on:
         return target
-    return min(max(target, _f32(last - GLIDE_STEP)), _f32(last + GLIDE_STEP))
+    return _f32(last + _f32(FOLLOW * _f32(target - last)))
+
+
+def exp_pos(x: float) -> float:
+    """exp(x) for 0 <= x <= 0.009: 1 + x + x^2/2 + x^3/6, Horner, float32 (`exp_neg`'s twin)."""
+    r = _f32(1 / 6)
+    r = _f32(_f32(r * x) + 0.5)
+    r = _f32(_f32(r * x) + 1.0)
+    return _f32(_f32(r * x) + 1.0)
+
+
+def c_inverse(bw: float) -> float:
+    """1 / C of the resonator for BW, as the DSP keeps it: C = -r r with r = exp(-x), so
+    1 / C = 0 - exp(x)^2, x = BW pi / RATE."""
+    q = exp_pos(_f32(bw * PI_RATE))
+    return _f32(0.0 - _f32(q * q))
+
+
+def retune(states: list[list[float]], old, new, inverses) -> None:
+    """IIR0's saved states for the NEW biquads, from the two past outputs under the OLD ones.
+
+    A biquad here has A1 = A2 = 0, so IIR0 keeps s2 = C y[n] and s1 = C y[n-1] + B y[n]. Left
+    as they are, the next sample adds the old B and C to the new A0: on a strong low partial
+    that is a one-sample step, and the high resonators ring with it (the crackle). From the old
+    C's inverse: y0 = s2 / C, y1 = (s1 - B y0) / C; then s2 = C' y0, s1 = C' y1 + B' y0, as a
+    direct-form filter changes its coefficients. INVERSES are the old biquads' 1 / C."""
+    for s, (_, _, b, _, _), (_, _, b2, _, c2), ci in zip(states, old, new, inverses):
+        y0 = _f32(s[1] * ci)
+        y1 = _f32(_f32(s[0] - _f32(b * y0)) * ci)
+        s[1] = _f32(c2 * y0)
+        s[0] = _f32(_f32(c2 * y1) + _f32(b2 * y0))
 
 
 def run(x: list[float], biquads, states: list[list[float]]) -> list[float]:
@@ -275,19 +312,31 @@ def leveled(position: float, v: int) -> list[tuple[float, ...]]:
 
 
 class Voice:
-    """One voice's Formant: the biquads' states (Save State), the glided vowel position."""
+    """One voice's Formant: the biquads' states (Save State), the glided vowel position, P1, and
+    the biquads with their 1 / C, which a change rebuilds the states from (`retune`)."""
 
     def __init__(self):
         self.states = [[0.0, 0.0] for _ in range(len(VOWELS))]
         self.position = None
+        self.v = None
+        self.biquads = None
+        self.inverses = [0.0] * len(VOWELS)        # the DSP's zeros before the first block
 
     def filter(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int,
                note_on: bool) -> tuple[list[float], float, float]:
         """One block: AMT's VOWEL_WORD, P1's SHIFT_WORD, P2's DRY_WORD. -> (the cascade's output,
         d, e = 1 - d). The voice is then e x wet + R, R the dry part d x mix with the sub and the
         noise added (live.render_two), as formant.asm mixes IIR0's output in."""
-        self.position = glide(self.position, position_of(vowel_word), note_on)
-        wet = run(mix, leveled(self.position, p1_of(shift_word)), self.states)
+        pos = glide(self.position, position_of(vowel_word), note_on)
+        v = p1_of(shift_word)
+        if self.biquads is None or pos != self.position or v != self.v:   # else the same biquads
+            new = leveled(pos, v)
+            # the first block too: from 1 / C = 0 the states become 0, as they are then anyway
+            retune(self.states, self.biquads or new, new, self.inverses)
+            self.biquads = new
+            self.inverses = [c_inverse(bw) for bw in formants(pos, SHIFTS[v])[1]]
+        self.position, self.v = pos, v
+        wet = run(mix, self.biquads, self.states)
         d = dry_of(dry_word)
         return wet, d, _f32(1.0 - d)
 

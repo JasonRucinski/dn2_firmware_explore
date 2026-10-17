@@ -32,8 +32,8 @@ def test_a_raised_shift_stops_below_nyquist():
     assert max(F.formants(4.0, 8.0)[0]) <= F.NYQUIST_GUARD * F.RATE
 
 
-def test_the_level_makes_every_vowel_as_loud_as_a():
-    ref = F.power_gain(F.cascade_exact(0.0))
+def test_the_level_makes_every_vowel_as_loud_as_the_dry_source():
+    ref = F.power_gain([])
     for p in (0.0, 1.0, 2.0, 2.5, 3.0, 4.0):
         for shift in (0.8, 1.0, 1.3):
             g = F.level_exact(p, shift)
@@ -109,14 +109,49 @@ def test_the_level_keeps_a_saw_at_110_hz_within_3_db_across_the_vowels():
     assert max(rms) - min(rms) < 3.0, rms
 
 
-def test_the_glide_takes_a_jump_in_steps_and_a_note_at_once():
+def test_the_glide_follows_the_knob_by_an_eighth_a_block_and_a_note_at_once():
     p, seen = 0.0, []
     for _ in range(40):
         p = F.glide(p, 4.0, False)
         seen.append(p)
-    assert seen[0] == F.GLIDE_STEP and seen[31] == 4.0 and all(b - a <= F.GLIDE_STEP + 1e-12 for a, b in zip([0.0] + seen, seen))
+    assert seen[0] == 0.5 and 3.6 <= seen[17] < 4.0 and all(a < b <= 4.0 for a, b in zip(seen, seen[1:]))
     assert F.glide(1.0, 3.5, True) == 3.5 and F.glide(None, 2.0, False) == 2.0
-    assert F.glide(3.0, 2.95, False) == 2.95
+
+
+def _crackle(knob: str, voice_cls=F.Voice) -> float:
+    """The 2.5..5 kHz band of a dark source (a saw at 22.76 Hz with nothing above 1.4 kHz) while
+    KNOB turns 0 to 127 in 1 s and back, in dB of the total: the owner's capture of formant1."""
+    import numpy as np
+    rate, f0 = 48000, 22.76
+    t_ = np.arange(3 * rate) / rate
+    src = sum(np.sin(2 * math.pi * k * f0 * t_) / k for k in range(1, int(1400 / f0) + 1))
+    src = (0.05 * src / np.max(np.abs(src))).tolist()
+    vox, out, nb = voice_cls(), [], len(src) // 32
+    for b in range(nb):
+        s = b / nb * 3
+        word = int(127 * (min(s, 1) if s < 1.5 else max(0.0, 2.5 - s))) << 8
+        amt, p1 = (word, 0) if knob == "AMT" else (0x3000, word)
+        out += vox.block(src[32 * b:32 * b + 32], amt, p1, 0, b == 0)
+    y = np.asarray(out)
+    spec = np.abs(np.fft.rfft(y * np.hanning(len(y)))) ** 2
+    f = np.fft.rfftfreq(len(y), 1 / rate)
+    return 10 * math.log10(spec[(f >= 2500) & (f < 5000)].sum() / spec.sum())
+
+
+def test_turning_amt_or_p1_does_not_crackle():
+    # formant1 measured -40.6 (AMT) and -42.1 dB (P1) here; a held knob gives about -88 dB
+    assert _crackle("AMT") < -55 and _crackle("P1") < -70
+
+
+def test_the_rebuilt_states_keep_a_held_sound_as_it_was():
+    x = [math.sin(0.01 * k) for k in range(320)]
+    a, b = F.Voice(), F.Voice()
+    ya = a.block(x[:160], 0x2000, 0x1000, 0, True) + a.block(x[160:], 0x2000, 0x1000, 0, False)
+    yb = b.block(x[:160], 0x2000, 0x1000, 0, True) + b.block(x[160:], 0x2000, 0x1000, 0, False)
+    assert ya == yb and a.biquads is not None
+    assert a.inverses == [F.c_inverse(bw) for bw in F.formants(a.position, F.SHIFTS[a.v])[1]]
+    for ci, (_, _, _, _, c) in zip(a.inverses, a.biquads):
+        assert abs(ci * c - 1.0) < 1e-6
 
 
 # The Formant type in the render (live.render_two, TYPE 3), layout A's block of delay
@@ -178,4 +213,5 @@ def test_the_knobs_map_to_the_vowel_and_the_shift():
 def test_the_dsp_forms_are_float32_at_every_step():
     for v in (F.exp_neg(0.004), F.cos_poly(1.3), *F.leveled(2.3, 40)[0], F.level_at(1.7, 99)):
         assert F._f32(v) == v
-    assert F.glide(1.0, 3.0, False) == 1.125 and F._f32(F.glide(0.1, 3.0, False)) == F.glide(0.1, 3.0, False)
+    assert F.glide(1.0, 3.0, False) == 1.25 and F._f32(F.glide(0.1, 3.0, False)) == F.glide(0.1, 3.0, False)
+    assert F._f32(F.c_inverse(97.3)) == F.c_inverse(97.3) and F._f32(F.exp_pos(0.004)) == F.exp_pos(0.004)

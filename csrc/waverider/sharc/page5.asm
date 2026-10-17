@@ -292,7 +292,7 @@ wr_p5_fold_end.:
 wr_p5_out.:
       // the Formant (formant.asm) takes the way to the sub from here; the three after it are
       // the way it was, kept so nothing after them moves (they no longer run)
-      JUMP 0x1739cb;                    // -> wr_fm_post.
+      JUMP 0x1739d3;                    // -> wr_fm_post.
       R0 = PASS R0;
       IF NE JUMP 0x171000;              // -> wr_sub_ran. (sub.asm)
       JUMP 0x171008;                    // -> wr_sub_skip. (sub.asm)

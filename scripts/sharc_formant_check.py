@@ -6,8 +6,10 @@ Builds stock + the idle stub plus formant.asm at sw 0x173800 and its DDR tables 
 pairs, SHIFTS, the level table), then calls wr_fm_coef as one voice would block after
 block: AMT moving (a sweep, jumps, an LFO's fractions and words past the top), P1 stepping,
 now and then a note. After each call it compares, bit for bit, the glided position and the
-25 coefficient words with `formant.Voice`'s and `formant.leveled`'s, and checks that the
-states (words 5 and 6 of each biquad) and the loop's registers I3, I4 and I5 are untouched.
+35 coefficient words with `formant.Voice`'s: the biquads, and the states rebuilt for them
+(formant.retune) from random states written before each call, as IIR0 would leave them. It
+also compares the voice's 8 state words and checks that I3, I4 and I5 are untouched. A call
+whose position and P1 are the last call's must write nothing.
 Prints the instructions a call takes. Exit 0 when every call matches.
 """
 
@@ -31,9 +33,8 @@ from dnfw.image import bootstream, sharc_object                 # noqa: E402
 from dnfw.waverider import dsp, formant as F                    # noqa: E402
 
 RETURN = dsp.IDLE_RETURN_SW
-STATE_AT = 0x8070AC00          # the test's voice state (2 words) and coefficients (35 words), DDR
+STATE_AT = 0x8070AC00          # the test's voice state (8 words) and coefficients (35 words), DDR
 COEF_AT = 0x8070AD00
-SENTINEL = 0x5A5A0000          # the states' words, which the routine must not touch
 
 
 def bits(x: float) -> int:
@@ -94,7 +95,7 @@ def main(argv=None) -> int:
     stock = m5.m1.dn2_section7(a.image)
     image = m5.Image(dk, stream(stock))
     voice = F.Voice()
-    bad, steps = 0, []
+    bad, steps, skipped = 0, [], 0
     with tempfile.TemporaryDirectory(dir=m5.OUT) as tmp:
         snap, m2mach = m5.snapshot_path(dk, stock, pathlib.Path(tmp))
         init = m5.init_on(snap, m2mach, image)
@@ -103,38 +104,59 @@ def main(argv=None) -> int:
         import sharc_native  # noqa: PLC0415
         eng = sharc_native.Engine(sharcemu.native_library(), image.memory, init)
         U = m5.fx.UREG_CODES
-        for at in range(STATE_AT, STATE_AT + 8, 4):
+        for at in range(STATE_AT, STATE_AT + 32, 4):
             eng.poke(at, 0)
         for k in range(35):
-            eng.poke(COEF_AT + 4 * k, SENTINEL + k if k % 7 >= 5 else 0)
+            eng.poke(COEF_AT + 4 * k, 0)
+        rnd = random.Random(23)
         for n, (amt, p1, note) in enumerate(inputs(a.calls)):
+            # the states as IIR0 left them after the last block: random, in the engine and the model
+            for s in voice.states:
+                s[0], s[1] = (F._f32(rnd.uniform(-2, 2)) for _ in range(2))
+            for k, s in enumerate(voice.states):
+                eng.poke(COEF_AT + 4 * (7 * k + 5), bits(s[0]))
+                eng.poke(COEF_AT + 4 * (7 * k + 6), bits(s[1]))
+            before = [eng.native_word(COEF_AT + 4 * k) for k in range(35)]
             eng.core.fresh_call(dsp.FORMANT_SW, RETURN)
             for name, v in (("R4", amt), ("R5", p1), ("R6", int(note)), ("I1", STATE_AT), ("I2", COEF_AT),
                             ("I3", 0x1111), ("I4", 0x2222), ("I5", 0x3333)):
                 eng.set_reg(U[name], v)
             kind, info, count = eng.run(100_000, {}, RETURN)
             steps.append(count)
-            voice.position = F.glide(voice.position, F.position_of(amt), note)
-            want = [w for bq in F.leveled(voice.position, F.p1_of(p1)) for w in bq]
-            got = [eng.native_word(COEF_AT + 4 * (7 * (k // 5) + k % 5)) for k in range(25)]
-            states = [eng.native_word(COEF_AT + 4 * k) for k in range(35) if k % 7 >= 5]
+            # formant.Voice.filter's coefficient step, without the filter
+            pos, v = F.glide(voice.position, F.position_of(amt), note), F.p1_of(p1)
+            changed = voice.biquads is None or pos != voice.position or v != voice.v
+            if changed:
+                new = F.leveled(pos, v)
+                F.retune(voice.states, voice.biquads or new, new, voice.inverses)
+                voice.biquads = new
+                voice.inverses = [F.c_inverse(bw) for bw in F.formants(pos, F.SHIFTS[v])[1]]
+            voice.position, voice.v = pos, v
+            want = [bits(w) for k, bq in enumerate(voice.biquads) for w in (*bq, *voice.states[k])]
+            if not changed:
+                want = before                                      # nothing written
+            got = [eng.native_word(COEF_AT + 4 * k) for k in range(35)]
+            want_state = [bits(pos), 1, v, 0, 0, 0, 0, 0]
+            want_state[3:8] = [bits(c) for c in voice.inverses]
+            got_state = [eng.native_word(STATE_AT + 4 * k) for k in range(8)]
             regs = [eng.native_reg(U[r]) for r in ("I3", "I4", "I5")]
-            ok = (info.reason == "reached the stop address"
-                  and eng.native_word(STATE_AT) == bits(voice.position) and eng.native_word(STATE_AT + 4) == 1
-                  and got == [bits(w) for w in want]
-                  and states == [SENTINEL + k for k in range(35) if k % 7 >= 5]
+            ok = (info.reason == "reached the stop address" and got == want and got_state == want_state
                   and regs == [0x1111, 0x2222, 0x3333])
+            skipped += not changed
             if not ok:
                 bad += 1
                 if bad <= 5:
-                    print(f"  call {n}: AMT {amt:#06x} P1 {p1:#06x} note {note}: {info.reason}")
-                    print(f"    position {eng.native_word(STATE_AT):#010x} want {bits(voice.position):#010x}")
+                    print(f"  call {n}: AMT {amt:#06x} P1 {p1:#06x} note {note}, changed {changed}: {info.reason}")
+                    for k, (g, w) in enumerate(zip(got_state, want_state)):
+                        if g != w:
+                            print(f"    state word {k}: {g:#010x} want {w:#010x}")
                     for k, (g, w) in enumerate(zip(got, want)):
-                        if g != bits(w):
-                            print(f"    word {k}: {g:#010x} want {bits(w):#010x} ({w})")
+                        if g != w:
+                            print(f"    coefficient word {k}: {g:#010x} want {w:#010x}")
                     if regs != [0x1111, 0x2222, 0x3333]:
                         print(f"    I3, I4, I5 = {regs}")
-    print(f"{a.calls} calls, {bad} differ; instructions a call: {min(steps)} to {max(steps)}")
+    print(f"{a.calls} calls ({skipped} with nothing to write), {bad} differ; instructions a call: "
+          f"{min(steps)} to {max(steps)}")
     print("PASS" if bad == 0 else "FAIL")
     return 0 if bad == 0 else 1
 

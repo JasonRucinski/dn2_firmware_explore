@@ -16,21 +16,27 @@
 //
 // wr_fm_coef: one voice's cascade for this block, in formant.leveled's float32 order.
 //   In:  R4 = AMT's word (the vowel), R5 = P1's word (the shift), R6 = 1 on a note, else 0,
-//        I1 = the voice's state (word 0 the glided position, float32; word 1: 1 once set),
-//        I2 = the voice's IIR0 coefficients, 5 biquads of 7 words (A0, A1, B1, A2, B2, s1, s2).
-//   Out: the position glided (formant.glide), words 0..4 of each biquad written, the states
-//        (words 5 and 6) left as IIR0 saved them. Clobbers R0-R15, I0; I3, I4 and I5 are
-//        not touched. Every float result feeds a two-operand compute or a store (anomaly
-//        20000072), and F0 is never a float result.
+//        I1 = the voice's state (8 words: the glided position, float32; 1 once set; P1's value;
+//        the five biquads' 1 / C), I2 = the voice's IIR0 coefficients, 5 biquads of 7 words
+//        (A0, A1, B1, A2, B2, s1, s2).
+//   Out: the position glided (formant.glide). When it or P1 changed, or on the first block:
+//        words 0..4 of each biquad written, and the states (words 5 and 6) rebuilt for them
+//        (formant.retune: the two past outputs from the old B and 1 / C, then the new B and C).
+//        Else nothing is written. Clobbers R0-R15, I0, I1; I3, I4 and I5 are not touched.
+//        Every float result feeds a two-operand compute or a store (anomaly 20000072), and F0
+//        is never a float result.
 //
 // The steps, each rounded to float32:
-//   target = MIN(FLOAT AMT x f32(4 / 0x7f00), 4);  p = target on a note or the first block,
-//            else MIN(MAX(target, last - 0.125), last + 0.125)
-//   v = MIN(P1 >> 8, 127), shift = SHIFTS[v];  i = MIN(TRUNC p, 3), f = p - i
+//   target = MIN(FLOAT AMT x f32(4 / 0x7f00), 4);  v = MIN(P1 >> 8, 127)
+//   p = target on a note or the first block, else last + 0.125 (target - last)
+//   p and v as last block's (not the first block): nothing to write
+//   shift = SHIFTS[v];  i = MIN(TRUNC p, 3), f = p - i
 //   per formant k: F = MIN((Fa + dF f) x shift, 21600), BW = BWa + dBW f
 //     x = BW x f32(pi / 48000);  r = ((( -1/6 x + 0.5) x - 1) x + 1);  C = 0 - r r
 //     u = (F x f32(2 pi / 48000))^2;  c = COS8, then c = c u + COSk for k = 7..0
-//     B = (r + r) c;  A0 = (1 - B) - C
+//     B = (r + r) c;  A0 = (1 - B) - C;  1 / C = 0 - q q, q = ((x / 6 + 0.5) x + 1) x + 1
+//     before: y0 = s2 / C, y1 = (s1 - B y0) / C (the old B and 1 / C);  after: s2 = C y0,
+//     s1 = C y1 + B y0
 //   level: pj = 8 p, j = MIN(TRUNC pj, 31), fp = pj - j, k = v >> 4, fs = (v AND 15) x 0.0625
 //     l0 = L[j][k] + (L[j+1][k] - L[j][k]) fp, l1 the same in column k + 1,
 //     level = l0 + (l1 - l0) fs;  the first biquad's A0 = A0 x level
@@ -45,59 +51,67 @@
 // IIR0's registers at 0x310c4000: CTL1 + 0, DMASTAT + 4, CHNPTR + 0x70.
 //
 // DDR (byte addresses; only the core reads them, through the DM bus):
-//   0x8070ac00  the voices' glide state, 16 x 2 words (the position, 1 once set)
+//   0x8070ac00  the voices' state, 16 x 8 words (the position, 1 once set, P1's value, 1 / C x 5)
 //   0x8070a000  the vowel pairs: for i = 0..3, 20 float32: Fa[5], dF[5], BWa[5], dBW[5]
 //   0x8070a200  SHIFTS, 128 float32 (2^(v / 127))
 //   0x8070a400  the level table, 33 rows x 9 columns, float32 (formant_levels.json)
 //
-// wr_fm_coef is all 48 bits (.NOCOMPRESS): a 16-bit short compute with bits 11..7 zero,
-// such as R2 = R2 + R3 (0xc023), has the bit pattern of a 32-bit Type 2b too, and digikit's
-// executor read 0xc023 0xc026 as one 32-bit instruction (2026-10-17).
+// selas may use the 16- and 32-bit forms throughout, so every Rn = Rn op Rm has n of 8 or more:
+// a 16-bit short compute with bits 11..7 zero, such as R2 = R2 + R3 (0xc023), has the bit
+// pattern of a 32-bit Type 2b too, and digikit's executor read 0xc023 0xc026 as one 32-bit
+// instruction (2026-10-17). The checks run every path in digikit's engine.
 //
 // PLACEMENT IS FIXED at PM sw 0x173800 (DM 0x2e7000): the absolute jumps below are written
 // for it by scripts/sharc_resolve_jumps.py.
 
 .SECTION/PM seg_pmco;
-.NOCOMPRESS;
 
 .GLOBAL wr_fm_coef.;
 wr_fm_coef.:
       // the target position
       R12 = 0xffff;
-      R4 = R4 AND R12;
+      R14 = R4 AND R12;
       R12 = R12 - R12;
-      F1 = FLOAT R4 BY R12;
+      F1 = FLOAT R14 BY R12;
       R12 = 0x39010204;                 // f32(4 / 0x7f00)
       F1 = F1 * F12;
       R12 = 0x40800000;                 // 4.0
       F1 = MIN(F1, F12);                // target
-      // the glide
+      // P1's value
+      R12 = 0xffff;
+      R14 = R5 AND R12;
+      R11 = LSHIFT R14 BY -8;
+      R12 = 127;
+      R11 = MIN(R11, R12);              // v
+      // the glide: an eighth of the distance a block
       R2 = DM(1, I1);                   // 1 once the position is set
       R2 = PASS R2;
-      IF EQ JUMP 0x173839;              // -> wr_fm_take.
-      R6 = PASS R6;
-      IF NE JUMP 0x173839;              // -> wr_fm_take. (a note: at once)
+      IF EQ JUMP 0x17383f;              // -> wr_fm_take. (the first block)
       R2 = DM(0, I1);                   // last
+      R6 = PASS R6;
+      IF NE JUMP 0x173832;              // -> wr_fm_same. (a note: at once)
+      F3 = F1 - F2;
       R12 = 0x3e000000;                 // 0.125
-      F3 = F2 - F12;
-      F1 = MAX(F1, F3);
-      F3 = F2 + F12;
-      F1 = MIN(F1, F3);
+      F3 = F12 * F3;
+      F1 = F2 + F3;                     // p
+.GLOBAL wr_fm_same.;
+wr_fm_same.:
+      COMP(R1, R2);                     // p as last block's, bit for bit
+      IF NE JUMP 0x17383f;              // -> wr_fm_take.
+      R3 = DM(2, I1);
+      COMP(R11, R3);                    // and P1
+      IF NE JUMP 0x17383f;              // -> wr_fm_take.
+      RTS;                              // the same biquads: nothing to write
 .GLOBAL wr_fm_take.;
 wr_fm_take.:
       DM(0, I1) = R1;                   // p
       R2 = 1;
       DM(1, I1) = R2;
-      // P1: v and the shift
-      R12 = 0xffff;
-      R5 = R5 AND R12;
-      R11 = LSHIFT R5 BY -8;
-      R12 = 127;
-      R11 = MIN(R11, R12);              // v
-      R2 = LSHIFT R11 BY 2;
+      DM(2, I1) = R11;                  // v
+      R14 = LSHIFT R11 BY 2;
       R12 = 0x8070a200;                 // SHIFTS
-      R2 = R2 + R12;
-      I0 = R2;
+      R14 = R14 + R12;
+      I0 = R14;
       R13 = DM(0, I0);                  // shift
       // the vowel pair: i and f
       R12 = R12 - R12;
@@ -107,14 +121,27 @@ wr_fm_take.:
       R12 = R12 - R12;
       F9 = FLOAT R8 BY R12;
       F9 = F1 - F9;                     // f
-      R2 = LSHIFT R8 BY 6;
-      R3 = LSHIFT R8 BY 4;
-      R2 = R2 + R3;                     // 80 i: the pair's 20 floats
+      R14 = LSHIFT R8 BY 6;
+      R15 = LSHIFT R8 BY 4;
+      R14 = R14 + R15;                  // 80 i: the pair's 20 floats
       R12 = 0x8070a000;
-      R2 = R2 + R12;
-      I0 = R2;
+      R14 = R14 + R12;
+      I0 = R14;
       R10 = 28;                         // a biquad's 7 words, in bytes
+      R14 = I1;
+      R12 = 12;
+      R14 = R14 + R12;
+      I1 = R14;                         // the five 1 / C
       LCNTR = 5, DO wr_fm_k_end. UNTIL LCE;
+      // the two past outputs, from the saved states and the old B and 1 / C
+      R15 = DM(I1, M6);                 // the old 1 / C
+      R8 = DM(6, I2);                   // s2
+      F8 = F8 * F15;                    // y0
+      R14 = DM(2, I2);                  // the old B
+      F14 = F14 * F8;
+      R0 = DM(5, I2);                   // s1
+      F14 = F0 - F14;
+      F14 = F14 * F15;                  // y1
       // F and BW
       R2 = DM(5, I0);                   // dF
       F2 = F2 * F9;
@@ -140,8 +167,21 @@ wr_fm_take.:
       F4 = F4 * F3;
       F4 = F4 + F12;                    // r
       F5 = F4 * F4;
-      R6 = R6 - R6;                     // 0.0
+      R6 = 0;                           // 0.0
       F5 = F6 - F5;                     // C = -r r
+      // 1 / C = 0 - q q, q = exp(x)
+      R15 = 0x3e2aaaab;                 // f32(1/6)
+      F15 = F15 * F3;
+      R12 = 0x3f000000;                 // 0.5
+      F15 = F15 + F12;
+      F15 = F15 * F3;
+      R12 = 0x3f800000;                 // 1.0
+      F15 = F15 + F12;
+      F15 = F15 * F3;
+      F15 = F15 + F12;                  // q
+      F15 = F15 * F15;
+      F15 = F6 - F15;
+      DM(-1, I1) = R15;                 // the new 1 / C
       // cos(w), w = F x 2 pi / 48000: Horner in u = w^2
       R12 = 0x3909421e;                 // f32(2 pi / 48000)
       F2 = F2 * F12;                    // w
@@ -176,15 +216,22 @@ wr_fm_take.:
       F4 = F4 * F7;                     // B
       F6 = F12 - F4;                    // 1 - B
       F6 = F6 - F5;                     // A0
+      // the states for the new B and C
+      F15 = F5 * F8;                    // s2 = C y0
+      DM(6, I2) = R15;
+      F14 = F5 * F14;
+      F8 = F4 * F8;
+      F14 = F14 + F8;                   // s1 = C y1 + B y0
+      DM(5, I2) = R14;
       DM(0, I2) = R6;
       R12 = R12 - R12;
       DM(1, I2) = R12;                  // A1 = 0
       DM(2, I2) = R4;                   // B1 = B
       DM(3, I2) = R12;                  // A2 = 0
       DM(4, I2) = R5;                   // B2 = C
-      R2 = I2;
-      R2 = R2 + R10;
-      I2 = R2;                          // the next biquad
+      R14 = I2;
+      R14 = R14 + R10;
+      I2 = R14;                         // the next biquad
 .GLOBAL wr_fm_k_end.;
 wr_fm_k_end.:
       R2 = DM(I0, M6);                  // the next formant's column
@@ -199,18 +246,18 @@ wr_fm_k_end.:
       F4 = FLOAT R3 BY R12;
       F4 = F2 - F4;                     // fp
       R6 = LSHIFT R11 BY -4;            // k
-      R7 = 15;
-      R7 = R11 AND R7;
+      R14 = 15;
+      R7 = R11 AND R14;
       F7 = FLOAT R7 BY R12;
       R12 = 0x3d800000;                 // 0.0625
       F7 = F7 * F12;                    // fs
-      R2 = LSHIFT R3 BY 3;
-      R2 = R2 + R3;                     // 9 j
-      R2 = R2 + R6;
-      R2 = LSHIFT R2 BY 2;
+      R14 = LSHIFT R3 BY 3;
+      R14 = R14 + R3;                   // 9 j
+      R14 = R14 + R6;
+      R14 = LSHIFT R14 BY 2;
       R12 = 0x8070a400;                 // the level table
-      R2 = R2 + R12;
-      I0 = R2;
+      R14 = R14 + R12;
+      I0 = R14;
       R2 = DM(0, I0);                   // L[j][k]
       R3 = DM(9, I0);                   // L[j+1][k]
       R5 = DM(1, I0);                   // L[j][k+1]
@@ -236,7 +283,7 @@ wr_fm_k_end.:
 .COMPRESS;
 .GLOBAL wr_fm_post.;
 wr_fm_post.:
-      CALL 0x173ab8;                    // -> wr_fm_collect.
+      CALL 0x173ac0;                    // -> wr_fm_collect.
       CALL 0x172caf;                    // -> wr_p5_t146. (R9 = t, R10 = 146t; wr_p5_word keeps both)
       R12 = 0x25c5b0;                   // 0x25c48c + 292: TYPE
       R2 = R12 + R10;
@@ -244,11 +291,11 @@ wr_fm_post.:
       R0 = LSHIFT R0 BY -8;
       R1 = 3;
       COMP(R0, R1);
-      IF NE JUMP 0x173aa8;              // -> wr_fm_out. (not the Formant)
+      IF NE JUMP 0x173ab0;              // -> wr_fm_out. (not the Formant)
       R13 = DM(0x2dde24);               // N
       R1 = 32;
       COMP(R13, R1);
-      IF GT JUMP 0x173aa8;              // -> wr_fm_out. (longer than IO)
+      IF GT JUMP 0x173ab0;              // -> wr_fm_out. (longer than IO)
       R12 = 0x25c5b2;                   // 0x25c48c + 294: P2
       R2 = R12 + R10;
       CALL 0x172cc4;                    // -> wr_p5_word.
@@ -270,7 +317,7 @@ wr_fm_post.:
       R1 = 1;
       R6 = R0 AND R1;
       // the voice's glide state and coefficients
-      R8 = LSHIFT R9 BY 3;
+      R8 = LSHIFT R9 BY 5;              // 32 bytes a voice
       R12 = 0x8070ac00;
       R8 = R8 + R12;
       I1 = R8;
@@ -349,7 +396,7 @@ wr_fm_out.:
 // machine9_live.asm's way out of the loop comes here: the last voice in flight.
 .GLOBAL wr_fm_end.;
 wr_fm_end.:
-      CALL 0x173ab8;                    // -> wr_fm_collect.
+      CALL 0x173ac0;                    // -> wr_fm_collect.
       JUMP 0x16ebe6;                    // -> wr_t5v_exit.
 
 // The voice in flight, if any: wait for IIR0's ACDONE (at most 100,000 reads; past that the
@@ -359,7 +406,7 @@ wr_fm_end.:
 wr_fm_collect.:
       R0 = DM(0x2e7fd4);
       R0 = PASS R0;
-      IF EQ JUMP 0x173b01;              // -> wr_fm_none.
+      IF EQ JUMP 0x173b09;              // -> wr_fm_none.
       R12 = 0x310c4004;                 // DMASTAT
       I0 = R12;
       R3 = 0x40;                        // ACDONE
@@ -369,10 +416,10 @@ wr_fm_collect.:
 wr_fm_poll.:
       R2 = DM(0, I0);
       R11 = R2 AND R3;
-      IF NE JUMP 0x173ad9;              // -> wr_fm_done.
+      IF NE JUMP 0x173ae1;              // -> wr_fm_done.
       R8 = R8 + R13;
-      IF GT JUMP 0x173acb;              // -> wr_fm_poll.
-      JUMP 0x173afd;                    // -> wr_fm_clear. (never finished)
+      IF GT JUMP 0x173ad3;              // -> wr_fm_poll.
+      JUMP 0x173b05;                    // -> wr_fm_clear. (never finished)
 .GLOBAL wr_fm_done.;
 wr_fm_done.:
       R12 = R12 - R12;
