@@ -1,8 +1,8 @@
-# Waverider's Formant type: the design, before any code
+# Waverider's Formant type: the design, and what was built
 
 A Formant type on page 5 makes the oscillators sound like a voice that sings a vowel. It is the first Waverider job for the IIR0 accelerator. The owner chose it on 2026-10-17, and also chose to try layout B first, with layout A as the fallback (`docs/sharc-accelerator-plan.md`).
 
-This page sets out the choices that come before the code: the knobs, the filter, and where the accelerator runs. Nothing is built yet.
+The sections up to "The choices for the owner" set out the choices before the code, as they stood on 2026-10-17. The last section says what was built in formant2 and why it differs.
 
 ## The knobs on page 5
 
@@ -69,3 +69,32 @@ A second probe build, `accelprobe2`, can measure it. Its first three IIR0 jobs w
 1. **The knobs:** option 1 (the vowel on AMT) or option 2 (the mix on AMT).
 2. **The filter:** the cascade (one channel) or the parallel form (five channels).
 3. **Measure first:** build and flash `accelprobe2` before the Formant code, or write the Formant code first and measure on it.
+
+## What was built (formant2)
+
+The owner chose the vowel on AMT (option 1), the cascade, and layout A after the accelprobe2 reading. Layout A did not fit, so the DSP runs a layout of its own.
+
+### One voice late, not one block late
+
+Layout A needs a block of input and output for every voice in L1, about 7.3 KB. Waverider's L1 region had no room left. formant.asm starts IIR0 on a voice after FOLD. It collects the result at the next voice's FOLD, or at the loop's end. The sub, the noise and the next voice run while IIR0 works. One block of 32 samples in L1 serves every voice, and the voice comes out with no delay.
+
+| Part | Where |
+|---|---|
+| formant.asm (1,560 bytes) | L1, DM 0x2e7000 (sw 0x173800) |
+| 16 voices' coefficients and states, the block IIR0 filters in place, the TCB | L1, 0x2e7660..0x2e7fe4 |
+| The vowel table, P1's ratios, the level table, each voice's state | DDR, 0x8070a000..0x8070b000 |
+
+### The coefficients each block
+
+The DSP computes each voice's five biquads in float32, in forms it can repeat bit for bit. exp and cos are short polynomials, and the level comes from a table of 33 x 9 points. They are within 2.4e-7 of the exact forms (0.0011 dB in the response). When the vowel and P1 have not moved since the last block, the DSP writes nothing: a held sound costs 29 instructions a block, not about 420.
+
+### Two fixes after the first test on the instrument
+
+The owner tested formant1 on 2026-10-17.
+
+- **A crackle that followed AMT and P1.** When the coefficients change, IIR0's saved states still hold the old ones for one sample. On a strong low partial, that is a one-sample step, and the high formants ring with it at 3 to 5 kHz. The DSP now rebuilds the states from the two past outputs, with the new coefficients, as a direct-form filter does. AMT also follows the knob by an eighth of the distance a block (90 % in 12 ms). Before, it moved by at most 0.125 a block.
+
+  The test is a 1 s sweep on a dark source. The energy at 2.5 to 5 kHz falls from -40.6 to -57 dB of the total (AMT), and from -42.1 to -78 dB (P1). With the knob held, it is about -88 dB.
+- **A crackle on a 16-voice unison.** The level made every vowel as loud as A, but A is 7.83 dB above the dry source. The Formant's peaks were 10 to 13 dB above the plain sound's, and 16 voices in unison drove the mix past full scale. The level now makes each vowel about as loud as the dry source. The peaks are now 2 to 6 dB above the plain sound, and the loudness is within -5 to +3 dB of it.
+
+On formant1, the probe read the DSP load with 16 such voices, with noise, FOLD, WARP and Formant on each. It read 66.8 % on average and 70.1 % at worst in one frame, with no frame missed.
