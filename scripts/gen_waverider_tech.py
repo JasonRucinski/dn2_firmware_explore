@@ -617,11 +617,109 @@ def fm_wave() -> str:
     return p.svg("Osc 1 under FM from osc 2, at the same pitch")
 
 
+# ---------------------------------------------------------------- 7. the high range: where a frame loses every partial
+
+HR_NOTE = 60                                         # C4
+HR_POS = 0x3000                                      # POS 48: Harm.'s frame 6, the 7th partial alone
+HR_PARTIAL = 7
+HR_WARP = 35
+HR_SILENT_DB = -60                                   # where the figure draws "silent"
+
+
+def _hr_kept(note: float, warp: int) -> int:
+    """The highest harmonic the reader keeps for an oscillator at NOTE (TUNE and DETN included)."""
+    inc = live.increment(note, live.increment_table())
+    sel = live.phase_sel(inc, live.warp_table()[warp]) if warp else inc
+    return mip.top_harmonic(mip.level_for(sel))
+
+
+def _hr_osc2_db(det: int, warp: int, blocks: int = 24) -> float | None:
+    """Osc 2 alone (LEV1 0, LEV2 100) on Harm. at POS 48, C4, TUNE 0: its RMS in dB, None when silent."""
+    o1 = (HR_POS, 0x100, live.TUN1_ZERO, 0)
+    o2 = (HR_POS, 0x100, live.TUN1_ZERO + det * 256, 0x6400)
+    y = live.render_two(dsp.tables(), [(float(HR_NOTE), o1, o2)] * blocks,
+                        shapes=[(0, 0, 0, 0, warp << 8, 0, 0, 0)] * blocks)[-512:]
+    r = math.sqrt(sum(v * v for v in y) / len(y))
+    return 20 * math.log10(r) if r > 0 else None
+
+
+def _hr_scan() -> dict[int, list]:
+    return {w: [_hr_osc2_db(d, w) for d in range(64)] for w in (0, HR_WARP)}
+
+
+def _hr_cliff(levels: list) -> int:
+    """The first DETN at which osc 2 is silent."""
+    return next(d for d, v in enumerate(levels) if v is None)
+
+
+def _hr_fold_from() -> int:
+    """The first DETN at which the 7th partial is above 24 kHz (it then plays folded back)."""
+    return next(d for d in range(64) if HR_PARTIAL * note_hz(HR_NOTE + d) > RATE / 2)
+
+
+def high_range_levels() -> str:
+    notes = [n / 4 for n in range(48 * 4, 120 * 4 + 1)]
+    p = Plot((48, 120), (1, 255), "the oscillator's note (TUNE and DETN included)", "highest harmonic kept",
+             logy=True, xticks=list(range(48, 121, 12)), yticks=[1, 3, 7, 15, 31, 63, 127, 255],
+             xfmt=note_name, height=300, legend="below")
+    for warp, cls in ((0, "s0"), (HR_WARP, "s1"), (127, "s3")):
+        p.line(notes, [_hr_kept(n, warp) for n in notes], cls, f"WARP {warp}" + (" (off)" if not warp else ""))
+    p.hline(HR_PARTIAL)
+    p.parts.append(f'<text class="note" x="{p.W - p.R - 4}" y="{p._ty(HR_PARTIAL) + 14:.1f}" text-anchor="end">'
+                   '7th partial</text>')   # below the line, past C8: the one gap no curve crosses
+    return p.svg("The highest harmonic the reader keeps, against the oscillator's note")
+
+
+def high_range_cliff(scan: dict[int, list]) -> str:
+    p = Plot((0, 63), (HR_SILENT_DB, 0), "DETN (C4, TUNE 0)", "osc 2 (dB)",
+             xticks=[0, 12, 24, 36, 48, 60], yticks=[0, -20, -40, -60],
+             yfmt=lambda v: "silent" if v == HR_SILENT_DB else str(v), height=260, legend="below")
+    for warp, cls in ((0, "s0"), (HR_WARP, "s1")):
+        ys = [HR_SILENT_DB if v is None else v for v in scan[warp]]
+        p.line(list(range(64)), ys, cls, f"WARP {warp}")
+    p.vline(_hr_fold_from())
+    p.parts.append(f'<text class="note" x="{p._tx(_hr_fold_from()) - 4:.1f}" y="{p.H - p.B - 6}" text-anchor="end">'
+                   'above 24 kHz from here</text>')    # left of the line: the WARP 0 drop is just right of it
+    return p.svg("Osc 2's level against DETN, on Harm. at POS 48")
+
+
+def high_range_table(scan: dict[int, list]) -> str:
+    c0, c35, fold = _hr_cliff(scan[0]), _hr_cliff(scan[HR_WARP]), _hr_fold_from()
+    rows = []
+    for d in sorted({0, 12, c35 - 1, c35, fold, c0 - 1, c0, 57}):
+        f7 = HR_PARTIAL * note_hz(HR_NOTE + d)
+        cells = [f"{d}", note_name(HR_NOTE + d), f"{f7:,.0f} Hz"]
+        for w in (0, HR_WARP):
+            v = scan[w][d]
+            cells += [_hr_kept(HR_NOTE + d, w), "silent" if v is None else f"{v:.1f} dB"]
+        rows.append(cells)
+    return table_html(["DETN", "Osc 2's note", "Its 7th partial", "WARP 0: harmonics kept", "WARP 0: osc 2",
+                       f"WARP {HR_WARP}: harmonics kept", f"WARP {HR_WARP}: osc 2"], rows)
+
+
+def high_range_steps(scan: dict[int, list]) -> str:
+    c0, c35 = _hr_cliff(scan[0]), _hr_cliff(scan[HR_WARP])
+    steps = [
+        "On a Waverider track, set page 1's LEV to 0 and TUNE to 0.",
+        "On page 2, set TBL to Harm., POS to 48 and LEV to 100. The scope shows seven cycles.",
+        f"Play C4. Osc 2 plays its 7th partial, at {HR_PARTIAL * note_hz(HR_NOTE):,.0f} Hz.",
+        f"Turn DETN up. At {c0 - 1} osc 2 still plays. At {c0} it is silent.",
+        f"Set DETN to {c35}. Osc 2 plays again.",
+        f"On page 5, set WARP to {HR_WARP}. Osc 2 is silent. At WARP 0 it plays again.",
+    ]
+    return "<ol>" + "".join(f"<li>{html.escape(s)}</li>" for s in steps) + "</ol>"
+
+
 # ---------------------------------------------------------------- the page
 
 def figures(dnx: pathlib.Path | None) -> dict[str, str]:
     alias_svg, alias_table, _ = alias_measure()
+    scan = _hr_scan()
     return {
+        "hrlevels": high_range_levels(),
+        "hrcliff": high_range_cliff(scan),
+        "hrtable": high_range_table(scan),
+        "hrsteps": high_range_steps(scan),
         "geometry": geometry_table(),
         "dnx": dnx_proposals(dnx),
         "posmap": pos_map(),
