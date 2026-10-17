@@ -130,14 +130,14 @@ wr_miph2_level.:
 
 .GLOBAL wr_miph2_loop.;
 wr_miph2_loop.:
-      R0 = R9 AND R14;
-      F10 = FLOAT R0 BY R15;            // hfr, half the sample fraction (exact)
       R0 = LSHIFT R9 BY R13;            // i
       R0 = LSHIFT R0 BY 1;              // tap i-1's byte offset in a guarded row
       R1 = R12 + R0;                    // row a, tap i-1
       R0 = R11 + R0;                    // row b, tap i-1
       I0 = R1;
       I1 = R0;
+      R0 = R9 AND R14;                  // between the I0/I1 moves and their first use (step 1a)
+      F10 = FLOAT R0 BY R15;            // hfr, half the sample fraction (exact)
       R4 = DM(I0, M6) (SWSE);           // a[i-1]
       R5 = DM(I0, M6) (SWSE);           // a[i]
       R6 = DM(I0, M6) (SWSE);           // a[i+1]
@@ -156,41 +156,44 @@ wr_miph2_loop.:
       F3 = FLOAT R3 BY R8;
       R8 = DM(0x2e3204);                // ff
 
-      // the taps between the frames: t = a + ff * (b - a)
+      // the taps between the frames: t = a + ff * (b - a). Step 1a: the four taps' subtracts,
+      // then their multiplies, then their adds, so no result feeds the next instruction (each
+      // value takes the same operations as before, so the output is the same bit for bit)
       F0 = F0 - F4;
-      F0 = F8 * F0;
-      F4 = F4 + F0;                     // ym
       F1 = F1 - F5;
-      F1 = F8 * F1;
-      F5 = F5 + F1;                     // y0
       F2 = F2 - F6;
-      F2 = F8 * F2;
-      F6 = F6 + F2;                     // y1
       F3 = F3 - F7;
+      F0 = F8 * F0;
+      F1 = F8 * F1;
+      F2 = F8 * F2;
       F3 = F8 * F3;
+      F4 = F4 + F0;                     // ym
+      F5 = F5 + F1;                     // y0
+      F6 = F6 + F2;                     // y1
       F7 = F7 + F3;                     // y2
-      R8 = -15;
 
-      // one Catmull-Rom on the blend, render.hermite's order
+      // one Catmull-Rom on the blend, render.hermite's order for each value. Step 1a: the
+      // independent terms interleaved; F8 is scratch here and takes -15 back before the end
       F0 = F5 - F6;                     // t = y0 - y1
-      F1 = F0 + F0;
-      F0 = F1 + F0;                     // 3t
       F1 = F7 - F4;                     // y2 - ym
-      F0 = F0 + F1;                     // c3
-      F1 = F6 - F4;                     // c1 = y1 - ym
       F2 = F4 - F5;                     // a = ym - y0
-      F2 = F2 + F2;
-      F6 = F6 - F5;                     // b = y1 - y0
-      F6 = F6 + F6;
-      F6 = F6 + F6;
-      F2 = F2 + F6;
+      F3 = F6 - F5;                     // b = y1 - y0
+      F8 = F0 + F0;                     // 2t
+      F2 = F2 + F2;                     // 2a
+      F3 = F3 + F3;                     // 2b
       F7 = F7 - F5;                     // d = y2 - y0
-      F2 = F2 - F7;                     // c2
+      F0 = F8 + F0;                     // 3t
+      F3 = F3 + F3;                     // 4b
+      F6 = F6 - F4;                     // c1 = y1 - ym
+      F0 = F0 + F1;                     // c3
+      F2 = F2 + F3;                     // 2a + 4b
       F4 = F10 + F10;                   // fr
+      F2 = F2 - F7;                     // c2
+      R8 = -15;                         // int16 -> float full scale again, for the next sample
       F0 = F0 * F4;
       F0 = F0 + F2;
       F0 = F0 * F4;
-      F0 = F0 + F1;
+      F0 = F0 + F6;                     // + c1
       F0 = F0 * F10;
 .NOCOMPRESS;                            // a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
       F0 = F0 + F5;                     // y
