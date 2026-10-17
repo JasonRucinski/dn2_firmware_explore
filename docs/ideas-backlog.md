@@ -49,6 +49,8 @@ Where they disagree, they win and this table is wrong.
 | 27 | LFO waves follow a negative SPD | **open (a fix)** | — | how a stock generator uses SPD's sign |
 | 32 | Transient shaper | **open (roadmap)** | — | everything: where it sits (master or per voice), its controls' home, and the SHARC cost |
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
+| 35 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
+| 36 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -4039,3 +4041,37 @@ runs before a PR. The suite only gives a pass when each check has first been sho
 fail on a build made broken on purpose, as the boot check is calibrated against its
 stock control. Built on `scripts/emulib/` and the existing harnesses; and anything about
 digikit itself that we learn goes back there as a PR.
+
+## 35. An input machine, as the Machinedrum's
+
+**Asked by the fork owner, 2026-10-17:** *"a way to modify the input audio,
+similar to Machinedrum's input machines."* A machine whose sound is the
+external input. Trigs gate it through the track's envelope, and the stock
+filter, FX sends, LFOs and p-locks shape it.
+
+**State: scoped, not started.** The plan is `docs/input-and-drum-machines.md`
+Part A, and the evidence lives there, not here.
+- Built as a sixth machine on Waverider's plumbing, in a standalone mod with
+  its own type 5.
+- Its render loop is a copy. The one unknown is where the analog input lands
+  in SHARC memory: the codec reaches the SHARC directly, and SSI0 carries only
+  USB audio.
+- The first step is read-only: `tools/dn2reply_audio.py` on a stock + usbprobe
+  build, with and without a signal at the inputs.
+
+## 36. A drum sampler on the transient bank
+
+**Asked by the fork owner, 2026-10-17:** *"a way to make sampled or
+sample-like drums. The drums on DN2 are sad and I need something better."*
+
+**State: scoped, not started.** The plan is `docs/input-and-drum-machines.md`
+Part B.
+- A one-shot sample player reading the stock FM drum transient bank: 34 x 100
+  ms, contiguous in DDR, 3.4 s of the user's own samples.
+- The stock boot stream already loads that bank, and `transients` already
+  rewrites it on hardware, so a first version needs no new storage path.
+- SAMP is p-lockable per step, so one track plays a whole kit.
+- A larger baked bank (about 2 s more under the uploader's 1 MB buffer), then
+  a `+Drive` pool, change only where the bank lives.
+- D0, the kit packer and a reference player to audition, is offline and needs
+  no firmware.
