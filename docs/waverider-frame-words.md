@@ -85,6 +85,7 @@ with filter 3, on machine types 0, 1 and 2. So parameter 72 feeds filter type 3.
 | flip in random frames, machine types 0 and 1, filters 0 and 3, 6 blocks | 0 words differ |
 | flip in random frames, machine type 4, filter 0, seed 1 | 0 words differ |
 | the corpus of real frames, 40 frames, 80 blocks (`replay --flip 0x2a`) | read only by the two copy loops, in the receive page; never read in the frame copy |
+| the control on the same corpus: `0x74`, a track level (`replay --flip 0x74`) | read outside the copy loops, and 429, then 364 memory words differ: the replay sees a real dependence |
 | machine type 4, filter 0, **seed 124**: the case that gave 59 words on 2026-10-12 | 52 words differ. The census names the cause: row 3's owner word is `0x25` |
 | the same frames with each row's owner set to its track (`diff --valid-owners`) | **0 words differ** |
 | naturarum's census in their own emulator, sharcvm (`notes/T6.0c-frame-census-dnfw.md`, 2026-10-13) | free: 0 of 192 flips, 0 of 48 with random voices, 0 of 22 again |
