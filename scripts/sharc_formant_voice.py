@@ -1,11 +1,11 @@
 """The Formant type in the whole Waverider voice, in digikit's SHARC engine, against live.render_two.
 
-    python scripts/sharc_formant_voice.py [CASE ...] [--blocks 48] [--no-iir]
+    python scripts/sharc_formant_voice.py [CASE ...] [--blocks 48] [--no-iir] [--engine-iir]
 
 Tracks 0 and 1 play Waverider with page 5's TYPE at Formant (3), so formant.asm starts IIR0
 on track 0's voice and collects it at track 1's FOLD, and collects track 1's at the loop's
-end. The core runs in digikit's Rust engine. digikit's engine has no IIR0, so this script
-runs digikit's IIR0 model (tools/sharc_dev/sharc_core/iir.py on a checkout with ElekLabs/
+end. The core runs in digikit's Rust engine. The engine on 277760a has no IIR0 (main has
+it, see `--engine-iir` below), so by default this script runs digikit's IIR0 model (tools/sharc_dev/sharc_core/iir.py on a checkout with ElekLabs/
 digikit#122, the order read on silicon; --iir-digikit) on the engine's memory when
 formant.asm polls IIR0's DMASTAT, and hands the poll ACDONE. That is the same as IIR0
 finishing at any time before the poll: between the start and the poll nothing else touches
@@ -22,6 +22,12 @@ live.render_two fed the DSP's unpacked inputs, page 3's and page 5's words and T
 
 `--no-iir` is the control: the IIR0 model does not run, so IO keeps the input and the
 check must fail wherever the voice is wet. Exit 0 when every case matches.
+
+`--engine-iir` runs IIR0 in the engine instead: digikit main's native option 22
+(`peripheral_model`, the Rust twin of iir.py) with `DNFW_SHARC_NATIVE_LIB` naming a library
+built from main and `--digikit` a main checkout. The host model does not run, and the poll
+reads DMASTAT from the engine: each poll must see ACDONE. With `--no-iir` too, option 22
+stays off (the control): no poll sees ACDONE, and the wet cases differ.
 """
 
 from __future__ import annotations
@@ -104,6 +110,8 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
         init = g.init_on(snap, m2mach, wr)
         init.state.mmrs[iir.IIR_DMASTAT] = g.fx.Const(0)      # the engine refuses an MMR it has no value for
         state = g.native_on(init, wr)
+        if a.engine_iir and not a.no_iir:
+            state.core.set_option(OPT_PERIPHERAL_MODEL, 1)
         runs = []
 
         def fb(b):
@@ -124,6 +132,11 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
                 subs[t].append(tuple(g.frame_word(r.state, FR.slot_offset(t, s)) for s in live.SUB_SLOTS))
 
         def at_poll(r):                                       # after R2 = DMASTAT: IIR0 ran, ACDONE
+            if a.engine_iir:                                  # the engine ran IIR0: DMASTAT is its own
+                runs.append(r.native_reg(g.fx.UREG_CODES["R2"]) or 0)
+                if not runs[-1] & 0x40:                       # the control: let the poll end
+                    r.set_reg(g.fx.UREG_CODES["R2"], 0x40)
+                return
             if not a.no_iir:
                 bus = Bus(r, const)
                 bus.mmrs[iir.IIR_CHNPTR] = const(dsp.iir_word(dsp.FORMANT_TCB_DM) + 12)
@@ -151,6 +164,9 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
                 plain = live.render_two(tables, seq, g.BLOCK, "float32", subs=subs[t][-n:], trims=trims)
                 bad[t] += g.mismatches(got, plain)
         ok = all(v == 0 for v in bad.values())
+        if a.engine_iir and not all(d & 0x40 for d in runs):
+            ok = False
+            bad["polls without ACDONE"] = sum(1 for d in runs if not d & 0x40)
         return ok, f"{a.blocks} blocks, IIR0 ran {len(runs)} times, samples that differ: " + \
             ", ".join(f"track {t} {v}" for t, v in bad.items())
 
@@ -169,6 +185,7 @@ def layout() -> tuple[list[int], dict[str, int]]:
 
 
 POLL_AND = None
+OPT_PERIPHERAL_MODEL = 22   # digikit main, tools/sharc_dev/sharc_transpile_run.py
 
 
 def main(argv=None) -> int:
@@ -182,6 +199,8 @@ def main(argv=None) -> int:
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--blocks", type=int, default=48)
     ap.add_argument("--no-iir", action="store_true", help="the control: IIR0's model does not run")
+    ap.add_argument("--engine-iir", action="store_true",
+                    help="IIR0 in the engine (digikit main's option 22), not the host model")
     a = ap.parse_args(argv)
     dk = g.m1.Digikit(a.digikit)
     g.fx.bind(str(a.digikit / "tools"))
