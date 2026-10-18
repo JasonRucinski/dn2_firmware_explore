@@ -38,13 +38,30 @@ def test_the_dispatcher_is_assembled_where_the_events_say(stock):
     spec = platform.SPEC["bus"]
     code = bytes.fromhex(spec["code"])
     assert spec["load"] == bus.BUS_VA
-    assert not any(code[:4 * bus.TABLE_SLOTS])                           # the table, empty
-    entry = spec["symbols"]["ev_param_slot"] - bus.BUS_VA
-    assert code[entry:entry + 2] == bytes.fromhex("2f0a")                 # move.l %a2,-(%sp)
-    # its last instructions are the three it displaced, then the jump back
-    assert code.endswith(bus.EVENTS[b"PSLT"]["stock"] and
-                         bytes.fromhex("2f027264206f00084ef9400dc032"))
-    assert _at(stock, SITE, 8).hex() == bus.EVENTS[b"PSLT"]["stock"]
+    assert not any(code[:4 * bus.TABLE_SLOTS * len(bus.EVENTS)])         # the tables, empty
+    for k, (event, e) in enumerate(bus.EVENTS.items()):
+        assert e["table"] == 4 * bus.TABLE_SLOTS * k
+        entry = spec["symbols"][e["entry"]] - bus.BUS_VA
+        assert code[entry:entry + 2] == bytes.fromhex("2f0a")             # move.l %a2,-(%sp)
+        assert _at(stock, e["site"], 8).hex() == e["stock"]
+    # each dispatcher ends in the instructions its jmp displaced, then the jump back
+    assert bytes.fromhex("2f027264206f00084ef9400dc032") in code
+    assert bytes.fromhex("4feffff448d7001c4ef9400dc81c") in code          # the CC lookup
+    assert bytes.fromhex("4feffff448d7001c4ef9400dc8fe") in code          # the NRPN lookup
+
+
+@pytest.mark.parametrize("event", [b"PCCI", b"PNRI"])
+def test_the_midi_events_hook_their_lookup_and_fill_their_own_table(stock, event):
+    e = bus.EVENTS[event]
+    out = platform.join(stock, [bus.subscribe(event, 0x46A00000), bus.subscribe(b"PSLT", 0x46B00000)])
+    entry = platform.SPEC["bus"]["symbols"][e["entry"]]
+    assert _at(out, e["site"], 8) == bytes.fromhex("4ef9") + struct.pack(">I", entry) + bytes.fromhex("4e71")
+    image = _bus_chunk(out)
+    assert struct.unpack_from(">I", image, e["table"])[0] == 0x46A00000
+    assert struct.unpack_from(">I", image, 0)[0] == 0x46B00000           # ev_param_slot's, apart
+    other = (set(bus.EVENTS) - {event, b"PSLT"}).pop()
+    assert _at(out, bus.EVENTS[other]["site"], 8).hex() == bus.EVENTS[other]["stock"]   # not subscribed
+    assert platform.split(out)[0] == platform.join(stock, [])[:platform.STOCK_LENGTH]
 
 
 def test_handlers_go_in_order_and_the_site_jumps_to_the_dispatcher(stock):

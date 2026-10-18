@@ -89,6 +89,13 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.2", "2026-10-18", (
+            "Every knob on Waverider's five pages now answers MIDI CC and NRPN. Pages 1 to 4 use the "
+            "numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. "
+            "Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.",
+            "When you turn a Waverider knob with MIDI out on, the knob sends the same number.",
+            "A CC or NRPN sent to a track that is not on the screen now keeps that track's own limits.",
+        )),
         Release("0.3.1", "2026-10-17", (
             "SLW1 and SLW2 on page 4 now turn the other way: Off is at the far left, and the slew gets "
             "longer to the right. A new sound starts with the slew off. A sound saved with an earlier "

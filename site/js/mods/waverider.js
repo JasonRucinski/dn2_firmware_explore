@@ -96,6 +96,8 @@ export async function apply(firmware) {
     [platform.CODE, platform.codeChunk(CODE.drive.load, hex(CODE.drive.code))],
     platform.displace(DESTGROUP_SITE, DESTGROUP_DISPLACED, CODE.bus.group_displaced),
     platform.subscribe("PSLT", CODE.bus.slot_handler),
+    platform.subscribe("PCCI", CODE.bus.cc_handler),
+    platform.subscribe("PNRI", CODE.bus.nrpn_handler),
     platform.contribute("MACH", 1)]);
   return {
     main, dsp,

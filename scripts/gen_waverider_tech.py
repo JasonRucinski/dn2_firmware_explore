@@ -34,7 +34,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from dnfw.waverider import dsp, geometry, live, mip, render, table3  # noqa: E402
+from dnfw.waverider import dsp, geometry, live, mip, pages, render, table3  # noqa: E402
 from waverider_mip_alias import harmonic_powers, note_hz, saw255   # noqa: E402
 
 RATE = 48000
@@ -712,6 +712,19 @@ def high_range_steps(scan: dict[int, list]) -> str:
 
 # ---------------------------------------------------------------- the page
 
+# ---------------------------------------------------------------- 8. MIDI: the CC and NRPN of every knob
+
+def midi_map() -> str:
+    """Every knob place of the five pages with its CC and NRPN (docs/waverider-midi.md), from the
+    map the firmware answers with (pages.midi_rows)."""
+    rows = []
+    for (rid, nrpn, cc), (page, knob) in zip(pages.midi_rows(), ((p, k) for p, ids in enumerate(pages.PAGES)
+                                                                for k, r in enumerate(ids) if r)):
+        rows.append([str(page + 1), "ABCDEFGH"[knob], pages.label(rid), pages.LONG_NAMES.get(rid, ""),
+                     cc, f"{nrpn >> 7}:{nrpn & 127}"])
+    return table_html(["Page", "Knob", "Label", "Name", "CC", "NRPN"], rows)
+
+
 def figures(dnx: pathlib.Path | None) -> dict[str, str]:
     alias_svg, alias_table, _ = alias_measure()
     scan = _hr_scan()
@@ -720,6 +733,7 @@ def figures(dnx: pathlib.Path | None) -> dict[str, str]:
         "hrcliff": high_range_cliff(scan),
         "hrtable": high_range_table(scan),
         "hrsteps": high_range_steps(scan),
+        "midimap": midi_map(),
         "geometry": geometry_table(),
         "dnx": dnx_proposals(dnx),
         "posmap": pos_map(),

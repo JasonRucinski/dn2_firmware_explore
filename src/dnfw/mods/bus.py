@@ -16,10 +16,15 @@ arguments on the stack, d0-d1/a0-a1 free, the result in d0.
 | event | site | handler |
 |---|---|---|
 | `ev_param_slot` | `0x400dc02a`, `param_set_slot_to_id(slot, type, filter)` | `int f(slot, type, filter)`; nonzero: taken, the parameter entry for the slot |
+| `ev_param_cc` | `0x400dc814`, the incoming CC's parameter `(track, type, filter, cc)` | `int f(track, type, filter, cc)`; nonzero: taken, the parameter record's id |
+| `ev_param_nrpn` | `0x400dc8f6`, the incoming NRPN's parameter `(track, type, filter, nrpn)` | `int f(track, type, filter, nrpn)`; the same, for the 14-bit number `msb * 128 + lsb` |
 
 When no handler takes it, the dispatcher runs the stock instructions it displaced
 and goes on in the stock routine. fxmod answers the FX slots 101..124 there, and
-Waverider answers its page 3 and page 5 slots on a Waverider track.
+Waverider answers its page 3 and page 5 slots on a Waverider track. Stock maps a
+machine's knob CCs and NRPNs per machine type, types 0..4 only (`0x42c66a84` and
+`0x42c66a0c`, 24 bytes a type); Waverider answers its own pages' numbers on the two
+MIDI events.
 
 ## Counts
 
@@ -70,8 +75,12 @@ TABLE_SLOTS = 8     # per event: up to seven handlers, then 0
 # The dispatcher, assembled at BUS_VA by scripts/gen_platform_code.py. One table
 # per event comes first, at a fixed place; the code follows.
 SOURCE = """
-| ev_param_slot's handlers, in order, then 0. The platform fills it at apply time.
+| Each event's handlers, in order, then 0. The platform fills them at apply time.
 param_slot_table:
+    .space  32
+param_cc_table:
+    .space  32
+param_nrpn_table:
     .space  32
 | param_set_slot_to_id(slot, type, filter), from 0x400dc02a by jmp: each handler in
 | turn, int f(slot, type, filter). The first nonzero answer is the answer. None: the
@@ -97,6 +106,49 @@ ev_param_slot:
     moveq   #100,%d1
     movea.l %sp@(8),%a0
     jmp     0x400dc032
+| The incoming CC's and NRPN's parameter, (track, type, filter, number), from
+| 0x400dc814 and 0x400dc8f6 by jmp: each handler in turn, int f(track, type, filter,
+| number). The first nonzero answer is the record id. None: the two stock instructions
+| the jmp displaced (the same in both), then on in the stock routine.
+    .globl  ev_param_cc
+ev_param_cc:
+    move.l  %a2,%sp@-
+    lea     param_cc_table,%a2
+    bsr.s   7f
+    beq.s   9f
+    movea.l %sp@+,%a2
+    rts
+9:  movea.l %sp@+,%a2
+    lea     %sp@(-12),%sp
+    movem.l %d2-%d4,%sp@
+    jmp     0x400dc81c
+    .globl  ev_param_nrpn
+ev_param_nrpn:
+    move.l  %a2,%sp@-
+    lea     param_nrpn_table,%a2
+    bsr.s   7f
+    beq.s   9f
+    movea.l %sp@+,%a2
+    rts
+9:  movea.l %sp@+,%a2
+    lea     %sp@(-12),%sp
+    movem.l %d2-%d4,%sp@
+    jmp     0x400dc8fe
+| the walk for both: a2 = the table; the four arguments at %sp@(12..24) here (our
+| return, the saved a2, the caller's return before them). d0 = the answer, flags set.
+7:  move.l  %a2@+,%d0
+    beq.s   8f
+    move.l  %sp@(24),%sp@-          | number
+    move.l  %sp@(24),%sp@-          | filter
+    move.l  %sp@(24),%sp@-          | type
+    move.l  %sp@(24),%sp@-          | track
+    movea.l %d0,%a0
+    jsr     %a0@
+    lea     %sp@(16),%sp
+    tst.l   %d0
+    beq.s   7b
+8:  tst.l   %d0
+    rts
 """
 
 # The events: their sites, the stock bytes the jump replaces, and the table's place.
@@ -104,6 +156,12 @@ EVENTS = {
     b"PSLT": {"name": "ev_param_slot", "site": 0x400DC02A, "stock": "2f027264206f0008",
               "table": 0, "entry": "ev_param_slot",
               "what": "param_set_slot_to_id -> the bus's ev_param_slot"},
+    b"PCCI": {"name": "ev_param_cc", "site": 0x400DC814, "stock": "4feffff448d7001c",
+              "table": 32, "entry": "ev_param_cc",
+              "what": "the incoming CC's parameter lookup -> the bus's ev_param_cc"},
+    b"PNRI": {"name": "ev_param_nrpn", "site": 0x400DC8F6, "stock": "4feffff448d7001c",
+              "table": 64, "entry": "ev_param_nrpn",
+              "what": "the incoming NRPN's parameter lookup -> the bus's ev_param_nrpn"},
 }
 
 # The counts: the stock value, and the bounds that spell it (va, width, stock value).

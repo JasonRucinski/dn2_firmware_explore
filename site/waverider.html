@@ -211,7 +211,7 @@
 
 <!-- ================================================================= The manual -->
 <section id="manual" role="tabpanel" aria-labelledby="tab-manual" hidden>
-  <p class="small">Documentation version 1.6, 2026-10-17. It describes Waverider 0.3.1 (alpha 5).</p>
+  <p class="small">Documentation version 1.7, 2026-10-18. It describes Waverider 0.3.2 (alpha 5).</p>
   <h2>Select Waverider</h2>
   <p>WAVERIDER is in MACHINE SEL, after SWARMER. A Waverider track has five SYN pages. The
   header shows Waverider (1/5) to Waverider (5/5).</p>
@@ -352,6 +352,7 @@
   <ul>
     <li><strong>P-locks:</strong> you can p-lock all the controls on pages 1 to 5. The p-locks stay after a reboot, and after SAVE and LOAD.</li>
     <li><strong>LFO destinations:</strong> all the controls except TYPE, P1 and P2 on page 5 are in the DEST list of the LFO. The controls are in two groups. Each group has the header SYN.</li>
+    <li><strong>MIDI:</strong> all the controls on pages 1 to 5 take a CC and an NRPN. The Technical tab lists the numbers.</li>
   </ul>
 
   <h2>Modulation on the page</h2>
@@ -510,10 +511,12 @@
 
   <section class="changes">
   <h2>Version and changes</h2>
-  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.3.1<!-- /dnfw:version --></strong> (alpha).
+  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.3.2<!-- /dnfw:version --></strong> (alpha).
   The list shows the changes in each version, with the newest first.</p>
 <!-- dnfw:changes waverider -->
 <dl class="changes">
+  <dt><span class="version">v0.3.2</span> <time datetime="2026-10-18">2026-10-18</time></dt>
+  <dd><ul><li>Every knob on Waverider&#x27;s five pages now answers MIDI CC and NRPN. Pages 1 to 4 use the numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.</li><li>When you turn a Waverider knob with MIDI out on, the knob sends the same number.</li><li>A CC or NRPN sent to a track that is not on the screen now keeps that track&#x27;s own limits.</li></ul></dd>
   <dt><span class="version">v0.3.1</span> <time datetime="2026-10-17">2026-10-17</time></dt>
   <dd><ul><li>SLW1 and SLW2 on page 4 now turn the other way: Off is at the far left, and the slew gets longer to the right. A new sound starts with the slew off. A sound saved with an earlier version plays its SLW the other way round, so set SLW1 and SLW2 again on it.</li></ul></dd>
   <dt><span class="version">v0.3.0</span> <time datetime="2026-10-17">2026-10-17</time></dt>
@@ -553,7 +556,7 @@
 </section>
 
 <section id="tech" role="tabpanel" aria-labelledby="tab-tech" hidden>
-  <p class="small">Documentation version 1.6, 2026-10-17. It describes Waverider 0.3.1 (alpha 5).</p>
+  <p class="small">Documentation version 1.7, 2026-10-18. It describes Waverider 0.3.2 (alpha 5).</p>
   <h2>Technical</h2>
   <p>This tab is for people who make wavetables, and for people who want to know how Waverider makes its
   sound. A script computes every figure and every table on this tab from the code that runs on the
@@ -835,6 +838,14 @@
   plays folded back, at 20 to 24 kHz.</p></div>
   <!-- dnfw:tech hrtable --><div class="scroll"><table><thead><tr><th>DETN</th><th>Osc 2&#x27;s note</th><th>Its 7th partial</th><th>WARP 0: harmonics kept</th><th>WARP 0: osc 2</th><th>WARP 35: harmonics kept</th><th>WARP 35: osc 2</th></tr></thead><tbody><tr><td class="num">0</td><td>C4</td><td class="num">1,831 Hz</td><td class="num">63</td><td class="num">-14.0 dB</td><td class="num">15</td><td class="num">-14.0 dB</td></tr><tr><td class="num">12</td><td>C5</td><td class="num">3,663 Hz</td><td class="num">31</td><td class="num">-14.0 dB</td><td class="num">15</td><td class="num">-14.0 dB</td></tr><tr><td class="num">25</td><td>C#6</td><td class="num">7,761 Hz</td><td class="num">15</td><td class="num">-14.0 dB</td><td class="num">7</td><td class="num">-14.0 dB</td></tr><tr><td class="num">26</td><td>D6</td><td class="num">8,223 Hz</td><td class="num">15</td><td class="num">-14.0 dB</td><td class="num">3</td><td>silent</td></tr><tr><td class="num">45</td><td>A7</td><td class="num">24,640 Hz</td><td class="num">7</td><td class="num">-14.1 dB</td><td class="num">1</td><td>silent</td></tr><tr><td class="num">47</td><td>B7</td><td class="num">27,657 Hz</td><td class="num">7</td><td class="num">-14.0 dB</td><td class="num">1</td><td>silent</td></tr><tr><td class="num">48</td><td>C8</td><td class="num">29,302 Hz</td><td class="num">3</td><td>silent</td><td class="num">1</td><td>silent</td></tr><tr><td class="num">57</td><td>A8</td><td class="num">49,280 Hz</td><td class="num">3</td><td>silent</td><td class="num">1</td><td>silent</td></tr></tbody></table></div><!-- /dnfw:tech -->
   <p>To keep osc 2 in the high range, lower DETN or WARP, or move POS to a frame with a lower partial.</p>
+
+  <h2>MIDI CC and NRPN</h2>
+  <p>Every knob on the five pages takes a CC and an NRPN on its track's channel. Pages 1 to 4 use the
+  numbers the same knob has on the other machines. Page 5 has numbers of its own. With MIDI out on, a
+  knob sends the number in this table.</p>
+  <!-- dnfw:tech midimap --><div class="scroll"><table><thead><tr><th>Page</th><th>Knob</th><th>Label</th><th>Name</th><th>CC</th><th>NRPN</th></tr></thead><tbody><tr><td class="num">1</td><td>A</td><td>TUNE</td><td>Osc1 Tune</td><td class="num">40</td><td>1:73</td></tr><tr><td class="num">1</td><td>B</td><td>LEV</td><td></td><td class="num">41</td><td>1:74</td></tr><tr><td class="num">1</td><td>C</td><td>POS</td><td>Osc1 Position</td><td class="num">42</td><td>1:75</td></tr><tr><td class="num">1</td><td>D</td><td>TBL</td><td>Osc1 Table</td><td class="num">43</td><td>1:76</td></tr><tr><td class="num">1</td><td>E</td><td>RATE</td><td>Osc1 M.Rate</td><td class="num">44</td><td>1:77</td></tr><tr><td class="num">1</td><td>F</td><td>MLEV</td><td>Osc1 M.Level</td><td class="num">45</td><td>1:78</td></tr><tr><td class="num">1</td><td>G</td><td>MPOS</td><td>Osc1 M.Pos</td><td class="num">46</td><td>1:79</td></tr><tr><td class="num">1</td><td>H</td><td>MOVE</td><td>Osc1 M.Shape</td><td class="num">47</td><td>1:80</td></tr><tr><td class="num">2</td><td>A</td><td>DETN</td><td>Osc2 Detune</td><td class="num">48</td><td>1:81</td></tr><tr><td class="num">2</td><td>B</td><td>LEV</td><td></td><td class="num">49</td><td>1:82</td></tr><tr><td class="num">2</td><td>C</td><td>POS</td><td>Osc2 Position</td><td class="num">50</td><td>1:83</td></tr><tr><td class="num">2</td><td>D</td><td>TBL</td><td>Osc2 Table</td><td class="num">51</td><td>1:84</td></tr><tr><td class="num">2</td><td>E</td><td>RATE</td><td>Osc2 M.Rate</td><td class="num">52</td><td>1:85</td></tr><tr><td class="num">2</td><td>F</td><td>MLEV</td><td>Osc2 M.Level</td><td class="num">53</td><td>1:86</td></tr><tr><td class="num">2</td><td>G</td><td>MPOS</td><td>Osc2 M.Pos</td><td class="num">54</td><td>1:87</td></tr><tr><td class="num">2</td><td>H</td><td>MOVE</td><td>Osc2 M.Shape</td><td class="num">55</td><td>1:88</td></tr><tr><td class="num">3</td><td>A</td><td>SUB</td><td>Sub Level</td><td class="num">56</td><td>1:89</td></tr><tr><td class="num">3</td><td>B</td><td>OCT</td><td>Sub Octave</td><td class="num">57</td><td>1:90</td></tr><tr><td class="num">3</td><td>C</td><td>WAVE</td><td>Sub Wave</td><td class="num">58</td><td>1:91</td></tr><tr><td class="num">3</td><td>D</td><td>SRC</td><td>Sub Source</td><td class="num">59</td><td>1:92</td></tr><tr><td class="num">3</td><td>E</td><td>NOIS</td><td>Noise Level</td><td class="num">60</td><td>1:93</td></tr><tr><td class="num">3</td><td>F</td><td>TYPE</td><td>Noise Type</td><td class="num">61</td><td>1:94</td></tr><tr><td class="num">3</td><td>G</td><td>COLR</td><td>Noise Colour</td><td class="num">62</td><td>1:95</td></tr><tr><td class="num">3</td><td>H</td><td>DEC</td><td>Noise Decay</td><td class="num">63</td><td>1:96</td></tr><tr><td class="num">4</td><td>A</td><td>PRST</td><td></td><td class="num">70</td><td>1:97</td></tr><tr><td class="num">4</td><td>B</td><td>TRIG</td><td>Move Retrig</td><td class="num">71</td><td>1:98</td></tr><tr><td class="num">4</td><td>C</td><td>DCLK</td><td>Declick</td><td class="num">72</td><td>1:99</td></tr><tr><td class="num">4</td><td>D</td><td>TRIM</td><td>Level Trim</td><td class="num">73</td><td>1:100</td></tr><tr><td class="num">4</td><td>E</td><td>SYN1</td><td>Osc1 M.Sync</td><td class="num">74</td><td>1:101</td></tr><tr><td class="num">4</td><td>F</td><td>SYN2</td><td>Osc2 M.Sync</td><td class="num">75</td><td>1:102</td></tr><tr><td class="num">4</td><td>G</td><td>SLW1</td><td>Osc1 POS Slew</td><td class="num">76</td><td>1:103</td></tr><tr><td class="num">4</td><td>H</td><td>SLW2</td><td>Osc2 POS Slew</td><td class="num">77</td><td>1:104</td></tr><tr><td class="num">5</td><td>A</td><td>FOLD</td><td>Wave Fold</td><td class="num">12</td><td>1:112</td></tr><tr><td class="num">5</td><td>B</td><td>WARP</td><td>Phase Warp</td><td class="num">15</td><td>1:113</td></tr><tr><td class="num">5</td><td>C</td><td>FM</td><td>FM Depth</td><td class="num">35</td><td>1:114</td></tr><tr><td class="num">5</td><td>D</td><td>NPOS</td><td>Noise to Pos</td><td class="num">36</td><td>1:115</td></tr><tr><td class="num">5</td><td>E</td><td>TYPE</td><td>Shaper Type</td><td class="num">37</td><td>1:116</td></tr><tr><td class="num">5</td><td>F</td><td>AMT</td><td>Shaper Amount</td><td class="num">83</td><td>1:117</td></tr><tr><td class="num">5</td><td>G</td><td>P1</td><td>Shaper P1</td><td class="num">93</td><td>1:118</td></tr><tr><td class="num">5</td><td>H</td><td>P2</td><td>Shaper P2</td><td class="num">119</td><td>1:119</td></tr></tbody></table></div><!-- /dnfw:tech -->
+  <p class="small">A CC sets the value from 0 to 127. An NRPN takes a 14-bit value, MSB first. A knob
+  with a short list, such as TYPE, takes the last entry for any value past the end of the list.</p>
 
   <p class="next"><button type="button" data-go="try">Back to Try it</button></p>
 </section>

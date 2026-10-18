@@ -42,11 +42,15 @@ STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
 
 
 def bus_code() -> dict:
-    code = assemble.assemble(bus.SOURCE, base=bus.BUS_VA)
+    names = [e["entry"] for e in bus.EVENTS.values()]
+    blob = assemble.assemble(bus.SOURCE + "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in names) + "\n",
+                             base=bus.BUS_VA)
+    code, symbols = blob[:-4 * len(names)], struct.unpack(f">{len(names)}I", blob[-4 * len(names):])
     entry = 4 * bus.TABLE_SLOTS * len(bus.EVENTS)       # the tables come first
-    if any(code[:entry]) or code[entry:entry + 2] != bytes.fromhex("2f0a"):   # move.l %a2,-(%sp)
+    if (any(code[:entry]) or code[entry:entry + 2] != bytes.fromhex("2f0a")   # move.l %a2,-(%sp)
+            or any(e["table"] != 4 * bus.TABLE_SLOTS * k for k, e in enumerate(bus.EVENTS.values()))):
         raise SystemExit("the bus's tables are not where bus.EVENTS says")
-    return {"load": bus.BUS_VA, "code": code.hex(), "symbols": {"ev_param_slot": bus.BUS_VA + entry}}
+    return {"load": bus.BUS_VA, "code": code.hex(), "symbols": dict(zip(names, symbols))}
 
 
 def param_bounds() -> list[list[int]]:
