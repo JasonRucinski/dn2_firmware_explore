@@ -44,6 +44,16 @@ LO, HI = 0x466B74D0, 0x47000000
 SLACK = 64
 STOCK_DMA = (0x466B8000, 0x46701340)     # stock's uncached DMA section, as cached addresses
 WINDOW = 0x08000000                      # the uncached window: the same RAM at address + WINDOW
+# sp0 (`moveal #0x48000000,%sp` at 0x400004f2) and the 128 KiB below it that digikit's port
+# files keep for the stack, whose depth is unmeasured
+STACK_TOP, STACK_RESERVE = 0x48000000, 0x20000
+
+
+def in_stack_reserve(ram) -> list[str]:
+    """The mod's declared ranges that reach into the stack's 128 KiB below sp0."""
+    lo = STACK_TOP - STACK_RESERVE
+    return [f"declares {x.what} at {x.start:#010x}..{x.end:#010x}" for x in ram
+            if x.section == RAM and x.end > lo]
 
 
 def in_stock_dma(stock: bytes, content: bytes, ram, reads=()) -> list[str]:
