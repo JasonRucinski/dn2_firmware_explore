@@ -249,7 +249,8 @@ class Digikit:
         tools = path / "tools"
         if not (tools / "sharc_run.py").exists() and (tools / "sharc_dev" / "sharc_run.py").exists():
             tools = tools / "sharc_dev"         # digikit main's layout since 2026-10: it imports
-            sys.path.insert(0, str(path))       # itself as the package tools.sharc_dev
+            from dnfw import sharcemu  # noqa: PLC0415  (itself as the package tools.sharc_dev)
+            sharcemu.alias_main_layout(path)
         if not (tools / "sharc_run.py").exists():
             raise SystemExit(f"{path} has no tools/sharc_run.py: point --digikit at a "
                              f"checkout of work/sharc-emulator ({DIGIKIT_MEASURED_AT})")

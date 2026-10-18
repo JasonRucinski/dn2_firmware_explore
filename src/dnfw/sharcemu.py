@@ -16,8 +16,12 @@ of ours (scripts/sharc_dn2_fixups.py G10, G11).
 
 from __future__ import annotations
 
+import importlib
+import importlib.abc
+import importlib.util
 import os
 import pathlib
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT = ROOT.parent / "digikit-wt-sharcemu3"
@@ -32,6 +36,45 @@ def native_library() -> pathlib.Path:
     scripts/sharc_native.py: DNFW_SHARC_NATIVE_LIB, or the build in the digikit-rust checkout."""
     env = os.environ.get("DNFW_SHARC_NATIVE_LIB")
     return pathlib.Path(env) if env else NATIVE
+
+
+class _SameModule(importlib.abc.Loader):
+    def __init__(self, module):
+        self.module = module
+
+    def create_module(self, spec):
+        return self.module
+
+    def exec_module(self, module):
+        pass
+
+
+class _MainLayout(importlib.abc.MetaPathFinder):
+    """`sharc_run` -> `tools.sharc_dev.sharc_run`, and the same for every module there."""
+
+    def __init__(self, names: set[str]):
+        self.names = names
+
+    def find_spec(self, fullname, path, target=None):
+        if fullname.split(".")[0] not in self.names:
+            return None
+        module = importlib.import_module(f"tools.sharc_dev.{fullname}")
+        return importlib.util.spec_from_loader(fullname, _SameModule(module))
+
+
+def alias_main_layout(checkout: pathlib.Path) -> None:
+    """digikit main (since 2026-10) imports its SHARC tools as `tools.sharc_dev.*`, while
+    our scripts and pickled snapshots name them `sharc_run`, `sharc_core.values` and so on.
+    Two copies of a module give two `Const` classes, and main's `to_native` refuses values
+    of the other one. After this call both names are one module. Call it before the first
+    import of a digikit module."""
+    dev = checkout / "tools" / "sharc_dev"
+    if str(checkout) not in sys.path:
+        sys.path.insert(0, str(checkout))
+    if any(isinstance(f, _MainLayout) for f in sys.meta_path):
+        return
+    names = {p.stem for p in dev.glob("*.py")} | {p.name for p in dev.iterdir() if (p / "__init__.py").exists()}
+    sys.meta_path.insert(0, _MainLayout(names - {"__init__"}))
 
 
 def path() -> pathlib.Path:

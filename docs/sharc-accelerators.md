@@ -48,6 +48,31 @@ Each candidate order changes between 6 and 34 of the 76 words, so the reading te
 
 That check compares the runner with the models' old order. Until the runner has the models of ElekLabs/digikit#122, it reports differences against today's reference.
 
+### In the Rust engine
+
+digikit main runs IIR0 and FIR0 in its Rust engine too, with native option 22 (`peripheral_model`). The older engine on 277760a has neither, so `scripts/sharc_formant_voice.py` runs digikit's Python IIR0 model on the engine's memory by default.
+
+To run IIR0 in the engine, build the library from main and pass `--engine-iir`:
+
+```
+uv run --frozen python -m tools.sharc_dev.sharc_transpile
+SHARC_GEN_DIR=$PWD/out/native/gen/tx CARGO_TARGET_DIR=$PWD/out/native/target-main22 \
+  cargo build --release --locked --manifest-path packages/emulator/sharc/Cargo.toml
+DNFW_SHARC_NATIVE_LIB=<main>/out/native/target-main22/release/sharc_native.dll \
+  python scripts/sharc_formant_voice.py --engine-iir --digikit <main> --iir-digikit <main>
+```
+
+The first two commands run in the digikit checkout, the third in this repository. On 2026-10-18, digikit main was at 5c9e717. The engine took 52 s to build, and each run of the five cases took about 2 minutes:
+
+| Run | Result |
+|---|---|
+| `--engine-iir` | all five cases match the model bit for bit, 48 blocks each, and every poll reads ACDONE from the engine |
+| `--engine-iir --no-iir` (the control: option 22 off) | fails: no poll reads ACDONE, and the wet cases differ by 1,535 samples on track 0 |
+| the host model on main's library | all five cases match |
+| the host model on 277760a's library | `sweep` and `switch` match, 12 blocks each |
+
+In the control, track 1 differs nowhere in `sweep` and `sub`. The reason is not known yet.
+
 ## On the instrument
 
 The owner flashed `accelprobe1-usbprobe` on 2026-10-17, and `tools/dn2accel.py` read all 182 halves. The reading is in `test/accel_reading_2026-10-17.json`, and `test/test_accel_reading.py` checks the reference against it.

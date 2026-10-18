@@ -106,6 +106,7 @@ import collections
 import dataclasses
 import math
 import os
+import pathlib
 import struct
 import sys
 
@@ -125,8 +126,8 @@ def bind(tools_dir: str) -> None:
     if not os.path.exists(os.path.join(tools_dir, "sharc_run.py")) and os.path.exists(os.path.join(dev, "sharc_run.py")):
         tools_dir = dev
         root = os.path.dirname(os.path.dirname(dev))
-        if root not in sys.path:
-            sys.path.insert(0, root)                # it imports itself as tools.sharc_dev
+        from dnfw import sharcemu  # noqa: PLC0415  (it imports itself as tools.sharc_dev)
+        sharcemu.alias_main_layout(pathlib.Path(root))
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
     import sharc_run as _sr  # noqa: PLC0415
