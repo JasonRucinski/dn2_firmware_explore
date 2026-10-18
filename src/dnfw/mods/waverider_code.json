@@ -84,19 +84,19 @@
    "va": 1073969780,
    "stock": "4eb9400dc2ea",
    "new": "4eb94670a4ec",
-   "what": "the parameter send's NRPN: a Waverider track's knob place (pages 1..4 as stock's knob numbers, page 5 NRPN 1:112..119)"
+   "what": "the parameter send's NRPN: a Waverider track's knob place (pages 1..4 as stock's knob numbers, page 5 CC 12, 15, 35..37, 83, 93, 119 and NRPN 1:112..119)"
   },
   {
    "va": 1073969842,
    "stock": "4eb9400dc2a2",
    "new": "4eb94670a4f0",
-   "what": "the parameter send's CC: a Waverider track's knob place (pages 1..4 as stock's knob numbers, page 5 NRPN 1:112..119)"
+   "what": "the parameter send's CC: a Waverider track's knob place (pages 1..4 as stock's knob numbers, page 5 CC 12, 15, 35..37, 83, 93, 119 and NRPN 1:112..119)"
   },
   {
    "va": 1073969874,
    "stock": "4eb9400dc2c6",
    "new": "4eb94670a4f4",
-   "what": "the parameter send's CC LSB: a Waverider track's knob place (pages 1..4 as stock's knob numbers, page 5 NRPN 1:112..119)"
+   "what": "the parameter send's CC LSB: a Waverider track's knob place (pages 1..4 as stock's knob numbers, page 5 CC 12, 15, 35..37, 83, 93, 119 and NRPN 1:112..119)"
   },
   {
    "va": 1073975504,
