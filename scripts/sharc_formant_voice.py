@@ -113,12 +113,17 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
         if a.engine_iir and not a.no_iir:
             state.core.set_option(OPT_PERIPHERAL_MODEL, 1)
         runs = []
+        # track 0's page as base_frame builds it: without it track 1's LEV1 is 0, and with
+        # osc 2 off the track is silent, so its check could not fail (found 2026-10-18)
+        track1 = {**machines.get(1, {}), g.TUN1: g.TUN1_ZERO, g.SMTH1: 0, g.SMTH2: 0}
 
         def fb(b):
             words, note = case_words(name, b, a.blocks)
             over = {**words}
             f = g.base_frame(sound, machines, trigger=note, overrides=over, others={1: 5},
                              trigger_others=note)
+            f.sound(1, track1)                                # base_frame gives track 1 no machine page
+            f.header(FR.NOTE, 1, 0x3C00)
             for s, v in words.items():
                 f.param(1, s, v)
             return f.to_bytes()
@@ -160,6 +165,8 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
             want = live.render_two(tables, seq, g.BLOCK, "float32", subs=subs[t][-n:], shapes=shapes[t][-n:],
                                    trims=trims)
             bad[t] = g.mismatches(got, want)
+            if not any(x != 0 for x in got):                  # silence matches any filter
+                bad[f"track {t} silent"] = len(got)
             if name == "dry":
                 plain = live.render_two(tables, seq, g.BLOCK, "float32", subs=subs[t][-n:], trims=trims)
                 bad[t] += g.mismatches(got, plain)
@@ -168,7 +175,7 @@ def run_case(name, a, dk, stock, sound, machines, wr, tables, iir, const) -> tup
             ok = False
             bad["polls without ACDONE"] = sum(1 for d in runs if not d & 0x40)
         return ok, f"{a.blocks} blocks, IIR0 ran {len(runs)} times, samples that differ: " + \
-            ", ".join(f"track {t} {v}" for t, v in bad.items())
+            ", ".join(f"{t if isinstance(t, str) else f'track {t}'} {v}" for t, v in bad.items())
 
 
 def layout() -> tuple[list[int], dict[str, int]]:
