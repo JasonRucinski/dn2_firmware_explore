@@ -89,6 +89,8 @@ with filter 3, on machine types 0, 1 and 2. So parameter 72 feeds filter type 3.
 | machine type 4, filter 0, **seed 124**: the case that gave 59 words on 2026-10-12 | 52 words differ. The census names the cause: row 3's owner word is `0x25` |
 | the same frames with each row's owner set to its track (`diff --valid-owners`) | **0 words differ** |
 | naturarum's census in their own emulator, sharcvm (`notes/T6.0c-frame-census-dnfw.md`, 2026-10-13) | free: 0 of 192 flips, 0 of 48 with random voices, 0 of 22 again |
+| sharcvm run here (2026-10-19): stock's whole block handler on 30 real frames x 3 blocks, the six machine types, all of L1, L2 and DDR and the instruction count compared, `0x2a` flipped | only `0x2a`'s own place in the frame copy differs; the instruction count is the same in every block |
+| the control in sharcvm: `0x74` flipped, the same frames | its own place, and two chunks of engine state (`0x254db8..0x254f7d`, `0x2556e4`) on every frame that plays |
 
 The owner word explains the old result. naturarum traced it in sharcvm: the voice-mix loops at `0x1c1fca` and
 `0x1c2535` take their row pointer from the owner word at `0xa5a + 2r` (`0x258f68 + 0x100 x owner`, and its
