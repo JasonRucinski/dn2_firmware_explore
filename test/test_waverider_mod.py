@@ -57,9 +57,11 @@ def test_applies_to_both_sections(applied, dn2_111):
     # goes with split and join
     main, chunks = platform.split(applied.payloads[3])
     assert len(main) == len(dn2_111.container.find(3).unpack())
-    assert sorted(kind for kind, _ in chunks) == sorted([platform.DISP, bus.EVNT, bus.ADDS,
-                                                         platform.area.CODE, platform.area.CODE])
-    assert bus.handlers(chunks) == {b"PSLT": [waverider.SPEC["layout"]["wr_slot_id"]]}
+    assert sorted(kind for kind, _ in chunks) == sorted([platform.DISP, bus.EVNT, bus.EVNT, bus.EVNT,
+                                                         bus.ADDS, platform.area.CODE, platform.area.CODE])
+    layout = waverider.SPEC["layout"]
+    assert bus.handlers(chunks) == {b"PSLT": [layout["wr_slot_id"]], b"PCCI": [layout["wr_cc_id"]],
+                                    b"PNRI": [layout["wr_nrpn_id"]]}
     assert bus.totals(chunks) == {b"MACH": 1}
     assert len(applied.payloads[7]) > len(dn2_111.container.find(7).unpack())
 

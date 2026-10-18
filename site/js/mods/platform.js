@@ -259,6 +259,10 @@ const TABLE_SLOTS = 8;
 const EVENTS = {
   PSLT: { name: "ev_param_slot", site: 0x400dc02a, stock: "2f027264206f0008", table: 0,
           entry: "ev_param_slot", what: "param_set_slot_to_id -> the bus's ev_param_slot" },
+  PCCI: { name: "ev_param_cc", site: 0x400dc814, stock: "4feffff448d7001c", table: 32,
+          entry: "ev_param_cc", what: "the incoming CC's parameter lookup -> the bus's ev_param_cc" },
+  PNRI: { name: "ev_param_nrpn", site: 0x400dc8f6, stock: "4feffff448d7001c", table: 64,
+          entry: "ev_param_nrpn", what: "the incoming NRPN's parameter lookup -> the bus's ev_param_nrpn" },
 };
 const MACHINE_BOUNDS = [[0x400dc15d, 1, 4], [0x400dc19d, 1, 4], [0x400dc333, 1, 4],
                         [0x400dc359, 1, 4], [0x400dc37f, 1, 4], [0x400dd287, 1, 6]];

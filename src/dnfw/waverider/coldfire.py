@@ -387,6 +387,14 @@ HEAD_SITE = 0x4006781C                  # move.l %fp@(-36),%sp@- ; pea 0x40216ce
 SLOT_ID_SITE = 0x400DC02A               # move.l %d2,-(%sp) ; moveq #100,%d1 ; movea.l %sp@(8),%a0
 SLOT_ID_STOCK = bytes.fromhex("2f027264206f0008")
 HEAD_STOCK = bytes.fromhex("2f2effdc487940216cee")
+# MIDI (docs/waverider-midi.md). The synth track's parameter setter (its vtable +52), where an
+# incoming CC or NRPN arrives once the bus's handler has found the record, asks the limits
+# getter; wr_set marks the track being set, so wr_range answers for it, not the active track.
+# The parameter send 0x400379dc(track, id) asks the record for its NRPN, CC and CC LSB;
+# wr_out_* answer a Waverider track's knob place instead.
+OUT_SITES = ((0x40037A74, "4eb9400dc2ea", "wr_out_nrpn", "NRPN"),
+             (0x40037AB2, "4eb9400dc2a2", "wr_out_cc", "CC"),
+             (0x40037AD2, "4eb9400dc2c6", "wr_out_lsb", "CC LSB"))
 
 
 def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
@@ -570,6 +578,16 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     edit(TURN_SITE, bytes.fromhex("4eb9") + _long(playout["wr_turn"]) + bytes.fromhex("4e71"),
          "the knob turn's current value: TBL1 and TBL2 read unsigned on a Waverider track, "
          "so a turn from the pool's last tables steps instead of falling to Prim.", TURN_STOCK)
+    edit(pages.SETTER_SLOT, _long(playout["wr_set"]),
+         "a synth track's parameter setter (vtable +52): wr_set, so MIDI CC and NRPN to a "
+         "track that is not on the screen clamp to that track's limits", _long(pages.SETTER))
+    for site, stock_hex, entry, what in OUT_SITES:
+        _need(content, site - 2, bytes.fromhex("2f02"), f"the parameter send pushes the id ({what})")
+        edit(site, bytes.fromhex("4eb9") + _long(playout[entry]),
+             f"the parameter send's {what}: a Waverider track's knob place (pages 1..4 as "
+             "stock's knob numbers, page 5 NRPN 1:112..119)", bytes.fromhex(stock_hex))
+    # MIDI in is the bus's ev_param_cc and ev_param_nrpn (wr_cc_id, wr_nrpn_id): the
+    # platform owns the lookups' entries
     # the per-type parameter list (page 3's and page 5's records on a Waverider track) is
     # wr_slot_id, the bus's ev_param_slot handler: the platform owns the site
     _need(content, SLOT_ID_SITE, SLOT_ID_STOCK, "param_set_slot_to_id's entry, the bus's site")
@@ -618,6 +636,9 @@ def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
     layout.update(playout)
     # the wave spans are data (signed sample bytes): where they lie, so the RAM check
     # (dnfw.mods.ramcheck) can tell four of their bytes from an address
+    if pages.SET_CTX != drive.SPANS + drive.SPANS_BYTES:
+        raise ComposeError("the setter's mark is not right after the pool's display spans")
+    layout["set_ctx"] = pages.SET_CTX
     layout["wr_spans"] = csyms["wr_spans"]
     layout["wr_spans_end"] = csyms["wr_spans"] + wave.TABLES * wave.FRAMES * 2 * wave.WIDTH
     return {"content": bytes(content), "edits": edits, "layout": layout,

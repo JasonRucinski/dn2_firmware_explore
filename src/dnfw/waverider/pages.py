@@ -59,7 +59,7 @@ from .live import (DCLK_DEFAULT, MOVE_SHAPES, SUB_OCTAVES, SUB_WAVES, SYNC_INDEX
                    dclk_names, smth_names)
 
 LOAD = 0x4670A000                 # RAM above BSS (0x466b74d0), clear of every declared range (docs/mods-compatibility.md): 0x4670C000 until pages 3 and 4, when the renderer outgrew the 16 KB to C_END; bootscreen's stamp ends at 0x46708140
-C_LOAD = LOAD + 0x1200            # the C page renderer, after this assembly (0x1000 until the destination list's numbers, 0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4, 0xC00 until the shape page: 3,484 B)
+C_LOAD = LOAD + 0x1600            # the C page renderer, after this assembly (0x1200 until MIDI CC, 0x1000 until the destination list's numbers, 0x400 until M10a, 0x500 until M10b, 0x600 until M10b-4, 0x700 until M10b-2, 0x800 until the TBL turn, 0x900 until pages 3 and 4, 0xC00 until the shape page: 3,484 B)
 C_END = 0x46710000                # the platform runtime starts here
 ACTIVE_TRACK = 0x42431A6C         # byte: the UI's active track, 0..15
 KIT_POINTER = 0x800052A0          # the live kit; sound t at + 52 + 1163 t
@@ -177,7 +177,8 @@ SPRINTF = 0x40000E82              # (buffer, format, ...), as the stock naming r
 
 LABELS_OUT = ("is_wr", "wr_count", "wr_page", "wr_label", "wr_long", "wr_icons", "wr_grid", "wr_grid9",
               "wr_fmt", "wr_vfmt", "wr_range", "wr_turn", "wr_head", "wr_slot_id", "descriptors",
-              "wr_group", "wr_group_displaced", "wr_tie", "wr_list_name", "wr_minilabel")
+              "wr_group", "wr_group_displaced", "wr_tie", "wr_list_name", "wr_minilabel",
+              "wr_cc_id", "wr_nrpn_id", "wr_set", "wr_out_nrpn", "wr_out_cc", "wr_out_lsb")
 GRID = 0x40017428                 # the stock grid: (view, canvas)
 GRID9 = 0x400175E4                # WaveTone's page-3 grid (page id 9): (view, canvas)
 ICON_PAGE = 7                     # the SYN page draw's id for WaveTone's OSC page
@@ -251,6 +252,36 @@ TBL_NAMES = 2 + 128               # the baked tables, then the +Drive pool's 128
 
 SLOT_RUNS = ((SUBNOISE_SLOT0, SUBNOISE[0], len(SUBNOISE)),) + SHAPE_RUNS   # the sound slots Waverider answers
 
+# MIDI. Stock gives a machine's knobs CC 40..47, 48..55, 56..63 and 70..77 on SYN pages 1..4,
+# and NRPN 1:73..104 (DN2 manual, Appendix C), and finds the record by the machine type,
+# types 0..4 only (the maps at 0x42c66a84 and 0x42c66a0c): on a Waverider track no knob CC or
+# NRPN reached the sound. Waverider's own map is by knob place, so a knob keeps stock's
+# number for its place. Page 5 is Waverider's own: NRPN 1:112..119 (free in stock's records
+# and in the manual, unlike 1:105..111, which hold Mute at 108 and Track level at 110), and
+# eight CCs no stock record and no special case of the CC switch (0x40122c0c: 1, 2, 6, 33,
+# 34, 38, 64, 66, 94, 98, 99, 110, 120, 121, 123) uses, leaving out the trig CCs (3, 4, 5,
+# 13, 14), Track level (95) and what a DAW or a keyboard sends unasked (bank select 0/32,
+# volume 7, pan 10, expression 11, pedals 67..69, data and RPN 96..101, channel mode 120..127).
+# Eight in a row are not free (owner, 2026-10-18: every parameter takes both CC and NRPN).
+MIDI_CC = (tuple(range(40, 48)), tuple(range(48, 56)), tuple(range(56, 64)), tuple(range(70, 78)),
+           (12, 15, 35, 36, 37, 83, 93, 119))
+MIDI_NRPN_BASES = (128 + 73, 128 + 81, 128 + 89, 128 + 97, 128 + 112)
+# The synth track's parameter setter (0x40038e88, its vtable +52 at 0x401db830) asks the
+# limits getter more than once, and wr_range answers for the active track. wr_set marks the
+# track being set here for the whole call, so a CC to a track that is not on the screen
+# clamps to that track's limits. Region A is not cleared at power-on, so the mark is one of
+# two exact words and anything else reads as "no setter running".
+SET_CTX = 0x46A60000              # after the pool's display spans (drive.SPANS + SPANS_BYTES)
+SET_WR, SET_OTHER = 0x57520005, 0x5752FFFF
+SETTER, SETTER_SLOT = 0x40038E88, 0x401DB830
+MIDI_NRPN_BASES = (128 + 73, 128 + 81, 128 + 89, 128 + 97, 128 + 112)
+
+
+def midi_rows() -> list[tuple[int, int, int]]:
+    """-> (record id, NRPN as msb * 128 + lsb, CC) for every knob place of PAGES."""
+    return [(rid, MIDI_NRPN_BASES[page] + knob, MIDI_CC[page][knob])
+            for page, ids in enumerate(PAGES) for knob, rid in enumerate(ids) if rid]
+
 
 def slot_id_runs(slot_at: int) -> str:
     """`wr_slot_id`'s search: for each run of slots, d0 = record id when the slot (at
@@ -282,6 +313,7 @@ def source(page_draw: int, tbl_range: int, tbl_fmt: int, rate_fmt: int) -> str:
     table = "\n".join(f"    .long {rid}, lab_{rid}" for rid in LABELS)
     strings = "\n".join(f'lab_{rid}: .asciz "{name}"' for rid, name in LABELS.items())
     mini_table = "\n".join(f"    .long {rid}, mini_{rid}" for rid in MINI_LABELS)
+    midi_table = "\n".join(f"    .long {rid}, {nrpn}, {cc}" for rid, nrpn, cc in midi_rows())
     mini_strings = "\n".join(f'mini_{rid}: .asciz "{name}"' for rid, name in MINI_LABELS.items())
     long_table = "\n".join(f"    .long {60 * rid}, long_{rid}" for rid in LONG_NAMES)
     long_strings = "\n".join(f'long_{rid}: .asciz "{name}"' for rid, name in LONG_NAMES.items())
@@ -707,9 +739,15 @@ wr_vfmt:
 | +Drive pool changes.
 wr_range:
     move.l  %sp@(8),%d1
+    move.l  {SET_CTX:#010x},%d0         | inside the setter: the track being set (wr_set)
+    cmpi.l  #{SET_WR:#010x},%d0
+    beq.s   3f
+    cmpi.l  #{SET_OTHER:#010x},%d0
+    beq.s   9f
     bsr.w   is_wr
     tst.l   %d0
     beq.s   9f
+3:
     lea     range_table,%a1
 1:  move.l  %a1@+,%d0
     beq.s   9f
@@ -795,6 +833,112 @@ wr_slot_id:
     rts
 9:  moveq   #0,%d0
     rts
+
+| -- d0 = the machine type of the track object in a2: its vtable +116, which reads the
+| track's sound byte +0xDE (0x40036462), so 5 on a Waverider track. d1, a0, a1 are lost.
+wr_obj_type:
+    movea.l %a2@,%a0
+    move.l  %a2,%sp@-
+    movea.l %a0@(116),%a0
+    jsr     %a0@
+    addq.l  #4,%sp
+    rts
+
+| -- MIDI in: the bus's ev_param_cc and ev_param_nrpn handlers (dnfw.mods.bus), int
+| f(track, type, filter, number), nonzero when taken. On a Waverider track (type 5, the
+| track's own byte), the record on that knob place of Waverider's pages (midi_rows: id,
+| NRPN, CC). Anything else: 0, and stock's lookup goes on (the filter, amp and FX
+| numbers, and every other machine).
+wr_cc_id:
+    moveq   #8,%d1                  | a row's CC
+    bra.s   1f
+wr_nrpn_id:
+    moveq   #4,%d1                  | a row's NRPN
+1:  moveq   #15,%d0
+    cmp.l   %sp@(4),%d0
+    bcs.s   9f                      | not a track: 16 is the FX channel
+    moveq   #{NEW_TYPE},%d0
+    cmp.l   %sp@(8),%d0
+    bne.s   9f
+    move.l  %sp@(16),%d0
+    lea     midi_rows,%a0
+2:  tst.l   %a0@
+    beq.s   9f
+    cmp.l   %a0@(0,%d1:l),%d0
+    beq.s   3f
+    lea     %a0@(12),%a0
+    bra.s   2b
+3:  move.l  %a0@,%d0
+    rts
+9:  moveq   #0,%d0
+    rts
+
+| -- a synth track's parameter setter, (this, id, value, track, flag): its vtable +52
+| (0x401db830) points here. MIDI CC and NRPN arrive in it, and it asks the limits getter
+| more than once. wr_set marks this track's type at SET_CTX for wr_range, calls the stock
+| setter, and puts the mark back (a nested set keeps its own). The setter's answer stays in d0.
+wr_set:
+    move.l  {SET_CTX:#010x},%sp@-
+    move.l  %a2,%sp@-
+    movea.l %sp@(12),%a2
+    bsr.w   wr_obj_type
+    movea.l %sp@+,%a2
+    move.l  #{SET_OTHER:#010x},%d1
+    subq.l  #{NEW_TYPE},%d0
+    bne.s   1f
+    move.l  #{SET_WR:#010x},%d1
+1:  move.l  %d1,{SET_CTX:#010x}
+    move.l  %sp@(24),%sp@-              | the five arguments, the mark and our return above them
+    move.l  %sp@(24),%sp@-
+    move.l  %sp@(24),%sp@-
+    move.l  %sp@(24),%sp@-
+    move.l  %sp@(24),%sp@-
+    jsr     {SETTER:#010x}
+    lea     %sp@(20),%sp
+    move.l  %sp@+,{SET_CTX:#010x}
+    rts
+
+| -- MIDI out: the parameter send 0x400379dc(track, id) asks the record for its NRPN
+| (0x400dc2ea), its CC (0x400dc2a2) and its CC LSB (0x400dc2c6); those three jsr come
+| here, a2 = the track. On a Waverider track a record its pages hold sends the number of
+| its knob place, as MIDI in reads it (-1: none, nothing is sent); anything else asks the
+| record, as stock.
+wr_out_nrpn:
+    moveq   #4,%d1
+    bra.s   1f
+wr_out_cc:
+    moveq   #8,%d1
+    bra.s   1f
+wr_out_lsb:
+    moveq   #0,%d1                  | no CC LSB in the map: -1
+1:  move.l  %d1,%sp@-
+    bsr.w   wr_obj_type
+    move.l  %sp@+,%d1
+    subq.l  #{NEW_TYPE},%d0
+    bne.s   8f
+    move.l  %sp@(4),%d0
+    lea     midi_rows,%a0
+2:  tst.l   %a0@
+    beq.s   8f
+    cmp.l   %a0@,%d0
+    beq.s   3f
+    lea     %a0@(12),%a0
+    bra.s   2b
+3:  moveq   #-1,%d0
+    tst.l   %d1
+    beq.s   4f
+    move.l  %a0@(0,%d1:l),%d0
+4:  rts
+8:  lea     out_stock,%a0
+    movea.l %a0@(0,%d1:l),%a0
+    jmp     %a0@
+
+    .align 2
+out_stock:
+    .long   0x400dc2c6, 0x400dc2ea, 0x400dc2a2   | indexed by the column: LSB, NRPN, CC
+midi_rows:
+{midi_table}
+    .long   0
 
     .align 2
 fmt_table:

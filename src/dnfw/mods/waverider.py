@@ -32,7 +32,8 @@ Two sections, both from committed data:
   labelled TUNE / POS / TBL where they work and empty where they do not yet.
 - **The hook bus (`dnfw.mods.bus`):** the mod adds one machine to the machine count,
   so the platform writes the six machine-type bounds; its slot lookup is a handler of
-  `ev_param_slot`; and its group getter hook records the instructions it replays, so
+  `ev_param_slot`, and its MIDI CC and NRPN maps handlers of `ev_param_cc` and
+  `ev_param_nrpn` (`docs/waverider-midi.md`); and its group getter hook records the instructions it replays, so
   lfo4's parameter bound lands in the copy. This is why it combines with fxmod and lfo4.
 
 ## A sound or project saved with a Waverider track
@@ -104,11 +105,13 @@ NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_
 # range entries, and 4 bytes down when TYPE gained Formant, 2026-10-17: the words read Nois, Fold and Form) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
 # them, so the check flags the new places again and they are read afresh.
 NOT_RAM += (
-    0x4670AFC2,              # "Noise Colour": the label text "Nois"
-    0x4670AFE0,              # "ave Fold": the label text "Fold"
-    0x4670B158,              # "Formant", TYPE's fourth value: the text "Form"
-    0x4670B54A,              # notl %d3 ; andl %d3,%d2
-    0x4670B7DA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
+    # 2026-10-18, MIDI CC: the assembly grew 730 bytes and the renderer moved 0x400 up;
+    # read again in the applied chunk
+    0x4670B29C,              # "Noise Colour": the label text "Nois" (the uncached window's 0x4e...)
+    0x4670B2BA,              # "ave Fold": the label text "Fold"
+    0x4670B432,              # "Formant", TYPE's fourth value: the text "Form"
+    0x4670B94A,              # notl %d3 ; andl %d3,%d2
+    0x4670BBDA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
                              # 3072 B entries, indexed by the table number (2 and up), declared
     0x467F1B52, 0x467F27D4, 0x467F2D22,   # movel #0x467f46xx,(a0) ; clrl d(a0): read 2 bytes late
     0x467F326A, 0x467F3270, 0x467F327A, 0x467F3280, 0x467F32CC, 0x467F32DC,
@@ -127,7 +130,9 @@ def ram() -> list[Extent]:
             Extent(RAM, drive["load"], len(bytes.fromhex(drive["code"])),
                    "Waverider's +Drive chunk: the /waverider route, the table loader, the pool"),
             Extent(RAM, drive["spans"]["va"], drive["spans"]["bytes"],
-                   "the pool tables' display spans (127 x 16 frames x 96 columns)")]
+                   "the pool tables' display spans (127 x 16 frames x 96 columns)"),
+            Extent(RAM, SPEC["layout"]["set_ctx"], 4,
+                   "the parameter setter's mark: the machine type of the track being set (MIDI)")]
 
 
 def _main_os(original: bytes) -> bytes:
@@ -172,6 +177,8 @@ def apply(firmware) -> Result:
         (platform.area.CODE, code), (platform.area.CODE, dcode),
         platform.displace(DESTGROUP_SITE, DESTGROUP_DISPLACED, layout["wr_group_displaced"]),
         bus.subscribe(b"PSLT", layout["wr_slot_id"]),
+        bus.subscribe(b"PCCI", layout["wr_cc_id"]),
+        bus.subscribe(b"PNRI", layout["wr_nrpn_id"]),
         bus.contribute(b"MACH", 1)])
     area_length = len(content) - platform.STOCK_LENGTH
     return Result(payloads={MAIN_OS: content, DSP_STREAM: section7},
