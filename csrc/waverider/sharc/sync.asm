@@ -14,7 +14,7 @@
 //
 //   TRIG Free:   the phase becomes the frame's song position (a u32 in which 2^32 is 384
 //                sixteenths, written by the ColdFire's sync.c as the 16-bit words at
-//                frame offsets 0x9a8 (high) and 0xa18 (low)) times
+//                frame offsets 0x934 (high) and 0xa18 (low)) times
 //                the multiplier, mod 2^32: the cycle starts on step 1. R0 is the step
 //                that takes the phase there.
 //   TRIG Retrig: the phase steps by tempo x multiplier x 2^32 / (384 x 2,700,000) a
@@ -75,7 +75,7 @@ wr_sync_low.:
       R0 = LSHIFT R0 BY -8;
       R0 = PASS R0;
       IF EQ JUMP 0x170072;              // -> wr_sync_retrig.
-      R1 = DM(0x25ce34);                // frame offset 0x9a8 (0x25c48c + 0x9a8): word 0x9a8 is its low half
+      R1 = DM(0x25cdc0);                // frame offset 0x934 (0x25c48c + 0x934): word 0x934 is its low half
       R1 = LSHIFT R1 BY 16;             // the position's high 16 bits
       R2 = DM(0x25cea4);                // frame offset 0xa18 (0x25c48c + 0xa18): word 0xa18 is its low half
       R12 = 0xffff;

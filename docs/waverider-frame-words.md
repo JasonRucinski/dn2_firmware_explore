@@ -60,7 +60,24 @@ would not have shown it; the memory diff is the measure.
 - What the two stock values mean. The local at `%fp@(-118)` and the byte at `0x42431aad` are
   not identified.
 
-## Where the position lives now: 0xa18 and 0x9a8
+## Where the position lives now: 0xa18 and 0x934 (since Waverider 0.3.4)
+
+**Moved 2026-10-18.** The high half was at `0x9a8` until 0.3.4. That word is track 15's parameter 57
+(`frame.slot_offset(15, 57)`), which became the noise's DEC on page 3 after the census. `sync.c` wrote the
+position over it at send time, so on voice 16 the noise's DEC read the position's high half: 0 when stopped,
+about 10 in bar 2. The noise there died within milliseconds of each note. The owner heard it on a sound
+locked to voice 16.
+
+The high half is now at `0x934`, track 14's parameter 72 (slot offset `0x6e` in the census's terms). The
+census lists slot offset `0x6e` on tracks 2 and 5 to 15 as read only by the unpack copy loops. Waverider uses
+parameters 28 to 64 on every voice, so no voice reads 72. `test/test_waverider_songpos.py` checks that both
+position words miss every Waverider parameter (25 to 64) on all 16 voices, and that `sync.asm` reads the
+words `sync.c` writes. In the DSP, with the high half 0 at `0x9a8`, voice 16's noise level fell from 0.153
+to 0.013 within 16 ms. At `0x934` it held at 0.16.
+
+The sections below record how `0x9a8` and `0xa18` were chosen. They still hold for `0xa18`.
+
+## Where the position lived until 0.3.4: 0xa18 and 0x9a8
 
 The position (a u32) is split over two words that no stock DSP code reads:
 

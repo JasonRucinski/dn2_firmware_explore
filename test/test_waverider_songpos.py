@@ -77,6 +77,22 @@ def test_sync_c_has_the_model_s_constants():
     assert "1024u / 42188u" in src and "170u * x + 2u * x / 3u" in src
 
 
+def test_the_position_words_are_no_waverider_parameter_on_any_voice():
+    """sync.c writes the position over the frame at send time. Until 0.3.4 the high half sat on
+    voice 16's noise DEC (0x9a8, parameter 57), and the noise there died at its attack."""
+    from dnfw.waverider import frame
+    taken = {frame.slot_offset(t, p) + b for t in range(16) for p in range(25, 65) for b in (0, 1)}
+    for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):
+        assert not {word, word + 1} & taken, hex(word)
+    assert frame.slot_offset(15, live.NOISE_SLOTS[3]) == 0x9A8         # the word it was on
+
+
+def test_sync_asm_reads_the_words_sync_c_writes():
+    asm = (SYNC_C.parent / "sharc" / "sync.asm").read_text(encoding="utf-8")
+    for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):
+        assert re.search(rf"DM\({0x25C48C + word:#x}\)", asm), hex(word)
+
+
 def test_sync_free_phase_starts_each_cycle_on_step_1():
     # a 1/4 SYNC on Free: the phase wraps exactly when step 1, 5, 9, 13 begins
     m = live.sync_multiplier(next(i for i, n in enumerate(live.SYNC_NOTES) if n[0] == "1/4"))

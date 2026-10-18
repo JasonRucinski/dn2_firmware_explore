@@ -89,6 +89,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.4", "2026-10-18", (
+            "The noise on page 3 now plays on voice 16 too. Before, it faded out right after each note "
+            "started when the sound played on voice 16.",
+        )),
         Release("0.3.3", "2026-10-18", (
             "The short lists turn as the other machines' short lists do: a step needs a longer turn. "
             "That covers TYPE on page 5, OCT, WAVE, SRC and the noise TYPE on page 3, MOVE1, MOVE2, "
