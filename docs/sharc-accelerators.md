@@ -67,11 +67,11 @@ The first two commands run in the digikit checkout, the third in this repository
 | Run | Result |
 |---|---|
 | `--engine-iir` | all five cases match the model bit for bit, 48 blocks each, and every poll reads ACDONE from the engine |
-| `--engine-iir --no-iir` (the control: option 22 off) | fails: no poll reads ACDONE, and the wet cases differ by 1,535 samples on track 0 |
+| `--engine-iir --no-iir` (the control: option 22 off) | fails: no poll reads ACDONE, and the wet cases differ by 1,535 samples on each track (895 in `switch`). `dry` differs nowhere, because P2 127 keeps the voice dry |
 | the host model on main's library | all five cases match |
 | the host model on 277760a's library | `sweep` and `switch` match, 12 blocks each |
 
-In the control, track 1 differs nowhere in `sweep` and `sub`. The reason is not known yet.
+Until 2026-10-18, track 1 had no machine page in these runs. Its LEV1 was 0, so with osc 2 off (`sweep` and `sub`) the track was silent, and its check could not fail. Track 1 now gets track 0's page and note. A case now fails if a track is silent. The two rows for the Rust engine are from after the fix.
 
 ## On the instrument
 
