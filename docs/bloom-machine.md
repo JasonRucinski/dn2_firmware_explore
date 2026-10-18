@@ -1,189 +1,355 @@
-# Bloom: a machine whose filter pulses and slows down
+# Bloom: a VA machine built around a modulator that bends time
 
-**Opened 2026-10-17**, for the owner of the `JasonRucinski/dn2_firmware_explore`
-fork, who wants as a **machine**, not an imitation with stock LFOs, the effect in
-RÜFÜS DU SOL's *Innerbloom* at 5:10-5:18. Their description, in short:
-- a sustained, warm, saw-based note or chord;
+**Rewritten 2026-10-18**, at the fork owner's direction: Bloom is **a new machine of
+its own**, not part of Waverider, and *"go crazy"*. This replaces the design of
+2026-10-17. That design is kept, condensed, under "Superseded" at the end, with
+the reasons it changed.
+
+**Sources.** Facts marked **(upstream)** come from
+`angellinares/dn2_firmware_explore` main at `5be76c1`, which is 382 commits ahead
+of this fork and not yet merged into it. Everything else is in this tree.
+
+Grades, as elsewhere: **[V]** on the instrument, **[E]** in an emulator, **[D]**
+read statically, **[O]** open. **Nothing in this document has been built or
+run.** It is a design.
+
+## The brief
+
+The effect in RÜFÜS DU SOL's *Innerbloom*, 5:10-5:18 (the owner's description, in
+short):
+- a sustained, warm, saw-based chord;
 - a **triangle** modulator opening and closing a resonant **low-pass**;
-- the modulator's **rate falling** from about 12 Hz to 1 Hz over about 8 s, on
-  an exponential curve;
-- its **phase continuous**: a change of rate never restarts it;
+- its **rate falling** from about 12 Hz to 1 Hz over about 8 s, exponentially;
+- the modulator's **phase continuous**, never restarted by a rate change;
 - the baseline and the depth may drift, so the pulses get brighter or darker;
 - reverb and delay make a tail behind dry, defined pulses;
-- for a future-bass version, **the same modulator on the volume too**, for a
-  near-silent chop.
+- for future bass, the same modulator **on the volume** too, for a near-silent
+  chop.
 
-The important distinction, theirs: *not* the amp envelope and *not* retriggered
+In the owner's words, it is **not** the amp envelope and **not** retriggered
 notes, but the speed of a modulation oscillator.
 
-"Bloom" is a working name. Grades as elsewhere: **[V]** instrument, **[E]**
-emulator, **[D]** read statically, **[O]** open. **Nothing here has been built
-or run**. This session has no image, emulator or instrument, so the addresses
-are quoted from the documents named beside them.
+## The concept
 
-## The machine, in three parts
+**A virtual-analog voice whose modulator is the instrument.** The pulse speeds up
+or slows down, lands on the downbeat, ducks to the kick, and can lock every other
+Bloom track to the same breath. The default sound is the brief.
 
-| part | what | runs on | built from |
-|---|---|---|---|
-| **voice** | two detuned band-limited saws, a level each, a brightness | SHARC | Waverider's two-oscillator loop (`reader_m9.asm`, `machine9_live.asm`) **[V]** M9 |
-| **PULSE** | the decelerating modulator, into the filter's cutoff and the volume | **ColdFire**, in the LFO evaluators, once per frame | new; the hook is where `lfo4-tick6a` put a fourth LFO **[V]** |
-| **filter, amp, FX** | the stock resonant filters, envelope, chorus, delay and reverb | SHARC | stock, untouched |
+## Forty knobs: the hard ceiling
 
-### Why the modulator runs on the ColdFire, not in the DSP loop
+A sound carries **40 machine slots, 25..64** (`docs/engine-state.md`), and a
+machine's controls are those slots. Bloom borrows WaveTone's records for them, as
+Waverider does, so p-locks, CC, LFO destinations and SAVE/LOAD are stock. That
+gives **five pages of eight**:
 
-The stock filter takes its coefficients in its **setup**, called through
-`0x8052dba4[filter type]` at `0x1c91ad` in the dispatch's common continuation.
-That setup runs **before** any machine renders in the block: the type-5 render
-hook is at `0x1c9448`, after Swarmer's. It reads the per-track record that the
-unpack fills from the frame (`docs/waverider-feasibility.md`, Milestone 4 step
-1; `docs/waverider-dsp-silence.md`, "What the setup arms write") **[D]**. A DSP
-machine loop therefore can't move the stock filter during a block; it would
-have to bring a filter of its own.
-
-The path that already moves the stock filter's cutoff is the one every stock
-LFO uses:
-- the LFO evaluators on the ColdFire (`0x40137726`, `0x401373dc`) add each
-  LFO's output into the track's per-track modulated mirror, at the slot `DEST`
-  names (`docs/lfo4-build-plan.md` §5k);
-- the frame builder sends that mirror to the DSP every frame.
-
-`lfo4-tick6a` added a fourth LFO inside both evaluators, aimed at Filter BASE
-(slot 76), and the owner heard it on the instrument (*"works"*,
-`docs/lfo4-build-plan.md`) **[V]**. PULSE goes in the same place and writes:
-- **FREQ, slot 67**, by FDEP;
-- **VOL, slot 90**, by VDEP (`src/dnfw/waverider/frame.py`).
-
-So the filter is the stock one, with its own RESO and its own type (Multimode,
-Lowpass 4, ...), and all three stock LFOs stay free for other work.
-
-**Update rate.** About 1,500 frames a second. A 12 Hz triangle gets 125 steps a
-cycle, and 32 Hz gets 47. That's the rate at which every stock LFO already
-moves the cutoff, so it's smooth for the filter.
-
-**On the volume,** a hard edge inside one frame clicks: Waverider's free square
-did (`docs/waverider-m10-move.md`, M10a). PULSE's square shape therefore slews
-over two or three frames, 1.3-2 ms.
-
-### The glide, phase-continuous by construction
-
-Per Bloom track, every frame, with dt = 1/1500 s:
-
-```
-t      += dt                           (since the last trig)
-u       = min(t / TIME, 1) ^ CURV      (CURV 1 = exponential in Hz)
-log2 R  = log2 START + u * (log2 END - log2 START)
-phase  += R * dt                       (an accumulator, never reset by R)
-m       = shape(phase)                 (-1..+1; triangle by default)
-FREQ'   = FREQ + FDEP * m              (into the modulated mirror, clamped)
-VOL'    = VOL  * (1 - VDEP * (1 - m') )   (m' = shape mapped to 0..1)
-```
-
-- **A trig restarts the glide** (t = 0). **The phase is not reset**, unless
-  PHAS is set to RST.
-- Over the glide, the number of pulses is TIME·(START-END)/ln(START/END). For
-  the brief's 12 → 1 Hz over 8 s, that's **about 35 pulses**, each further
-  apart than the last.
-- **Arithmetic:** in fixed point, as the rest of this project's ColdFire code
-  is. Don't rely on an FPU inside the frame ISR. log2 R maps to an increment
-  through a small table, as Waverider's MOVE does on the SHARC (`F[r mod 10] <<
-  (r div 10)`, doubling every 10). Here r is fractional, so the rate never
-  steps audibly.
-- **Tempo:** the ColdFire already has the tempo; its LFOs are tempo-syncable
-  (`docs/modulation-matrix.md`, "follow the tempo"). So TIME in bars, and START
-  and END as note divisions, are a later option that needs nothing from the DSP.
-
-### The pages
-
-All records are WaveTone's, borrowed as Waverider borrows them, so p-locks, CC,
-the LFO destinations and SAVE/LOAD are stock. Ranges and value text go through
-M10b's three hooks (the limits getter `0x400dbff0`, and both value-text paths;
-`docs/waverider-m10-move.md`). Labels go through the M7 page route
-(`docs/waverider-m7-pages.md`).
-
-| | A | B | C | D | E | F | G | H |
+| page | A | B | C | D | E | F | G | H |
 |---|---|---|---|---|---|---|---|---|
-| **1 VOICE** | TUNE (TUN1) | DETN (TUN2) | LEV1 | LEV2 | TONE (WAV1: the table's brightness) | TBL (TBL1) | - | - |
-| **2 PULSE** | STRT (rate at the trig) | END | TIME | CURV | FDEP (±, on FREQ) | VDEP (on VOL) | SHAP (tri, sine, square, pump) | PHAS (FREE / RST) |
+| **1 OSC** | WAV1: saw ↔ pulse ↔ tri | PW1 | WAV2 | DETN | SYNC: hard sync | XMOD: osc 2 FM / ring | MIX | SUB |
+| **2 PULSE** | STRT | END | TIME | CURV | FDEP: cutoff | VDEP: chop | SHAP | TILT |
+| **3 MOTION** | ANCH | MODE: smooth / land / step | SWNG | PAN | PDEP: pulse width | P2RT | P2DS | P2DP |
+| **4 BLOOM FILTER** | BTYP: LP / BP / vowel / comb | BFRQ | BRES | BDEP | ROUT: series / parallel | DRIV | NOIS | NTYP |
+| **5 PLAY** | DUCK: source track | DAMT | DREL | LINK: follow track N | VEL: velocity → depth | STAK: unison 1-4 | SPRD | TRIM |
 
-- Page 2's records are the eight Waverider uses for MOVE: RATE 240/244, MPOS
-  246/250, MLEV 252/256, MOVE 253/257.
-- **PULSE reads them from the same per-track mirror the evaluators read the
-  LFOs' own parameters from**, so a p-lock or an LFO on any of them works.
-- **Brighter and darker** over the phrase is a p-lock or a stock LFO on the
-  stock FREQ (the baseline) or on FDEP (the depth).
+**Mapping rule (upstream, Waverider M10b-2).** Some spare WaveTone records default
+to `0x7f00`, and every sound saved so far holds that value. So a control on such
+a record must read 127 as "off". The record-by-record mapping is milestone B2's
+work, with that rule and each record's range. Ranges and value text go through
+the three hooks M10b introduced (the limits getter `0x400dbff0` and both
+value-text paths, `docs/waverider-m10-move.md`).
 
-**Defaults are the brief:**
-- STRT 12 Hz, END 1 Hz, TIME 8 s, CURV exponential;
-- triangle shape, FDEP about half the range, VDEP 0;
-- PHAS FREE.
+---
 
-A default Bloom sound **is** the Innerbloom pulse.
+## The engine
 
-### The voice
+### The voice [plausible]
 
-Waverider's loop as it is: two oscillators, osc 2 as a detune from osc 1, a
-level each, M9's unity-at-100 level. It's on the instrument, and it's the
-lightest engine measured (`docs/ideas-backlog.md` §28). TBL 0 (PRIM) at POS 0
-is a **32-harmonic saw**, so TONE, which is POS, is the brightness before the
-filter.
-- **Known limit:** 32 harmonics alias above a fundamental of about 750 Hz,
-  and sound thin at the bottom.
-- **The later fix:** a saw table whose frames are band-limited an octave apart,
-  with the loop choosing the frame from the note. That's a small change to the
-  loop, on its own milestone.
+- **Two PolyBLEP oscillators**, the standard alias-reduced VA design. Each
+  morphs saw → pulse → triangle (WAV), with pulse width (PW), hard sync (SYNC:
+  osc 2 restarts on every cycle of osc 1), and osc 2 into osc 1 as phase
+  modulation or ring (XMOD).
+  MIX balances them, and DETN detunes osc 2.
+- **A sub-oscillator and noise** (SUB; NOIS / NTYP on page 4).
+- **DRIV:** a soft-clip drive before the Bloom filter.
+
+**Why not wavetables:** VA needs pulse width and sync, which tables do badly.
+Waverider's built-in saw (PRIM, 32 harmonics) also aliases above a fundamental of
+about 750 Hz and is thin at the bottom.
+
+**The check:** PolyBLEP costs about what a table read does, and like every DSP
+routine here it is checked bit-exact against a Python reference in digikit's
+SHARC runner.
+
+### PULSE: a function of the song clock [proven ground]
+
+**The ColdFire writes the song position into every frame**, at frame bytes
+2644..2647. 2³² there is 384 sixteenths (24 bars), the least common multiple of
+every straight, dotted and triplet length. The tempo is in the frame too, at
+`+0xd8`, as BPM × 120. **(upstream)**: Waverider's `sync.c` does this on the
+instrument, and `docs/waverider-frame-words.md` measured that nothing stock
+depends on those bytes.
+
+So **PULSE's phase is computed, not accumulated per voice.** For an exponential
+glide from rate R₀ to R₁ over a time T:
+
+```
+Φ(t) = R₀ · T · (k^(t/T) − 1) / ln k      k = R₁ / R₀,   for t ≤ T
+Φ(t) = Φ(T) + R₁ · (t − T)                 after
+m    = shape(frac(Φ))                       -1..+1
+```
+
+Because the phase comes from the shared clock:
+- **A chord pulses as one.** A chord plays on several voices, and each computes
+  the same Φ from the same clock. Per-voice accumulators drift apart as notes
+  overlap.
+- **The phase is continuous** across chord changes and rate changes, by
+  construction.
+- **It is on the grid**, because it is derived from the sequencer's own
+  position.
+
+**The controls (page 2):**
+- **STRT / END** are free rates in Hz, or note lengths when SYNC is on.
+- **STRT > END blooms** (slows down), and **STRT < END builds** (speeds up).
+- **TIME** is seconds free, or bars synced.
+- **CURV** sets exponential, linear or logarithmic.
+- **FDEP** is the depth on cutoff, **VDEP** the depth on volume.
+- **SHAP** is one continuous knob: triangle → pump (a sidechain-like recovery) →
+  softened square.
+- **TILT:** the depth glides with the rate, so the pulses swell or shrink as they
+  slow. One trig makes the whole Innerbloom gesture without an LFO.
+
+**The controls (page 3):**
+- **ANCH:** the glide starts at the trig, every N bars of the song position, or
+  once from PLAY.
+- **MODE:**
+  - **smooth** is the plain curve;
+  - **land** scales the curve to a whole number of cycles, so the last pulse ends
+    on the downbeat. The free curve completes N = T·(R₀−R₁)/ln(R₀/R₁) cycles; it
+    is rounded and the rates scaled by the ratio, about 2 % for the brief;
+  - **step** is a ladder of note lengths, a whole beat each, so every edge is on
+    the grid. That gives rolls and builds.
+- **SWNG:** swing on the pulses.
+
+### Two filters, both pulsed
+
+**The stock filter, driven per block [plausible, the first thing to prove].**
+- The dispatch runs each machine's **setup arm**, then a common continuation that
+  calls the filter's setup through `0x8052dba4[type]` at `0x1c91ad`
+  (`docs/waverider-dsp-silence.md`, "What the setup arms write") **[D]**.
+- Types 5 and up take no arm today: the guard is `compu(type, 5)`.
+- A Bloom arm writes base + FDEP × m into the track record's FREQ (`+0x1cc`)
+  **before** the filter's setup reads it (`src/dnfw/waverider/frame.py`,
+  `RECORD_FIELDS`).
+- **Result:** every stock filter type with its own resonance, at block rate
+  (1,500 a second, the rate stock LFOs move it), and no filter cost of ours.
+- **The assumption:** the filter's setup recomputes its coefficients every
+  block. Stock LFO-on-cutoff working implies it, but B1 measures it.
+- **If the assumption fails,** the Bloom filter below becomes the pulsed filter.
+
+**The Bloom filter, on IIR0 [plausible].**
+- The ADSP-21569's IIR accelerator is unused by stock. Its rounding order was
+  read from the chip on 2026-10-17, and digikit models it **(upstream,
+  `docs/sharc-accelerators.md`)**. Waverider's Formant type is its first user
+  **(upstream, `docs/waverider-formant.md`)**.
+- **BTYP:** low-pass, band-pass, **vowel** (a cascade of formant resonators, so
+  the pulse sweeps A-E-I-O-U) or comb.
+- **ROUT:** before the stock filter, or in parallel with it.
+- **BDEP:** the pulse on its cutoff.
+- The accelerator does the arithmetic while the core goes on, so its cost to the
+  core is small.
+
+### The chop, per sample [proven ground]
+
+VDEP is applied **inside Bloom's own render**, sample by sample, with
+declick ramps of the kind Waverider uses (**upstream**, M10b-2's SMTH and DCLK). Square and pump
+shapes never click. It is not done through the amp record, which would step once
+a block and click (Waverider M10a's free square did, `docs/waverider-m10-move.md`).
+
+### More motion [plausible]
+
+- **PULSE 2.** A second modulator locked to the first at a ratio, P2RT (3:2,
+  4:3, 2:1...). P2DS picks its destination (cutoff, Bloom filter, volume, pan,
+  pulse width) and P2DP its depth. Cutoff in three against a chop in two gives
+  a cross-rhythm that still blooms together.
+- **PAN.** The arm writes the record's pan (`+0x230`) as it writes FREQ, so the
+  pulses swing left and right as they slow. A track's buffer is mono
+  (`docs/sharc-voice-path.md`), so this is the way to move across the stereo
+  field from inside one track.
+- **PDEP.** The pulse on osc 1's pulse width: the shimmer moves into the timbre,
+  VA's own form of the effect.
+
+---
+
+## The parts that make it more than a synth
+
+**DUCK: a built-in sidechain [plausible].**
+- Pick a source track, DAMT and DREL, and Bloom ducks with that envelope on every
+  trig of that track, sample-accurately. That is future-bass pumping without the
+  master compressor.
+- **No new ColdFire work.** The frame already carries the note-trigger mask at
+  offset 34 (`docs/waverider-feasibility.md` M4, step 1), and each voice row's
+  owner track at `0xa5a + 2r` **(upstream, `docs/waverider-frame-words.md`)**.
+  The DSP can tell when the source track triggered.
+
+**LINK: tracks that breathe together [plausible].**
+- Bloom follows track N's pulse settings, read from the DSP's frame copy
+  (`0x25c48c`), which holds every track's slots.
+- The bass on track 2 blooms in phase with the chords on track 1, with one set
+  of settings to edit.
+
+**STAK: unison [research for cost].** One to four stacked oscillator pairs per
+voice, with SPRD for the detune spread: the thick future-bass chord. It multiplies
+the voice's cost, so its ceiling is set by measurement.
+
+**VEL [plausible].** Velocity scales FDEP and VDEP, so harder chords bloom harder.
+
+**TIME follows the note's length [research].** One TIME setting makes the glide
+take exactly as long as the trig, so each note blooms over its own length. This
+needs each trig's length in the frame, which the ColdFire would have to add, in
+a word yet to be found.
+
+**The page shows the motion [plausible].** The PULSE page draws the rate curve
+with a moving playhead and a tick per pulse, and the header reads
+"1/16 → 1/4 · 1 bar". The DSP reports its phase back through the reply's spare
+tail (`+0xa9c`), as Waverider's MOVE report does on the instrument
+(`docs/waverider-m10-move.md`, M10b-3).
+
+## Factory sounds, which double as acceptance targets
+
+| sound | what it sets | what it proves |
+|---|---|---|
+| **Innerbloom** (the init) | free, STRT 12 Hz → END 1 Hz, TIME 8 s, triangle, FDEP half, RESO up | the brief |
+| **Future Chop** | synced, 1/8 triplets steady, VDEP 110, SHAP square, DUCK from track 9 | the chop and the sidechain |
+| **Riser** | STRT 1/4 → END 1/64 over 4 bars, TILT +, MODE land | building, and landing on the drop |
+| **Vowel Bloom** | Bloom filter vowel, BDEP high, 1/8 → 1/2 over 2 bars | IIR0, and the pulse on the vowel |
+| **Breathing Pad** | ANCH every 2 bars, LINK target for other tracks, PAN 60 | the shared clock and LINK |
+
+---
+
+## Where each part runs, and why
+
+| part | runs on | why |
+|---|---|---|
+| PULSE, the chop, DUCK, LINK, the voice, the Bloom filter | SHARC | the song position and tempo are in the frame **(upstream)**. The ColdFire's audio-frame ISR already peaks at 74-112 % of a frame on stock (`docs/usbprobe.md`). The DSP has about a third of its frame free (`docs/sharc-load.md`) |
+| the stock filter's cutoff, pan and volume | the SHARC, in Bloom's setup arm | the filter's setup runs before any machine renders **[D]**, and the arm runs before it |
+| the song-position writer | ColdFire, once per frame | Bloom's own copy of what Waverider's `sync.c` does **(upstream)**. A shared module once both exist |
+| MACHINE SEL, the names, the pages, value text | ColdFire | the route Waverider proved: `docs/machine-list.md`, `docs/waverider-m7-pages.md`, M10b's hooks |
+
+**DSP code space.** Standalone, Bloom has the whole free region of L1 block 1,
+`0x2dd600..0x2e8000`, about 42.5 KB, ending 32 KB below the block's top to stay
+clear of the DM cache **(upstream, `dnfw.waverider.dsp.REGION`)**.
+- **Never L1 block 2:** it is the PM cache's, and code there silenced the
+  instrument (`docs/waverider-dsp-silence.md`).
+- **Not the L2 above the image** either, which looks free and is not: stock data
+  words point into it (same document).
+
+**DSP budget, estimated.** A PolyBLEP oscillator is roughly a dozen cycles a
+sample. Two oscillators, the sub, the chop and the pulse are then of the order
+of 1,000 cycles per voice per 32-sample block: about 2.5 % of a 666,667-cycle
+frame for all 16 voices. STAK multiplies the oscillators' share. The owner's
+rule from Waverider applies: *one synth cannot cost more DSP than a whole pattern
+of stock synths.* Measure every milestone with the idle-load stub, because the
+reply's word 0 misreads around these tracks (`docs/sharc-load.md`).
+
+## Packaging
+
+**v1: its own mod, machine type 5, without Waverider.**
+- Upstream's **hook bus** owns the machine count, `MACH`, and allows **one** mod
+  to add machines **(upstream, `src/dnfw/mods/bus.py`)**. Bloom's mod is that
+  contributor, so it excludes Waverider, and needs the whole DSP region anyway.
+- **Saved sounds, a hazard to decide before B2 [O].** A Bloom sound is stored as
+  machine type 5.
+  - On stock it loads as **FM Tone** (the LOAD bound's fallback).
+  - **On a Waverider build it would load as Waverider**, playing Bloom's slots
+    as Waverider's controls. The same number means two machines.
+  - The option: put Bloom at **type 7**, with placeholder rows for 5 and 6. That
+    costs a little plumbing and removes the collision.
+
+**v2: alongside Waverider [research].**
+- **A shared machine table on the bus.** The bus's own notes name it as what a
+  second machine-adding mod needs.
+- **DSP code space for two machines.** Most likely code running from DDR through
+  the instruction cache, if the stock startup enables that cache. Which caches
+  the startup turns on was never settled (`docs/waverider-dsp-silence.md`).
+- **Shared modules** for the song position, the page framework and the
+  value-text hooks.
+
+---
 
 ## Milestones, one question per flash
 
-| | asks | what's in it | gates (owner's machine) |
+| | asks | runs on | gates |
 |---|---|---|---|
-| **P0** | does a decelerating, phase-continuous modulator in the evaluators move the stock filter on the instrument? | PULSE **hard-coded** for track 1, in the shape of `lfo4-tick6a`: 12 → 1 Hz over 8 s, restarted by track 1's trigs, triangle, a large FDEP on FREQ. **No machine type, no UI, no DSP change**, on any stock machine | `emu_boot_check` from reset; **`emu_boot_engine`**, because it touches evaluator A; `check_coldfire`; `dnfw inspect` |
-| P1 | the machine | the Bloom type: Waverider's ColdFire plumbing through the shared module (`docs/input-and-drum-machines.md`, Packaging), its DSP loop, both pages, PULSE reading STRT / END / TIME / CURV / FDEP from the borrowed records. A stock machine has no spare records to carry the controls (`docs/ideas-backlog.md` §32), so the controls arrive with the type | the full set, plus a direct-call harness on the evaluator, and the SHARC runner gate, since the voice is Waverider's |
-| P2 | the chop | VDEP and the shapes, with the square's slew | as P1 |
-| P3 | tempo | TIME in bars, rates as divisions | as P1 |
-| P4 | the saw | the key-tracked band-limited table | the SHARC runner against a reference |
+| **B0** | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
+| **B1** | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
+| B2 | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
+| B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |
+| **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |
+| B4 | the full voice, the chop, pages 1-2 | | as above, plus DSP load |
+| B5 | DUCK and LINK | | DUCK against a kick trig in the runner, with a control |
+| B6 | the Bloom filter on IIR0, vowel included | | bit-exact against B0, using digikit's IIR0 model **(upstream)** |
+| B7 | TILT, MODE land / step, SWNG, PULSE 2, PAN, PDEP | | as above |
+| B8 | STAK, VEL, TIME = note length, the page's curve | | DSP load against the owner's rule |
 
-### P0's test, written so it can't be missed
+### The first flash's test, written so it cannot be missed
 
 1. Turn the volume down first.
-2. Track 1: a held chord on any warm machine (Swarmer or WaveTone), filter
-   Lowpass 4 or Multimode, FREQ around the middle, RESO up.
-3. One trig on step 1, with a long note.
-4. Press play.
+2. Track 1: MACHINE SEL → BLOOM. The init sound is Innerbloom.
+3. Filter Lowpass 4, RESO high.
+4. Hold a chord, live or as one long trig.
 
 | result | means |
 |---|---|
-| **pass:** a fast **flutter** of the filter at once, about 12 a second, which **slows smoothly** to about one pulse a second by eight seconds, and stays there; the next trig starts it fast again | the modulator runs, glides and reaches the filter |
-| flutter at a steady rate, never slowing | the glide is not running: t is not advancing, or TIME's units are wrong |
-| it slows in jumps, or clicks as it slows | the phase is being reset on a rate change, or r is stepping in whole units |
-| no flutter at all | the hook did not run, or the wrong slot was written: check 67 against the build |
-| other tracks flutter too | the per-track gate is wrong |
-| `EXCEPTION` at boot | should have been caught by the boot gate first. It is the `lfo4-bridge` failure; run the boot check from reset again |
+| **pass:** the filter **flutters fast at once**, about 12 a second, and **slows smoothly** to one pulse a second over eight seconds; a new trig starts it fast again | the arm runs, the phase is right, the filter follows |
+| a steady flutter that never slows | the glide's time base is not advancing: the song-position writer, or TIME's units |
+| it slows in jumps, or clicks | Φ is being restarted, or the rate is stepping |
+| a saw, but no flutter | the arm did not run, or wrote the wrong record field: check `+0x1cc` against the build |
+| other tracks flutter too | the row-to-track gate is wrong |
+| every track goes silent at the first trig | a DSP trap, as Waverider M5's (`docs/waverider-dsp-silence.md`); power off |
+| a stuck 750 Hz buzz | a task-level stall; power off |
 
-This goes into the test plan with the image's sha256, before it is flashed.
-
-## Where else PULSE fits
-
-It's a per-track modulator keyed on the machine type, so it can be switched on
-for other machine types too:
-- **the input machine** (`docs/input-and-drum-machines.md` Part A): a slowing
-  filter pulse on external audio;
-- **the drum sampler**: the same, on a sustained sample.
-
-Each is one more type in its enable test.
+This goes into the test plan with the image's sha256 before it is flashed.
 
 ## What is unverified
 
-- **Everything above, for this machine.** It was read from this repository's
-  documents. Nothing has been built.
-- **The order "setup before render" in the dispatch** is read from documented
-  addresses, not traced for this question. If it's wrong, a DSP-side
-  modulator becomes possible, but the ColdFire route still stands.
-- **Where exactly PULSE sits in the evaluators,** and the format of the
-  modulation sum it adds into. Both are known for LFOs 1-4 from the LFO4 work,
-  and both must be re-read for a fifth source before P0 is written.
-- **The ISR budget.** The audio-frame ISR already peaks at 74-112 % of a frame
-  on stock (`docs/usbprobe.md`), so PULSE must cost tens of instructions per
-  Bloom track per frame, and nothing on any other track. Measure it with the
-  usbprobe STATS (`isr_max`, `isr_over`).
-- **That 1,500 updates a second sound smooth on a resonant low-pass at high
-  RESO.** Stock LFOs work this way, but nobody has judged this specific sweep.
+- **All of it, as Bloom.** It was read from this repository and from upstream's
+  documents. Nothing is built.
+- **That the stock filter recomputes its coefficients every block.** B1 asks
+  exactly this.
+- **The row-to-track reading** of `0xa5a + 2r`, which DUCK and LINK rest on. It
+  is a static reading of the frame builder **(upstream)**, not traced for this
+  use.
+- **The cost of STAK**, and of the voice as a whole. These are estimates until
+  measured.
+- **How a Bloom sound behaves on a Waverider build** (Packaging, above).
+- **Whether 1,500 cutoff updates a second** sound smooth at high resonance and
+  32 Hz. Stock LFOs work this way, but this sweep has not been judged by ear.
+
+---
+
+## Superseded: the design of 2026-10-17
+
+**Kept, condensed, because a closed path is still a signal**
+(`docs/PRINCIPLES.md`). The full text is in this file's history at `2a67d7d`.
+
+**What it said:** Bloom's voice was Waverider's two-oscillator loop. Its
+modulator, PULSE, ran on the **ColdFire**, inside the LFO evaluators
+(`0x40137726`, `0x401373dc`), where `lfo4-tick6a` put a fourth LFO aimed at the
+filter and passed on the instrument. It wrote FREQ (67) and VOL (90) into the
+per-track modulated mirror, the path stock LFOs take. The first build, P0, was
+PULSE hard-coded for track 1, with no machine type, no UI and no DSP change.
+
+**Why it changed, 2026-10-18:**
+- **The tempo and the song position are now in the frame (upstream).** The
+  reason to keep the clock on the ColdFire is gone.
+- **The ColdFire's ISR has no room.** It peaks at 74-112 % of a frame on stock,
+  and the DSP has about a third free.
+- **`lfo4` owns the evaluators,** and the hook bus has no event for them, so a
+  PULSE there collides with lfo4.
+- **A per-voice accumulator cannot keep a chord's voices together.** A phase
+  computed from the shared clock can.
+- **Its key argument still stands,** and it is why B1 exists: the stock filter's
+  setup runs before any machine renders, so the cutoff must be written **before**
+  that setup. The old design did it from the ColdFire. This one does it from a
+  setup arm on the DSP, which runs earlier in the same block.
+- **Bloom is now its own machine** (owner, 2026-10-18), not Waverider's loop with
+  a modulator added.

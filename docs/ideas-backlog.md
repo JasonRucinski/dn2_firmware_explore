@@ -51,7 +51,7 @@ Where they disagree, they win and this table is wrong.
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
 | 35 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
 | 36 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
-| 37 | Bloom: a decelerating filter pulse, as a machine | **designed, not started** | `docs/bloom-machine.md` | P0: the modulator hard-coded in the LFO evaluators for track 1, then the machine type and its pages |
+| 37 | Bloom: a VA machine around a modulator that bends time | **designed, not started** | `docs/bloom-machine.md` | B0 (the reference model) and B1 (does a setup-arm write move the stock filter within the block?), then the machine type and a first flash |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -4077,23 +4077,36 @@ Part B.
 - D0, the kit packer and a reference player to audition, is offline and needs
   no firmware.
 
-## 37. Bloom: a decelerating filter pulse, as a machine
+## 37. Bloom: a VA machine built around a modulator that bends time
 
 **Asked by the fork owner, 2026-10-17:** the effect in RÜFÜS DU SOL's
 *Innerbloom* (5:10-5:18), as a machine.
 - A sustained saw sound.
 - A triangle modulator opens and closes a resonant low-pass, and its rate
   falls from about 12 Hz to 1 Hz over about 8 s, phase-continuous.
-- The same modulator can also chop the volume, for a future-bass version.
-- Their words: not the amp envelope, and not retriggered notes, but the speed
-  of a modulation oscillator.
+- The same modulator can also chop the volume, for future bass.
+
+**2026-10-18:** a new machine of its own, not part of Waverider, and *"go
+crazy"*.
 
 **State: designed, not started.** The plan is `docs/bloom-machine.md`.
-- The voice is Waverider's two-oscillator loop.
-- The modulator runs on the ColdFire inside the LFO evaluators, where
-  `lfo4-tick6a` put a fourth LFO aimed at the filter, which passed on the
-  instrument.
-- Writes into FREQ (67) and VOL (90) move the stock filter and amp through
-  the path stock LFOs use. The stock filter's setup runs before any machine
-  renders, so a DSP-side modulator would need a filter of its own.
-- P0 asks one question with no machine type, no UI and no DSP change.
+- **The voice:** two PolyBLEP oscillators (saw / pulse / triangle, pulse width,
+  hard sync, FM or ring), a sub and noise.
+- **PULSE:** its phase is computed from the song position the frame carries
+  (upstream), so a chord's voices pulse as one, the phase never jumps, and it
+  stays on the grid. It blooms (slows) or builds (speeds up), lands on the
+  downbeat or steps through note lengths, with TILT, swing, a second modulator
+  at a ratio, and pan.
+- **Two filters:**
+  - the stock filter, pulsed from a DSP setup arm that runs before the
+    filter's setup;
+  - a second filter on the IIR0 accelerator, with low-pass, band-pass, vowel
+    and comb.
+- **Beyond a synth:** DUCK (a built-in sidechain from any track's trigs), LINK
+  (tracks that breathe together) and STAK (unison).
+- **Packaging:** standalone at machine type 5, excluding Waverider. Running
+  alongside Waverider needs a shared machine table on the hook bus, and DSP
+  code space for both.
+
+**Superseded:** the 2026-10-17 design, which put PULSE on the ColdFire in the
+LFO evaluators. It is kept, condensed, in the doc with the reasons it changed.
