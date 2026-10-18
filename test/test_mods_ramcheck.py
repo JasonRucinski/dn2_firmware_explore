@@ -59,6 +59,20 @@ def test_no_mod_uses_stocks_dma_section(applied):
     assert not bad, bad
 
 
+def test_no_mod_declares_ram_in_the_stack_reserve(applied):
+    """Region A ends 128 KiB below sp0: the stack descends from 0x48000000."""
+    _, mods = applied
+    bad = {mid: found for mid, (mod, _) in mods.items()
+           if (found := ramcheck.in_stack_reserve(getattr(mod, "ram", list)()))}
+    assert not bad, bad
+
+
+def test_the_stack_reserve_check_refuses_its_edge():
+    from dnfw.mods import RAM, Extent
+    assert ramcheck.in_stack_reserve([Extent(RAM, 0x47FD0000, 0x10000, "below")]) == []
+    assert len(ramcheck.in_stack_reserve([Extent(RAM, 0x47FD0000, 0x10001, "one byte in")])) == 1
+
+
 def test_it_would_have_caught_lfo4s_state_in_the_bounce_buffer():
     """lfo4 as it was until 2026-10-11: arrays at 0x46700000, declared and named."""
     import struct

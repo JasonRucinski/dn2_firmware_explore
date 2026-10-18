@@ -17,7 +17,8 @@ its DMA section through the second (`0x4e......`). Every scan below covers all n
 | `0x40000400..0x4030b980` | the image: code, constants, initial data |
 | `..0x466b74d0` | stock's data. In it, `0x4464abf0..0x4664abf0`: the heap, 32 MiB |
 | `0x466b8000..0x46701340` | stock's DMA section, named as `0x4e6b8000..0x4e701340` |
-| `0x46701340..0x48000000` | **region A**, 25.0 MB: where the mods live |
+| `0x46701340..0x47fe0000` | **region A**, 24.9 MB: where the mods live |
+| `0x47fe0000..0x48000000` | the stack's reserve, 128 KiB below sp0 (`moveal #0x48000000,%sp` at `0x400004f2`). The stack's depth is not measured. digikit's port files keep the same 128 KiB. `ramcheck.in_stack_reserve` refuses a mod's declaration in it |
 
 ## What the mods use
 
@@ -34,9 +35,11 @@ From each mod's own declaration (`ram()`), 2026-10-11:
 | reloadconfirm, midiarp, lfolength, layermidi, bootscreen | 2,801 | `0x46708000`, `0x467b0000` (lfolength; `0x467f8000` until 2026-10-15), `0x467d0000..0x467e04b8` |
 | arpscale (2026-10-13) | 997 | `0x467a8000`, and one byte of the settings block |
 | the platform's data window | 196,608 | `0x46710000` |
-| **all** | **703,658** | 0.67 MiB of the 25.0 MB |
+| **all** | **703,658** | 0.67 MiB of the 24.9 MB |
 
-## Region A: `0x46701340..0x48000000`
+## Region A: `0x46701340..0x47fe0000`
+
+The searches below cover `0x46701340..0x48000000`, the stack's reserve included.
 
 **Does stock reference it, directly or through another address? Nothing found.**
 
