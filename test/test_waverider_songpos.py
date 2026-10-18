@@ -82,6 +82,10 @@ def test_the_position_words_are_no_waverider_parameter_on_any_voice():
     voice 16's noise DEC (0x9a8, parameter 57), and the noise there died at its attack."""
     from dnfw.waverider import frame
     taken = {frame.slot_offset(t, p) + b for t in range(16) for p in range(25, 65) for b in (0, 1)}
+    # and the header arrays the frame model knows: notes, trig masks, levels, machines, filters
+    taken |= {a + 2 * t + b for a in (frame.NOTE, frame.LEVEL, frame.MACHINE, frame.FILTER)
+              for t in range(16) for b in (0, 1)}
+    taken |= {m + b for m in frame.TRIG_MASKS for b in (0, 1)}
     for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):
         assert not {word, word + 1} & taken, hex(word)
     assert frame.slot_offset(15, live.NOISE_SLOTS[3]) == 0x9A8         # the word it was on
@@ -89,8 +93,8 @@ def test_the_position_words_are_no_waverider_parameter_on_any_voice():
 
 def test_sync_asm_reads_the_words_sync_c_writes():
     asm = (SYNC_C.parent / "sharc" / "sync.asm").read_text(encoding="utf-8")
-    for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):
-        assert re.search(rf"DM\({0x25C48C + word:#x}\)", asm), hex(word)
+    for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):     # 32-bit reads at aligned addresses
+        assert re.search(rf"DM\({0x25C48C + (word & ~3):#x}\)", asm), hex(word)
 
 
 def test_sync_free_phase_starts_each_cycle_on_step_1():

@@ -1005,7 +1005,7 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)
             and rb2["tune_both"][2] == rb["tune_both"][2] and abs(rb["tune_both"][2] / inc60 - 2.0) < 1e-6,
-        "the DSP's frame copy carries the song position (words 0xa18 and 0x934) and the tempo (0xd8), "
+        "the DSP's frame copy carries the song position (words 0xa18 and 0x2a) and the tempo (0xd8), "
         "as the frames put them (M10b-2)":
             all(frame_carries(k) for k in ("sync_free", "sync_retrig", "sync_osc2", "sync_off")),
         "SYNC Free: osc 1's MOVE phase is the song position x 1152 (RATE 100, 1/32 T) mod 2^32 "

@@ -60,7 +60,7 @@ would not have shown it; the memory diff is the measure.
 - What the two stock values mean. The local at `%fp@(-118)` and the byte at `0x42431aad` are
   not identified.
 
-## Where the position lives now: 0xa18 and 0x934 (since Waverider 0.3.4)
+## Where the position lives now: 0xa18 and 0x2a (since Waverider 0.3.4)
 
 **Moved 2026-10-18.** The high half was at `0x9a8` until 0.3.4. That word is track 15's parameter 57
 (`frame.slot_offset(15, 57)`), which became the noise's DEC on page 3 after the census. `sync.c` wrote the
@@ -68,12 +68,36 @@ position over it at send time, so on voice 16 the noise's DEC read the position'
 about 10 in bar 2. The noise there died within milliseconds of each note. The owner heard it on a sound
 locked to voice 16.
 
-The high half is now at `0x934`, track 14's parameter 72 (slot offset `0x6e` in the census's terms). The
-census lists slot offset `0x6e` on tracks 2 and 5 to 15 as read only by the unpack copy loops. Waverider uses
-parameters 28 to 64 on every voice, so no voice reads 72. `test/test_waverider_songpos.py` checks that both
-position words miss every Waverider parameter (25 to 64) on all 16 voices, and that `sync.asm` reads the
-words `sync.c` writes. In the DSP, with the high half 0 at `0x9a8`, voice 16's noise level fell from 0.153
-to 0.013 within 16 ms. At `0x934` it held at 0.16.
+In the DSP runner, with the high half 0 at `0x9a8`, voice 16's noise level fell from
+0.153 to 0.013 within 16 ms.
+
+The high half is now at `0x2a`, in the header after the trig masks (bytes 34 to 41). No voice's slot holds
+it, and stock's ColdFire never writes it. `sync.asm` reads the aligned word at `0x28` and keeps its high half.
+
+**`0x934` was tried first and refused.** It is track 14's parameter 72, which the census listed as read only by
+the copy loops. The flip test (`diff --words 0x934`, filters 0 and 3) changed 2 DSP memory words from block 3
+with filter 3, on machine types 0, 1 and 2. So parameter 72 feeds filter type 3.
+
+**What clears `0x2a`, 2026-10-18 and 19:**
+
+| test | result |
+|---|---|
+| flip in random frames, machine types 0 and 1, filters 0 and 3, 6 blocks | 0 words differ |
+| flip in random frames, machine type 4, filter 0, seed 1 | 0 words differ |
+| the corpus of real frames, 40 frames, 80 blocks (`replay --flip 0x2a`) | read only by the two copy loops, in the receive page; never read in the frame copy |
+| machine type 4, filter 0, **seed 124**: the case that gave 59 words on 2026-10-12 | 52 words differ. The census names the cause: row 3's owner word is `0x25` |
+| the same frames with each row's owner set to its track (`diff --valid-owners`) | **0 words differ** |
+| naturarum's census in their own emulator, sharcvm (`notes/T6.0c-frame-census-dnfw.md`, 2026-10-13) | free: 0 of 192 flips, 0 of 48 with random voices, 0 of 22 again |
+
+The owner word explains the old result. naturarum traced it in sharcvm: the voice-mix loops at `0x1c1fca` and
+`0x1c2535` take their row pointer from the owner word at `0xa5a + 2r` (`0x258f68 + 0x100 x owner`, and its
+sibling from `0x259f68`). An owner of `0x25..0x2f` or `0x35..0x3f` puts a row on the frame image, and `0x25`
+reaches `0x2a`. Our runner shows the same: the dependence goes with the wild owner. In every real frame we
+recorded, each owner is 0 (all 1,200 corpus frames). Stock writes the owning track there, 0 to 15.
+
+`test/test_waverider_songpos.py` checks that both position words miss every Waverider parameter (25 to 64)
+on all 16 voices, and the header arrays the frame model knows. It also checks that `sync.asm` reads the
+words `sync.c` writes.
 
 The sections below record how `0x9a8` and `0xa18` were chosen. They still hold for `0xa18`.
 
