@@ -714,13 +714,18 @@ def high_range_steps(scan: dict[int, list]) -> str:
 
 # ---------------------------------------------------------------- 8. MIDI: the CC and NRPN of every knob
 
+# The records Waverider does not rename keep WaveTone's long name, which the header shows
+# (the firmware's parameter table, records 241, 245 and 249).
+STOCK_LONG_NAMES = {241: "Osc1 Level", 245: "Osc2 Level", 249: "Osc Phase Reset"}
+
+
 def midi_map() -> str:
     """Every knob place of the five pages with its CC and NRPN (docs/waverider-midi.md), from the
     map the firmware answers with (pages.midi_rows)."""
     rows = []
     for (rid, nrpn, cc), (page, knob) in zip(pages.midi_rows(), ((p, k) for p, ids in enumerate(pages.PAGES)
                                                                 for k, r in enumerate(ids) if r)):
-        rows.append([str(page + 1), "ABCDEFGH"[knob], pages.label(rid), pages.LONG_NAMES.get(rid, ""),
+        rows.append([str(page + 1), "ABCDEFGH"[knob], pages.label(rid), pages.LONG_NAMES.get(rid, STOCK_LONG_NAMES.get(rid, "")),
                      cc, f"{nrpn >> 7}:{nrpn & 127}"])
     return table_html(["Page", "Knob", "Label", "Name", "CC", "NRPN"], rows)
 
