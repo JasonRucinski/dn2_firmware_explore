@@ -22,6 +22,11 @@ To release a change: add a `Release` at the top of the mod's tuple, in words a
 user reads (what they see or do differently), then run
 `dnfw mods changelog --write site/*.html --js site/js/mods/versions.js`.
 
+A change may link a few words to a part of the mod's own page: `[page 5](#page-5)`.
+The page's list shows a link (`<a href="#page-5">page 5</a>`), the terminal shows the
+words alone. The target is an id on the page that holds the mod's changes region;
+`test/test_mods_history.py` checks that every target is there.
+
 One subject: that record and its two renderings.
 """
 
@@ -34,6 +39,7 @@ from dataclasses import dataclass
 FIRST = "2026-10-11"
 VERSION = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+LINK = re.compile(r"\[([^\[\]]+)\]\(#([a-z0-9][a-z0-9-]*)\)")   # [words](#id)
 
 
 @dataclass(frozen=True)
@@ -90,53 +96,57 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "usbprobe": UNPUBLISHED,
     "waverider": (
         Release("0.3.4", "2026-10-18", (
-            "The noise on page 3 now plays on voice 16 too. Before, it faded out right after each note "
+            "The noise on [page 3](#page-3) now plays on voice 16 too. Before, it faded out right after each note "
             "started when the sound played on voice 16.",
         )),
         Release("0.3.3", "2026-10-18", (
             "The short lists turn as the other machines' short lists do: a step needs a longer turn. "
-            "That covers TYPE on page 5, OCT, WAVE, SRC and the noise TYPE on page 3, MOVE1, MOVE2, "
+            "That covers TYPE on [page 5](#page-5), OCT, WAVE, SRC and the noise TYPE on "
+            "[page 3](#page-3), MOVE1, MOVE2, "
             "TRIG, PRST, SYN1 and SYN2.",
         )),
         Release("0.3.2", "2026-10-18", (
-            "Every knob on Waverider's five pages now answers MIDI CC and NRPN. Pages 1 to 4 use the "
+            "Every knob on Waverider's five pages now answers [MIDI CC and NRPN](#midi). Pages 1 to 4 "
+            "use the "
             "numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. "
             "Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.",
             "When you turn a Waverider knob with MIDI out on, the knob sends the same number.",
             "A CC or NRPN sent to a track that is not on the screen now keeps that track's own limits.",
         )),
         Release("0.3.1", "2026-10-17", (
-            "SLW1 and SLW2 on page 4 now turn the other way: Off is at the far left, and the slew gets "
+            "SLW1 and SLW2 on [page 4](#page-4) now turn the other way: Off is at the far left, and the slew gets "
             "longer to the right. A new sound starts with the slew off. A sound saved with an earlier "
             "version plays its SLW the other way round, so set SLW1 and SLW2 again on it.",
         )),
         Release("0.3.0", "2026-10-17", (
-            "Alpha 5. WARP bends the phase of the two oscillators, and FM lets osc 2 change the phase of "
+            "Alpha 5. [WARP](#page-5) bends the phase of the two oscillators, and FM lets osc 2 change the phase of "
             "osc 1. NPOS, P1 and P2 do not change the sound yet.",
             "A sound with WARP and FM at 0 sounds as before.",
         )),
         Release("0.2.0", "2026-10-17", (
-            "Page 5 plays: FOLD folds the oscillators' wave, and TYPE Ring or AM mixes osc 1 with osc 2 "
+            "[Page 5](#page-5) plays: FOLD folds the oscillators' wave, and TYPE Ring or AM mixes osc 1 with osc 2 "
             "by AMT. WARP, FM, NPOS, P1 and P2 do not change the sound yet.",
             "TYPE offers Off, Ring and AM. A sound with page 5 at 0 sounds as before.",
         )),
         Release("0.1.3", "2026-10-17", (
-            "You can now combine Waverider with LFO modulation of the FX and with the fourth LFO, "
+            "You can now [combine Waverider](#combines) with LFO modulation of the FX and with the "
+            "fourth LFO, "
             "in either order.",
         )),
         Release("0.1.2", "2026-10-17", (
-            "Alpha 3. A turn of TRIM no longer clicks while a sound plays. The level now moves to the "
+            "Alpha 3. A turn of [TRIM](#page-4) no longer clicks while a sound plays. The level now moves to the "
             "knob's value over up to 0.1 s.",
         )),
         Release("0.1.1", "2026-10-15", (
-            "Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 "
+            "Alpha 2. On [page 4](#page-4), SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 "
             "POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.",
-            "The page has a Technical tab: the table formats, the files that DNX accepts, how the reader "
+            "The page has a [Technical tab](#tech): the table formats, the files that DNX accepts, how the reader "
             "plays a table, DCLK, SLW and SYN, and the noise.",
         )),
         Release("0.1.0", "2026-10-15", (
             "The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a "
-            "sub-oscillator, noise, sound options and wavetable pools from the +Drive. Page 5 is for "
+            "sub-oscillator, noise, sound options and [wavetable pools](#pool) from the +Drive. Page 5 "
+            "is for "
             "a future version.",
         )),
     ),
@@ -161,6 +171,9 @@ def problems(mod_ids) -> list[str]:
                 out.append(f"{mod_id} {r.version}: {r.date!r} is not YYYY-MM-DD")
             if not r.changes or not all(c.strip() for c in r.changes):
                 out.append(f"{mod_id} {r.version}: says nothing changed")
+            for c in r.changes:
+                if re.search(r"[\[\]]", LINK.sub("", c)):
+                    out.append(f"{mod_id} {r.version}: a link is not [words](#id): {c!r}")
         good = [r for r in releases if VERSION.match(r.version)]
         for newer, older in zip(good, good[1:]):
             if newer.key <= older.key or newer.date < older.date:
@@ -174,11 +187,26 @@ def version_html(mod_id: str) -> str:
     return f"v{version(mod_id)}"
 
 
+def change_html(change: str) -> str:
+    """One change as the page shows it: escaped, with each `[words](#id)` a link."""
+    return LINK.sub(r'<a href="#\2">\1</a>', html.escape(change))
+
+
+def change_text(change: str) -> str:
+    """One change as the terminal shows it: the words of each link, no target."""
+    return LINK.sub(r"\1", change)
+
+
+def links(mod_id: str) -> set[str]:
+    """The ids that the mod's changes link to."""
+    return {m.group(2) for r in HISTORY[mod_id] for c in r.changes for m in LINK.finditer(c)}
+
+
 def changes_html(mod_id: str) -> str:
     """The mod's releases, newest first, as the page's list."""
     rows = []
     for r in HISTORY[mod_id]:
-        items = "".join(f"<li>{html.escape(c)}</li>" for c in r.changes)
+        items = "".join(f"<li>{change_html(c)}</li>" for c in r.changes)
         rows.append(f'  <dt><span class="version">v{r.version}</span> <time datetime="{r.date}">{r.date}</time></dt>\n'
                     f"  <dd><ul>{items}</ul></dd>")
     return '<dl class="changes">\n' + "\n".join(rows) + "\n</dl>"
@@ -197,7 +225,7 @@ def changes_text(mod_id: str) -> str:
     lines = []
     for r in HISTORY[mod_id]:
         lines.append(f"  v{r.version}  {r.date}")
-        lines += [f"    - {c}" for c in r.changes]
+        lines += [f"    - {change_text(c)}" for c in r.changes]
     return "\n".join(lines)
 
 

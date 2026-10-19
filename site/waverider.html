@@ -23,6 +23,8 @@
   .tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
   .tabs button:hover { color: var(--accent); }
   .next { margin-top: 2.5rem; }
+  .version-line { margin: 0 0 1rem; }
+  .version-line strong { font-family: var(--mono); color: var(--accent); }
 
   .figs { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
   figure { margin: 0; display: flex; flex-direction: column; gap: .35rem; flex: 0 1 256px; max-width: 100%; }
@@ -104,6 +106,8 @@
 
 <!-- ================================================================= Try it -->
 <section id="try" role="tabpanel" aria-labelledby="tab-try">
+  <p class="version-line">This tab builds Waverider <strong><!-- dnfw:version waverider -->v0.3.4<!-- /dnfw:version --></strong> (alpha).
+  <a href="#changes">See what changed</a>.</p>
   <div class="note">
     <p><strong>This tab does all the work in your browser.</strong> The page does not
     upload your firmware file, because the page has no server. The page is a set of static
@@ -185,7 +189,7 @@
     </li>
   </ul>
 
-  <section class="combines">
+  <section class="combines" id="combines">
     <h3>Combines with</h3>
     <p>You can combine Waverider with the other mods, but not with the FM drum transients. The
     pages do not let you combine Waverider with that mod. You can combine Waverider with the LFO
@@ -204,6 +208,37 @@
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
+  </section>
+
+  <section class="changes" id="changes">
+    <h3>Version and changes</h3>
+    <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.3.4<!-- /dnfw:version --></strong> (alpha).
+    The list shows the changes in each version, with the newest first. A link in the list
+    opens the part of this page about the change.</p>
+<!-- dnfw:changes waverider -->
+<dl class="changes">
+  <dt><span class="version">v0.3.4</span> <time datetime="2026-10-18">2026-10-18</time></dt>
+  <dd><ul><li>The noise on <a href="#page-3">page 3</a> now plays on voice 16 too. Before, it faded out right after each note started when the sound played on voice 16.</li></ul></dd>
+  <dt><span class="version">v0.3.3</span> <time datetime="2026-10-18">2026-10-18</time></dt>
+  <dd><ul><li>The short lists turn as the other machines&#x27; short lists do: a step needs a longer turn. That covers TYPE on <a href="#page-5">page 5</a>, OCT, WAVE, SRC and the noise TYPE on <a href="#page-3">page 3</a>, MOVE1, MOVE2, TRIG, PRST, SYN1 and SYN2.</li></ul></dd>
+  <dt><span class="version">v0.3.2</span> <time datetime="2026-10-18">2026-10-18</time></dt>
+  <dd><ul><li>Every knob on Waverider&#x27;s five pages now answers <a href="#midi">MIDI CC and NRPN</a>. Pages 1 to 4 use the numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.</li><li>When you turn a Waverider knob with MIDI out on, the knob sends the same number.</li><li>A CC or NRPN sent to a track that is not on the screen now keeps that track&#x27;s own limits.</li></ul></dd>
+  <dt><span class="version">v0.3.1</span> <time datetime="2026-10-17">2026-10-17</time></dt>
+  <dd><ul><li>SLW1 and SLW2 on <a href="#page-4">page 4</a> now turn the other way: Off is at the far left, and the slew gets longer to the right. A new sound starts with the slew off. A sound saved with an earlier version plays its SLW the other way round, so set SLW1 and SLW2 again on it.</li></ul></dd>
+  <dt><span class="version">v0.3.0</span> <time datetime="2026-10-17">2026-10-17</time></dt>
+  <dd><ul><li>Alpha 5. <a href="#page-5">WARP</a> bends the phase of the two oscillators, and FM lets osc 2 change the phase of osc 1. NPOS, P1 and P2 do not change the sound yet.</li><li>A sound with WARP and FM at 0 sounds as before.</li></ul></dd>
+  <dt><span class="version">v0.2.0</span> <time datetime="2026-10-17">2026-10-17</time></dt>
+  <dd><ul><li><a href="#page-5">Page 5</a> plays: FOLD folds the oscillators&#x27; wave, and TYPE Ring or AM mixes osc 1 with osc 2 by AMT. WARP, FM, NPOS, P1 and P2 do not change the sound yet.</li><li>TYPE offers Off, Ring and AM. A sound with page 5 at 0 sounds as before.</li></ul></dd>
+  <dt><span class="version">v0.1.3</span> <time datetime="2026-10-17">2026-10-17</time></dt>
+  <dd><ul><li>You can now <a href="#combines">combine Waverider</a> with LFO modulation of the FX and with the fourth LFO, in either order.</li></ul></dd>
+  <dt><span class="version">v0.1.2</span> <time datetime="2026-10-17">2026-10-17</time></dt>
+  <dd><ul><li>Alpha 3. A turn of <a href="#page-4">TRIM</a> no longer clicks while a sound plays. The level now moves to the knob&#x27;s value over up to 0.1 s.</li></ul></dd>
+  <dt><span class="version">v0.1.1</span> <time datetime="2026-10-15">2026-10-15</time></dt>
+  <dd><ul><li>Alpha 2. On <a href="#page-4">page 4</a>, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.</li><li>The page has a <a href="#tech">Technical tab</a>: the table formats, the files that DNX accepts, how the reader plays a table, DCLK, SLW and SYN, and the noise.</li></ul></dd>
+  <dt><span class="version">v0.1.0</span> <time datetime="2026-10-15">2026-10-15</time></dt>
+  <dd><ul><li>The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a sub-oscillator, noise, sound options and <a href="#pool">wavetable pools</a> from the +Drive. Page 5 is for a future version.</li></ul></dd>
+</dl>
+<!-- /dnfw:changes -->
   </section>
 
   <p class="next"><button type="button" data-go="manual">Next: the manual</button></p>
@@ -240,7 +275,7 @@
   Exp Up, Exp Down and Tri Once. These six shapes repeat: Up Loop, Down Loop, Tri Loop, Square,
   Rnd Hold and Rnd Glide.</p>
 
-  <h2>Page 3: sub and noise</h2>
+  <h2 id="page-3">Page 3: sub and noise</h2>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page3.png" alt="Page 3 with the sub and noise drawn" width="256" height="128"><figcaption>Page 3: SUB at 100 and NOIS at 60</figcaption></figure>
   </div>
@@ -259,7 +294,7 @@
   </table></div>
   <p>The middle of the page shows the sub-oscillator and the noise.</p>
 
-  <h2>Page 4: sound options</h2>
+  <h2 id="page-4">Page 4: sound options</h2>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page4.png" alt="Page 4 with the scope" width="256" height="128"><figcaption>Page 4: the scope</figcaption></figure>
   </div>
@@ -278,7 +313,7 @@
   </table></div>
   <p>The middle of the page shows the sound of the track as a scope.</p>
 
-  <h2>Page 5: Shape</h2>
+  <h2 id="page-5">Page 5: Shape</h2>
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page5.png" alt="Page 5 with the Shape knobs" width="256" height="128"><figcaption>Page 5: FOLD at 88 and WARP at 48 shape the wave in the scope</figcaption></figure>
   </div>
@@ -317,7 +352,7 @@
   </ul>
   <p>The Technical tab shows what each control does to the wave.</p>
 
-  <h2>The wavetable pool</h2>
+  <h2 id="pool">The wavetable pool</h2>
   <ul>
     <li><strong>Tables:</strong> each table has 1 to 64 frames. Each frame has 64 to 4096 points, in powers of two. Waverider has two built-in tables: Prim. and Harm.</li>
     <li><strong>Names:</strong> when you turn TBL, the header shows the table name, for example "T:004 name".</li>
@@ -508,36 +543,6 @@
     <li><strong>The +Drive store.</strong> The tables are in a region of the +Drive that the factory firmware does not read or write. The store keeps two copies of its index. If a write stops before its end, the last good copy stays.</li>
     <li><strong>Level.</strong> The default TRIM is -11 dB. At this value, a new Waverider sound has the same loudness as a new WaveTone sound.</li>
   </ul>
-
-  <section class="changes">
-  <h2>Version and changes</h2>
-  <p>The version of Waverider is <strong><!-- dnfw:version waverider -->v0.3.4<!-- /dnfw:version --></strong> (alpha).
-  The list shows the changes in each version, with the newest first.</p>
-<!-- dnfw:changes waverider -->
-<dl class="changes">
-  <dt><span class="version">v0.3.4</span> <time datetime="2026-10-18">2026-10-18</time></dt>
-  <dd><ul><li>The noise on page 3 now plays on voice 16 too. Before, it faded out right after each note started when the sound played on voice 16.</li></ul></dd>
-  <dt><span class="version">v0.3.3</span> <time datetime="2026-10-18">2026-10-18</time></dt>
-  <dd><ul><li>The short lists turn as the other machines&#x27; short lists do: a step needs a longer turn. That covers TYPE on page 5, OCT, WAVE, SRC and the noise TYPE on page 3, MOVE1, MOVE2, TRIG, PRST, SYN1 and SYN2.</li></ul></dd>
-  <dt><span class="version">v0.3.2</span> <time datetime="2026-10-18">2026-10-18</time></dt>
-  <dd><ul><li>Every knob on Waverider&#x27;s five pages now answers MIDI CC and NRPN. Pages 1 to 4 use the numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.</li><li>When you turn a Waverider knob with MIDI out on, the knob sends the same number.</li><li>A CC or NRPN sent to a track that is not on the screen now keeps that track&#x27;s own limits.</li></ul></dd>
-  <dt><span class="version">v0.3.1</span> <time datetime="2026-10-17">2026-10-17</time></dt>
-  <dd><ul><li>SLW1 and SLW2 on page 4 now turn the other way: Off is at the far left, and the slew gets longer to the right. A new sound starts with the slew off. A sound saved with an earlier version plays its SLW the other way round, so set SLW1 and SLW2 again on it.</li></ul></dd>
-  <dt><span class="version">v0.3.0</span> <time datetime="2026-10-17">2026-10-17</time></dt>
-  <dd><ul><li>Alpha 5. WARP bends the phase of the two oscillators, and FM lets osc 2 change the phase of osc 1. NPOS, P1 and P2 do not change the sound yet.</li><li>A sound with WARP and FM at 0 sounds as before.</li></ul></dd>
-  <dt><span class="version">v0.2.0</span> <time datetime="2026-10-17">2026-10-17</time></dt>
-  <dd><ul><li>Page 5 plays: FOLD folds the oscillators&#x27; wave, and TYPE Ring or AM mixes osc 1 with osc 2 by AMT. WARP, FM, NPOS, P1 and P2 do not change the sound yet.</li><li>TYPE offers Off, Ring and AM. A sound with page 5 at 0 sounds as before.</li></ul></dd>
-  <dt><span class="version">v0.1.3</span> <time datetime="2026-10-17">2026-10-17</time></dt>
-  <dd><ul><li>You can now combine Waverider with LFO modulation of the FX and with the fourth LFO, in either order.</li></ul></dd>
-  <dt><span class="version">v0.1.2</span> <time datetime="2026-10-17">2026-10-17</time></dt>
-  <dd><ul><li>Alpha 3. A turn of TRIM no longer clicks while a sound plays. The level now moves to the knob&#x27;s value over up to 0.1 s.</li></ul></dd>
-  <dt><span class="version">v0.1.1</span> <time datetime="2026-10-15">2026-10-15</time></dt>
-  <dd><ul><li>Alpha 2. On page 4, SMT1 and SMT2 are now SLW1 and SLW2 (slew). The header shows Osc1 POS Slew and Osc2 POS Slew. The slew operates as before, and saved sounds keep their values.</li><li>The page has a Technical tab: the table formats, the files that DNX accepts, how the reader plays a table, DCLK, SLW and SYN, and the noise.</li></ul></dd>
-  <dt><span class="version">v0.1.0</span> <time datetime="2026-10-15">2026-10-15</time></dt>
-  <dd><ul><li>The first public build (alpha). Waverider 0.1.0 has two wavetable oscillators with MOVE, a sub-oscillator, noise, sound options and wavetable pools from the +Drive. Page 5 is for a future version.</li></ul></dd>
-</dl>
-<!-- /dnfw:changes -->
-  </section>
 
   <h2>Plans</h2>
   <p>We plan these functions. We do not give dates, and the order may change.</p>
@@ -843,7 +848,7 @@
   <!-- dnfw:tech hrtable --><div class="scroll"><table><thead><tr><th>DETN</th><th>Osc 2&#x27;s note</th><th>Its 7th partial</th><th>WARP 0: harmonics kept</th><th>WARP 0: osc 2</th><th>WARP 35: harmonics kept</th><th>WARP 35: osc 2</th></tr></thead><tbody><tr><td class="num">0</td><td>C4</td><td class="num">1,831 Hz</td><td class="num">63</td><td class="num">-14.0 dB</td><td class="num">15</td><td class="num">-14.0 dB</td></tr><tr><td class="num">12</td><td>C5</td><td class="num">3,663 Hz</td><td class="num">31</td><td class="num">-14.0 dB</td><td class="num">15</td><td class="num">-14.0 dB</td></tr><tr><td class="num">25</td><td>C#6</td><td class="num">7,761 Hz</td><td class="num">15</td><td class="num">-14.0 dB</td><td class="num">7</td><td class="num">-14.0 dB</td></tr><tr><td class="num">26</td><td>D6</td><td class="num">8,223 Hz</td><td class="num">15</td><td class="num">-14.0 dB</td><td class="num">3</td><td>silent</td></tr><tr><td class="num">45</td><td>A7</td><td class="num">24,640 Hz</td><td class="num">7</td><td class="num">-14.1 dB</td><td class="num">1</td><td>silent</td></tr><tr><td class="num">47</td><td>B7</td><td class="num">27,657 Hz</td><td class="num">7</td><td class="num">-14.0 dB</td><td class="num">1</td><td>silent</td></tr><tr><td class="num">48</td><td>C8</td><td class="num">29,302 Hz</td><td class="num">3</td><td>silent</td><td class="num">1</td><td>silent</td></tr><tr><td class="num">57</td><td>A8</td><td class="num">49,280 Hz</td><td class="num">3</td><td>silent</td><td class="num">1</td><td>silent</td></tr></tbody></table></div><!-- /dnfw:tech -->
   <p>To keep osc 2 in the high range, lower DETN or WARP, or move POS to a frame with a lower partial.</p>
 
-  <h2>MIDI CC and NRPN</h2>
+  <h2 id="midi">MIDI CC and NRPN</h2>
   <p>Every knob on the five pages takes a CC and an NRPN on its track's channel. Pages 1 to 4 use the
   numbers the same knob has on the other machines. Page 5 has numbers of its own. With MIDI out on, a
   knob sends the number in this table.</p>

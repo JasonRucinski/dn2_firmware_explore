@@ -10,8 +10,9 @@ import { apply, CODE_SUMMARY } from "../mods/waverider.js";
 const TABS = ["try", "manual", "tests", "inside", "tech"];
 let state = { firmware: null, filename: "firmware.syx", built: null };
 
-// ---- tabs: one panel shown; #try, #manual, #tests, #inside and #tech open their tab
-function show(id, focus = false) {
+// ---- tabs: one panel shown; #try, #manual, #tests, #inside and #tech open their tab.
+// A link to an id inside a panel (#changes, #page-5) opens that panel and scrolls to the id.
+function show(id, focus = false, target = null) {
   if (!TABS.includes(id)) id = "try";
   for (const t of TABS) {
     const on = t === id;
@@ -20,7 +21,15 @@ function show(id, focus = false) {
     $(`tab-${t}`).tabIndex = on ? 0 : -1;
   }
   if (focus) $(`tab-${id}`).focus();
-  try { history.replaceState(null, "", `#${id}`); } catch { /* a sandboxed view */ }
+  try { history.replaceState(null, "", `#${target ?? id}`); } catch { /* a sandboxed view */ }
+  if (target) document.getElementById(target).scrollIntoView();
+}
+
+function follow() {
+  const id = location.hash.slice(1);
+  const panel = id && !TABS.includes(id) ? document.getElementById(id)?.closest('[role="tabpanel"]') : null;
+  if (panel) show(panel.id, false, id);
+  else show(id);
 }
 
 for (const t of TABS) $(`tab-${t}`).addEventListener("click", () => show(t));
@@ -34,7 +43,8 @@ document.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
 for (const b of document.querySelectorAll("[data-go]")) {
   b.addEventListener("click", () => { show(b.dataset.go); window.scrollTo({ top: 0 }); });
 }
-show(location.hash.slice(1));
+window.addEventListener("hashchange", follow);
+follow();
 
 // ---- the patcher
 async function ready(firmware) {
