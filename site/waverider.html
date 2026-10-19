@@ -89,7 +89,6 @@
       <div class="tags">
         <span class="tag untested">alpha 5</span>
         <span class="tag research">OS 1.11 only</span>
-        <span class="tag research">page 5 is not complete</span>
       </div>
     </div>
     <img class="capture" src="art/waverider/page2.png" alt="Waverider's page 2: oscillator 2 on the Harm. table" width="256" height="128">
@@ -222,7 +221,7 @@
   <dt><span class="version">v0.3.3</span> <time datetime="2026-10-18">2026-10-18</time></dt>
   <dd><ul><li>The short lists turn as the other machines&#x27; short lists do: a step needs a longer turn. That covers TYPE on <a href="#page-5">page 5</a>, OCT, WAVE, SRC and the noise TYPE on <a href="#page-3">page 3</a>, MOVE1, MOVE2, TRIG, PRST, SYN1 and SYN2.</li></ul></dd>
   <dt><span class="version">v0.3.2</span> <time datetime="2026-10-18">2026-10-18</time></dt>
-  <dd><ul><li>Every knob on Waverider&#x27;s five pages now answers <a href="#midi">MIDI CC and NRPN</a>. Pages 1 to 4 use the numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.</li><li>When you turn a Waverider knob with MIDI out on, the knob sends the same number.</li><li>A CC or NRPN sent to a track that is not on the screen now keeps that track&#x27;s own limits.</li></ul></dd>
+  <dd><ul><li>Every knob on Waverider&#x27;s five pages now answers <a href="#midi">MIDI CC and NRPN</a>. Pages 1 to 4 use the numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.</li><li>TYPE on <a href="#page-5">page 5</a> has a fourth value, Formant: AMT picks the vowel, P1 moves the formants up and P2 sets the dry part.</li><li>When you turn a Waverider knob with MIDI out on, the knob sends the same number.</li><li>A CC or NRPN sent to a track that is not on the screen now keeps that track&#x27;s own limits.</li></ul></dd>
   <dt><span class="version">v0.3.1</span> <time datetime="2026-10-17">2026-10-17</time></dt>
   <dd><ul><li>SLW1 and SLW2 on <a href="#page-4">page 4</a> now turn the other way: Off is at the far left, and the slew gets longer to the right. A new sound starts with the slew off. A sound saved with an earlier version plays its SLW the other way round, so set SLW1 and SLW2 again on it.</li></ul></dd>
   <dt><span class="version">v0.3.0</span> <time datetime="2026-10-17">2026-10-17</time></dt>
@@ -317,8 +316,8 @@
   <div class="figs">
     <figure><img class="capture" src="art/waverider/page5.png" alt="Page 5 with the Shape knobs" width="256" height="128"><figcaption>Page 5: FOLD at 88 and WARP at 48 shape the wave in the scope</figcaption></figure>
   </div>
-  <p>FOLD, WARP, FM, TYPE and AMT change the sound. NPOS, P1 and P2 are for a future version: you can
-  set and p-lock them, but they do not change the sound yet. The middle of the page shows the scope, as
+  <p>FOLD, WARP, FM, TYPE, AMT, P1 and P2 change the sound. NPOS is for a future version: you can set
+  and p-lock it, but it does not change the sound yet. The middle of the page shows the scope, as
   on page 4.</p>
   <div class="scroll"><table>
     <thead><tr><th>Knob</th><th>Control</th><th>Function</th></tr></thead>
@@ -327,10 +326,10 @@
       <tr><td class="num">B</td><td><code>WARP</code></td><td>Bends the phase of the two oscillators. The first half of each wave plays in a shorter part of the cycle, and the second half in a longer part. 0 is off. A higher value gives a brighter sound</td></tr>
       <tr><td class="num">C</td><td><code>FM</code></td><td>Osc 2 changes the phase of osc 1 (frequency modulation). 0 is off. A higher value gives more overtones and a brighter sound</td></tr>
       <tr><td class="num">D</td><td><code>NPOS</code></td><td>No effect yet</td></tr>
-      <tr><td class="num">E</td><td><code>TYPE</code></td><td>The shaper: Off, Ring or AM. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1</td></tr>
-      <tr><td class="num">F</td><td><code>AMT</code></td><td>How much of the shaper you hear: 0 is none, 127 is the shaper only</td></tr>
-      <tr><td class="num">G</td><td><code>P1</code></td><td>No effect yet</td></tr>
-      <tr><td class="num">H</td><td><code>P2</code></td><td>No effect yet</td></tr>
+      <tr><td class="num">E</td><td><code>TYPE</code></td><td>The shaper: Off, Ring, AM or Formant. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1. Formant filters the mix of the two oscillators so that it sounds like a voice that sings a vowel</td></tr>
+      <tr><td class="num">F</td><td><code>AMT</code></td><td>With Ring and AM: how much of the shaper you hear, 0 is none and 127 is the shaper only. With Formant: the vowel, from A at 0 through E, I and O to U at 127</td></tr>
+      <tr><td class="num">G</td><td><code>P1</code></td><td>With Formant: moves all the formants up, from no shift at 0 to one octave at 127. No effect with the other types</td></tr>
+      <tr><td class="num">H</td><td><code>P2</code></td><td>With Formant: the dry part. At 0 you hear only the filtered sound, and at 127 only the dry sound. No effect with the other types</td></tr>
     </tbody>
   </table></div>
   <div class="figs">
@@ -342,6 +341,8 @@
     <li><strong>Ring and AM need osc 2.</strong> On page 2, set LEV2 above 0. With osc 2 off, Ring makes
     the sound quieter and AM halves it.</li>
     <li><strong>AMT starts at 64</strong> on a new sound. With TYPE at Off, AMT changes nothing.</li>
+    <li><strong>Formant filters the oscillators only.</strong> The sub-oscillator and the noise are added
+    after the filter. Only AMT can take an LFO, so an LFO on AMT sweeps the vowels.</li>
     <li><strong>FOLD follows the level.</strong> A higher LEV1, LEV2 or TRIM gives more folds.</li>
     <li><strong>FM needs osc 2.</strong> On page 2, set LEV2 above 0. A higher LEV2 gives more FM. With
     osc 2 off, FM changes nothing.</li>
@@ -457,7 +458,7 @@
 
   <h2>Known limits in this alpha</h2>
   <ul>
-    <li>Page 5 does not change the sound now.</li>
+    <li>NPOS on page 5 does not change the sound yet.</li>
     <li>A click may occur if the pool loads again while a note plays on a pool table. If you hear a click, tell us.</li>
     <li>We did not measure 4096-point tables on the unit.</li>
     <li>In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64.</li>
@@ -547,7 +548,7 @@
   <h2>Plans</h2>
   <p>We plan these functions. We do not give dates, and the order may change.</p>
   <ul>
-    <li>Page 5: noise to POS (NPOS), and P1 and P2 for the shaper.</li>
+    <li>Page 5: noise to POS (NPOS).</li>
     <li>One cursor for each note in the oscillator wave. With a chord, the page shows the position of each voice in the table. The page also shows the sum of the waves of all the voices.</li>
     <li>Tags for stored tables, and a tag filter and a search on the wavetable page.</li>
     <li>A formant filter or a comb filter in the shaper.</li>
@@ -761,8 +762,8 @@
   <div class="tech-fig"><!-- dnfw:tech dec --><svg class="plot" viewBox="0 0 640 220" role="img" aria-label="The noise decay&#x27;s time constant for each DEC value"><rect class="frame" x="58" y="14" width="568" height="162"/><line class="grid" x1="58.0" y1="14" x2="58.0" y2="176"/><text x="58.0" y="192" text-anchor="middle">0</text><line class="grid" x1="152.7" y1="14" x2="152.7" y2="176"/><text x="152.7" y="192" text-anchor="middle">21</text><line class="grid" x1="247.3" y1="14" x2="247.3" y2="176"/><text x="247.3" y="192" text-anchor="middle">42</text><line class="grid" x1="342.0" y1="14" x2="342.0" y2="176"/><text x="342.0" y="192" text-anchor="middle">63</text><line class="grid" x1="436.7" y1="14" x2="436.7" y2="176"/><text x="436.7" y="192" text-anchor="middle">84</text><line class="grid" x1="531.3" y1="14" x2="531.3" y2="176"/><text x="531.3" y="192" text-anchor="middle">105</text><line class="grid" x1="626.0" y1="14" x2="626.0" y2="176"/><text x="626.0" y="192" text-anchor="middle">126</text><line class="grid" x1="58" y1="176.0" x2="626" y2="176.0"/><text x="52" y="180.0" text-anchor="end">5</text><line class="grid" x1="58" y1="161.2" x2="626" y2="161.2"/><text x="52" y="165.2" text-anchor="end">10</text><line class="grid" x1="58" y1="137.8" x2="626" y2="137.8"/><text x="52" y="141.8" text-anchor="end">30</text><line class="grid" x1="58" y1="112.2" x2="626" y2="112.2"/><text x="52" y="116.2" text-anchor="end">100</text><line class="grid" x1="58" y1="88.7" x2="626" y2="88.7"/><text x="52" y="92.7" text-anchor="end">300</text><line class="grid" x1="58" y1="63.1" x2="626" y2="63.1"/><text x="52" y="67.1" text-anchor="end">1000</text><line class="grid" x1="58" y1="39.7" x2="626" y2="39.7"/><text x="52" y="43.7" text-anchor="end">3000</text><line class="grid" x1="58" y1="14.0" x2="626" y2="14.0"/><text x="52" y="18.0" text-anchor="end">10000</text><text x="342.0" y="214" text-anchor="middle">DEC (the knob&#x27;s value; Inf has no decay)</text><text x="14" y="95.0" text-anchor="middle" transform="rotate(-90 14 95.0)">time constant (ms)</text><polyline class="s0" points="58.0,176.0 62.5,174.7 67.0,173.4 71.5,172.1 76.0,170.9 80.5,169.6 85.0,168.3 89.6,167.0 94.1,165.7 98.6,164.4 103.1,163.1 107.6,161.9 112.1,160.6 116.6,159.3 121.1,158.0 125.6,156.7 130.1,155.4 134.6,154.1 139.1,152.9 143.7,151.6 148.2,150.3 152.7,149.0 157.2,147.7 161.7,146.4 166.2,145.1 170.7,143.9 175.2,142.6 179.7,141.3 184.2,140.0 188.7,138.7 193.2,137.4 197.7,136.1 202.3,134.9 206.8,133.6 211.3,132.3 215.8,131.0 220.3,129.7 224.8,128.4 229.3,127.1 233.8,125.9 238.3,124.6 242.8,123.3 247.3,122.0 251.8,120.7 256.3,119.4 260.9,118.1 265.4,116.9 269.9,115.6 274.4,114.3 278.9,113.0 283.4,111.7 287.9,110.4 292.4,109.1 296.9,107.9 301.4,106.6 305.9,105.3 310.4,104.0 315.0,102.7 319.5,101.4 324.0,100.1 328.5,98.9 333.0,97.6 337.5,96.3 342.0,95.0 346.5,93.7 351.0,92.4 355.5,91.1 360.0,89.9 364.5,88.6 369.0,87.3 373.6,86.0 378.1,84.7 382.6,83.4 387.1,82.1 391.6,80.9 396.1,79.6 400.6,78.3 405.1,77.0 409.6,75.7 414.1,74.4 418.6,73.1 423.1,71.9 427.7,70.6 432.2,69.3 436.7,68.0 441.2,66.7 445.7,65.4 450.2,64.1 454.7,62.9 459.2,61.6 463.7,60.3 468.2,59.0 472.7,57.7 477.2,56.4 481.7,55.1 486.3,53.9 490.8,52.6 495.3,51.3 499.8,50.0 504.3,48.7 508.8,47.4 513.3,46.1 517.8,44.9 522.3,43.6 526.8,42.3 531.3,41.0 535.8,39.7 540.3,38.4 544.9,37.1 549.4,35.9 553.9,34.6 558.4,33.3 562.9,32.0 567.4,30.7 571.9,29.4 576.4,28.1 580.9,26.9 585.4,25.6 589.9,24.3 594.4,23.0 599.0,21.7 603.5,20.4 608.0,19.1 612.5,17.9 617.0,16.6 621.5,15.3 626.0,14.0"/></svg><!-- /dnfw:tech --></div>
 
   <h2>Page 5: FOLD, the shaper, WARP and FM</h2>
-  <p>Five of page 5's controls change the sound: FOLD, the shaper's TYPE with AMT, WARP and FM. NPOS,
-  P1 and P2 do not change the sound yet. At 0, each control skips its code, so a sound with page 5 at 0
+  <p>Page 5's controls change the sound, all but NPOS: FOLD, the shaper's TYPE with AMT, P1 and P2,
+  WARP and FM. NPOS does not change the sound yet. At 0, each control skips its code, so a sound with page 5 at 0
   plays exactly as before.</p>
   <p><strong>FOLD</strong> folds the mix of the two oscillators, after the shaper and before the sub
   and the noise. The fold point is the peak of one oscillator at LEV 100 and TRIM &minus;11 dB. FOLD
