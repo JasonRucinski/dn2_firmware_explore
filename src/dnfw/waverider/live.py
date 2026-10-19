@@ -150,9 +150,10 @@ SYNC_NOTES = (("4 bars D", 1, 2), ("4 bars", 3, 1), ("2 bars D", 1, 3), ("4 bars
               ("1/32 D", 1, 9), ("1/16 T", 9, 6), ("1/32", 3, 8), ("1/32 T", 9, 7))
 # The song position (sync.c) is a u32 split over two frame words the stock ColdFire copies
 # from parameters and the stock DSP never reads (docs/waverider-frame-words.md): the low
-# half at 0xa18 (FX setup k 40), the high half at 0x9a8 (track 15's slot offset 0x50, k 65).
+# half at 0xa18 (FX setup k 40), the high half at 0x2a (the header after the trig masks: no
+# voice's slot, stock never writes it). Until 0.3.4 it was 0x9a8, voice 16's noise DEC (word 57).
 SYNC_POSITION_LO = 0xA18          # frame bytes 0xa18..0xa19
-SYNC_POSITION_HI = 0x9A8          # frame bytes 0x9a8..0x9a9
+SYNC_POSITION_HI = 0x2A           # frame bytes 0x2a..0x2b
 SYNC_TEMPO = 0xD8                  # frame bytes: BPM x 120
 # a block's phase step per unit of tempo x multiplier: 2^32 / (SYNC_LOOP x 2,700,000),
 # where a sixteenth is 2,700,000 / tempo blocks (1500 a second)

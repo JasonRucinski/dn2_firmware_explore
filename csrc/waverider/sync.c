@@ -22,7 +22,9 @@
  *   continuous where the position wraps. It goes in two frame words the stock ColdFire
  *   copies from parameters and the stock DSP never reads (docs/waverider-frame-words.md,
  *   a census over every machine type and filter): the low half at byte 0xa18 (FX setup
- *   k 40) and the high half at byte 0x9a8 (track 15's slot offset 0x50, k 65). Each is a
+ *   k 40) and the high half at byte 0x2a, in the header after the trig masks: no voice's
+ *   slot, and stock never writes it. Until 0.3.4 the high half was at 0x9a8, which is
+ *   voice 16's noise DEC (word 57): the noise on voice 16 died at its attack. Each is a
  *   big-endian 16-bit word, as the frame carries them.
  *
  * A chunk the loader sends in place of a frame carries no position: the DSP keeps the
@@ -34,7 +36,7 @@
 #define STEP_NEXT   ((volatile const u8 *)0x446483E0u)
 #define TEMPO       0xD8                  /* frame bytes: BPM x 120, u16 */
 #define POSITION_LO 0xA18                 /* frame bytes 0xa18..0xa19: the low half */
-#define POSITION_HI 0x9A8                 /* frame bytes 0x9a8..0x9a9: the high half */
+#define POSITION_HI 0x2A                  /* frame bytes 0x2a..0x2b: the high half */
 #define SIXTEENTH   2700000u              /* tempo words summed over a sixteenth: 22500 x 120 */
 #define SYNC_LOOP   384u                  /* sixteenths in 2^32 of the position */
 #define STOP_FRAMES 8

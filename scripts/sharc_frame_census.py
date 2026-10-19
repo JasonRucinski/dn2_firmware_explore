@@ -39,6 +39,7 @@ FX_BLOCK = (0x9FA, 0xA54)           # the global FX block
 OWNERS = (0xA5A, 0xA7A)             # owner track of each row
 COPY_LOOPS = {0x1C287D, 0x1C3030}   # the two unpack copy loops (naturarum T6.0 1.2)
 RANDOM_FROM = 0x34                  # words below carry the structural header
+OWNERS = 0xA5A                      # row r's owning track at +2r: the voice-mix loops' I0 = 0x258f68 + 0x100 x owner (naturarum T6.0c 4.1)
 ALIAS = 0x28000000                  # the memory layer's alias of DM (sharcldr.SW_ALIAS_BASE)
 
 
@@ -138,6 +139,14 @@ def run_diff(a) -> int:
                     for arr, val in ((FR.MACHINE, a.machine), (FR.FILTER, flt)):
                         o = FR.header_offset(arr, t)
                         raw[o:o + 2] = int(val).to_bytes(2, "little")
+                wild = [(r, int.from_bytes(raw[OWNERS + 2 * r:OWNERS + 2 * r + 2], "little")) for r in range(16)]
+                wild = [(r, v) for r, v in wild if v > 15]
+                if a.valid_owners:                      # a real frame: row r's owner is a track, 0..15
+                    for r in range(16):
+                        raw[OWNERS + 2 * r:OWNERS + 2 * r + 2] = (r).to_bytes(2, "little")
+                elif any(0x25 <= v <= 0x3F for _, v in wild):
+                    print(f"  block {b}: owners that put a mix row on the frame image: "
+                          + ", ".join(f"row {r} {v:#x}" for r, v in wild if 0x25 <= v <= 0x3F), flush=True)
                 var = bytearray(raw)
                 for w in words:
                     v = int.from_bytes(var[w:w + 2], "little") ^ 0xFFFF
@@ -479,6 +488,8 @@ def main() -> int:
     df.add_argument("--blocks", type=int, default=4)
     df.add_argument("--seed", type=int, default=1)
     df.add_argument("--words", default="0x2a,0xa18", help="frame byte offsets to flip")
+    df.add_argument("--valid-owners", action="store_true",
+                    help="set row r's owner word to r, as in a real frame (random owners send the mix loops' pointers wild)")
     rpl = sub.add_parser("replay")
     rpl.add_argument("--frames", nargs="+", required=True, help="glob(s) of big-endian frame files")
     rpl.add_argument("--blocks", type=int, default=3)
