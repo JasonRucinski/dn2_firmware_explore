@@ -110,6 +110,8 @@ HISTORY: dict[str, tuple[Release, ...]] = {
             "use the "
             "numbers each knob place has on the other machines: CC 40 to 77 and NRPN 1:73 to 1:104. "
             "Page 5 uses CC 12, 15, 35, 36, 37, 83, 93 and 119, and NRPN 1:112 to 1:119.",
+            "TYPE on [page 5](#page-5) has a fourth value, Formant: AMT picks the vowel, P1 moves the "
+            "formants up and P2 sets the dry part.",
             "When you turn a Waverider knob with MIDI out on, the knob sends the same number.",
             "A CC or NRPN sent to a track that is not on the screen now keeps that track's own limits.",
         )),

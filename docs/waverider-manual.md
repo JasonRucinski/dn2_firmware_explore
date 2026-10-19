@@ -101,8 +101,8 @@ The middle of the page shows the sound of the track as a scope.
 
 ## Page 5: Shape
 
-FOLD, WARP, FM, TYPE and AMT change the sound. NPOS, P1 and P2 are for a future version: you can set
-and p-lock them, but they do not change the sound yet.
+FOLD, WARP, FM, TYPE, AMT, P1 and P2 change the sound. NPOS is for a future version: you can set and
+p-lock it, but it does not change the sound yet.
 
 | Knob | Control | Function |
 |---|---|---|
@@ -110,14 +110,16 @@ and p-lock them, but they do not change the sound yet.
 | B | WARP | Bends the phase of the two oscillators. The first half of each wave plays in a shorter part of the cycle, and the second half in a longer part. 0 is off. A higher value gives a brighter sound |
 | C | FM | Osc 2 changes the phase of osc 1 (frequency modulation). 0 is off. A higher value gives more overtones and a brighter sound |
 | D | NPOS | No effect yet |
-| E | TYPE | The shaper: Off, Ring or AM. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1 |
-| F | AMT | How much of the shaper you hear: 0 is none, 127 is the shaper only |
-| G | P1 | No effect yet |
-| H | P2 | No effect yet |
+| E | TYPE | The shaper: Off, Ring, AM or Formant. Ring multiplies the two oscillators. AM uses osc 2 to change the level of osc 1. Formant filters the mix of the two oscillators so that it sounds like a voice that sings a vowel |
+| F | AMT | With Ring and AM: how much of the shaper you hear, 0 is none and 127 is the shaper only. With Formant: the vowel, from A at 0 through E, I and O to U at 127 |
+| G | P1 | With Formant: moves all the formants up, from no shift at 0 to one octave at 127. No effect with the other types |
+| H | P2 | With Formant: the dry part. At 0 you hear only the filtered sound, and at 127 only the dry sound. No effect with the other types |
 
 - **Ring and AM need osc 2.** On page 2, set LEV2 above 0. With osc 2 off, Ring makes the sound
   quieter and AM halves it.
 - **AMT starts at 64** on a new sound. With TYPE at Off, AMT changes nothing.
+- **Formant filters the oscillators only.** The sub-oscillator and the noise are added after the
+  filter. Only AMT can take an LFO, so an LFO on AMT sweeps the vowels.
 - **FOLD follows the level.** A higher LEV1, LEV2 or TRIM gives more folds.
 - **FM needs osc 2.** On page 2, set LEV2 above 0. A higher LEV2 gives more FM. With osc 2 off, FM
   changes nothing.
@@ -235,13 +237,12 @@ To put a saved table back later, with Waverider on the unit:
 
 ## Known limits in this alpha
 
-- NPOS, P1 and P2 on page 5 do not change the sound yet.
+- NPOS on page 5 does not change the sound yet.
 - A click may occur if the pool loads again while a note plays on a pool table. Nobody has measured
   this on the unit. If you hear a click, tell us.
 - We did not measure 4096-point tables on the unit.
 - In a sound from a build before page 5, FOLD, WARP, FM and NPOS show 64. FOLD, WARP and FM then
   change the sound. To get the sound from before, set them to 0.
-- With a 16-note chord, both oscillators, the sub-oscillator and noise, the DSP load is about 65 %.
-  With FOLD, AM, WARP and FM on all 16 voices too, we estimate about 70 %. We did not measure this on
-  the unit yet.
+- With a 16-note chord and page 5 on all 16 voices, the DSP worked at most 76.3 % of a frame on the
+  unit. No frame was missed in 10 minutes (2026-10-19).
   Refer to `docs/waverider-performance.md`.
