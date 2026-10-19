@@ -1,6 +1,6 @@
 """What page 5 costs the DSP, in digikit's SHARC runner: instructions.
 
-    python scripts/sharc_waverider_p5_cost.py [--digikit DIR] [--blocks 4]
+    python scripts/sharc_waverider_p5_cost.py [--digikit DIR] [--blocks 4] [--note 60] [--out p5_cost.json]
 
 Track 0 is Waverider (both oscillators on, a note at block 1), tracks 1-15 MIDI. Each
 case differs from the control (page 5 all 0) in one control: FOLD, TYPE Ring or AM with AMT,
@@ -41,6 +41,8 @@ def main(argv=None) -> int:
     ap.add_argument("--image", type=pathlib.Path,
                     default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     ap.add_argument("--blocks", type=int, default=4)
+    ap.add_argument("--note", type=int, default=60, help="the note every case plays (taming acts from about G4 up)")
+    ap.add_argument("--out", default="p5_cost.json")
     a = ap.parse_args(argv)
     dk = g.m1.Digikit(a.digikit)
     g.fx.bind(str(a.digikit / "tools"))
@@ -67,7 +69,7 @@ def main(argv=None) -> int:
             over = {g.WAV1: 0x4000, g.LEV2: 0x6400, **words}
 
             def fb(b, over=over):
-                return g.base_frame(sound, machines, trigger=(b == 1), overrides=over).to_bytes()
+                return g.base_frame(sound, machines, trigger=(b == 1), overrides=over, note=a.note << 8).to_bytes()
 
             run = g.run_blocks(init, fb, a.blocks)
             got[name] = run["instructions"] if run["ok"] else None

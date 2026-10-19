@@ -19,6 +19,14 @@
 // Each loop reads PH through I3, kept at DM 0x2e601c and put back after the loop (I3 is the
 // type-5 loop's pointer). Clobbers what the readers do (R0-R15, I0, I1, I2, I4, ASTAT).
 //
+// wr_ph_tame: page5.asm's wr_p5_phase calls it once a reader call, with R0 = WARP's v, F6/F7 =
+//   (k1, k2), R11 = inc, R5 = 2 for osc 1 under FM (else 0), R9 = t, F12 = FM's c and F3 = 1.0.
+//   Taming (dnfw.waverider.live.tame): t = clamp(A - B f h, 0, 1)^3, f = inc / 2^32. WARP (v > 0):
+//   h = k1, kept untamed at DM 0x2e6024 for the level; below t = 1, (k1, k2) are read at v t,
+//   between table entries i = TRUNC (v t) and i + 1 (live.tame_warp). FM
+//   (R5 > 0): h = 1 + FM x 2 pi / 0x7f00 (DM 0x2e6010), f from max(inc, inc2), c to t c.
+//   Clobbers R1, R2, R4, I0.
+//
 // PLACEMENT IS FIXED at PM sw 0x173480 (DM 0x2e6900): the absolute jumps below are written
 // for it by scripts/sharc_resolve_jumps.py.
 
@@ -323,5 +331,72 @@ wr_ph_plast.:
       R0 = R0 - R0;
       DM(4, I4) = R0;                   // 0: the count word as the software loop left it
       JUMP 0x1735f7;                         // -> wr_ph_done.
+
+.GLOBAL wr_ph_tame.;
+wr_ph_tame.:
+      R4 = R4 - R4;
+      COMP(R0, R4);
+      IF EQ JUMP 0x17371b;                   // -> wr_ph_tame_fm. (no WARP)
+      DM(0x2e6024) = R6;                // the untamed k1, for the level (wr_p5_sel_warp)
+      R4 = -32;
+      F1 = FLOAT R11 BY R4;             // f = inc / 2^32
+      F1 = F1 * F6;                     // f h, h = k1
+      CALL 0x17373e;                         // -> wr_ph_tame_t.
+      COMP(F2, F3);
+      IF GE JUMP 0x17371b;                   // -> wr_ph_tame_fm. (t = 1: WARP as it is)
+      R4 = R4 - R4;
+      F1 = FLOAT R0 BY R4;              // v
+      F1 = F1 * F2;                     // x = v t
+      R2 = TRUNC F1 BY R4;              // i (below 127: t < 1)
+      F7 = FLOAT R2 BY R4;
+      F1 = F1 - F7;                     // f = x - i
+      R4 = 0x2e6500;                    // WARP's table (a load between: no single-operand compute after a float one)
+      R2 = LSHIFT R2 BY 3;              // 8 bytes an entry
+      R2 = R2 + R4;
+      I0 = R2;
+      R6 = DM(0, I0);                   // k1 at i
+      R4 = DM(2, I0);                   // k1 at i + 1
+      F4 = F4 - F6;
+      F4 = F4 * F1;
+      F6 = F6 + F4;
+      R7 = DM(1, I0);                   // k2 at i
+      R4 = DM(3, I0);                   // k2 at i + 1
+      F4 = F4 - F7;
+      F4 = F4 * F1;
+      F7 = F7 + F4;
+.GLOBAL wr_ph_tame_fm.;
+wr_ph_tame_fm.:
+      R4 = R4 - R4;
+      COMP(R5, R4);
+      IF EQ RTS;                        // (not osc 1 under FM)
+      R1 = LSHIFT R9 BY 5;
+      R4 = 0x2de808;                    // osc 2's reader block, word 2: inc2
+      R1 = R1 + R4;
+      I0 = R1;
+      R2 = DM(0, I0);
+      R1 = MAX(R2, R11);                // the faster oscillator
+      R4 = -32;
+      F1 = FLOAT R1 BY R4;              // f
+      R2 = DM(0x2e6010);                // FM x 2 pi / 0x7f00
+      F2 = F2 + F3;                     // h
+      F1 = F1 * F2;
+      CALL 0x17373e;                         // -> wr_ph_tame_t.
+      F12 = F12 * F2;                   // t c
+      R4 = R4 - R4;                     // (wr_p5_phase's next compute is single-operand: not a float result before it)
+      RTS;
+
+// F1 = f h -> F2 = t = clamp(A - B f h, 0, 1)^3 (TAME_ORDER 8: A = f32(8/7), B = f32(16/7)). Clobbers R1, R4.
+.GLOBAL wr_ph_tame_t.;
+wr_ph_tame_t.:
+      R4 = 0x40124925;                  // B
+      F1 = F1 * F4;
+      R4 = 0x3f924925;                  // A
+      F2 = F4 - F1;
+      R4 = R4 - R4;
+      F2 = MAX(F2, F4);
+      F2 = MIN(F2, F3);
+      F1 = F2 * F2;
+      F2 = F1 * F2;
+      RTS;
 .wr_ph..end:
       .type wr_ph_read.,STT_FUNC;

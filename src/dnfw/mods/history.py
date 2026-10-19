@@ -95,6 +95,10 @@ HISTORY: dict[str, tuple[Release, ...]] = {
     "transients": PUBLISHED,
     "usbprobe": UNPUBLISHED,
     "waverider": (
+        Release("0.3.5", "2026-10-19", (
+            "WARP and FM on [page 5](#page-5) get softer on high notes, so they add fewer harsh tones there. "
+            "At 127, WARP starts to get softer at about D#4 and FM at about G#4. Lower notes sound as before.",
+        )),
         Release("0.3.4", "2026-10-18", (
             "The noise on [page 3](#page-3) now plays on voice 16 too. Before, it faded out right after each note "
             "started when the sound played on voice 16.",
