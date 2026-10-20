@@ -69,7 +69,21 @@
     };
   }
 
-  const api = { TOOLS, palette, drag };
+  /** The size of one cell of a drawing grid `cells` wide in a container `room` CSS pixels wide:
+   *  whole device pixels so every cell is the same square, at most `max` CSS pixels, at least
+   *  one device pixel. Returns {device, css, width} (width: the grid's CSS width). */
+  function fitCell(room, cells, { max = 24, dpr = 1 } = {}) {
+    const device = Math.max(1, Math.min(Math.floor(max * dpr), Math.floor((room * dpr) / cells)));
+    return { device, css: device / dpr, width: (device * cells) / dpr };
+  }
+
+  /** The content width of an element: its width without padding. */
+  function contentWidth(el) {
+    const s = el.ownerDocument.defaultView.getComputedStyle(el);
+    return el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+  }
+
+  const api = { TOOLS, palette, drag, fitCell, contentWidth };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphTools = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -19,12 +19,14 @@
   :root {
     --bg: #f6f5f2; --panel: #fff; --ink: #16181c; --ink-soft: #565b66;
     --rule: #e2e0da; --accent: #b4530a; --off: #ecebe7;
+    --cell-off: #dcdad3; --grid: rgba(255, 255, 255, .9); --grid-major: #fff;
     font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0c0d0f; --panel: #141619; --ink: #e8e6e1; --ink-soft: #9aa0ab;
       --rule: #25282d; --accent: #ff9d3c; --off: #1d2024;
+      --cell-off: #1d2024; --grid: rgba(255, 255, 255, .2); --grid-major: rgba(255, 255, 255, .45);
     }
   }
   * { box-sizing: border-box; }
@@ -45,7 +47,7 @@
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 1.4rem; align-items: start; }
   @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
   section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; min-width: 0; }
-  #paint { display: block; touch-action: none; cursor: crosshair; max-width: 100%; }
+  #paint { display: block; touch-action: none; cursor: crosshair; height: auto; image-rendering: pixelated; }
   .strip { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .4rem; }
   .strip button { flex: none; display: grid; justify-items: center; gap: .15rem; padding: .3rem;
                   font-size: .7rem; font-family: ui-monospace, Consolas, monospace; }
@@ -282,17 +284,19 @@ function drawFrame(canvas, frame, scale, ink, bg) {
   frame.forEach((row, y) => { for (let x = 0; x < w; x++) if (row[x] === "#") c.fillRect(x * scale, y * scale, scale, scale); });
 }
 
+/** The grid fills the width of its section; a cell is that width over the frame width, in
+ *  whole device pixels, and at most 24 CSS pixels so a small glyph does not grow huge. */
 function cellSize() {
-  const a = anim();
-  const room = Math.min($("paint").parentElement.clientWidth - 2, 560);
-  return Math.max(2, Math.min(22, Math.floor(room / a.width)));
+  const room = GlyphTools.contentWidth($("paint").parentElement);
+  return GlyphTools.fitCell(room, anim().width, { max: 24, dpr: devicePixelRatio || 1 });
 }
 
 function drawPaint() {
-  const a = anim(), f = frames()[cur], s = cellSize(), canvas = $("paint");
+  const a = anim(), f = frames()[cur], fit = cellSize(), s = fit.device, canvas = $("paint");
   canvas.width = a.width * s; canvas.height = a.height * s;
+  canvas.style.width = `${fit.width}px`;
   const c = canvas.getContext("2d");
-  c.fillStyle = css("--off"); c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
   const prev = $("onion").checked && cur > 0 ? frames()[cur - 1] : null;
   for (let y = 0; y < a.height; y++) {
     for (let x = 0; x < a.width; x++) {
@@ -303,12 +307,16 @@ function drawPaint() {
     }
   }
   c.globalAlpha = 1;
-  if (s >= 6) {
-    c.strokeStyle = css("--bg"); c.lineWidth = 1; c.beginPath();
-    for (let x = 1; x < a.width; x++) { c.moveTo(x * s + .5, 0); c.lineTo(x * s + .5, canvas.height); }
-    for (let y = 1; y < a.height; y++) { c.moveTo(0, y * s + .5); c.lineTo(canvas.width, y * s + .5); }
+  // A white grid shows each pixel: a line between every cell when a cell is 3 device pixels
+  // or more, and a brighter line every 8 cells at any size.
+  const lines = (every, colour) => {
+    c.strokeStyle = colour; c.lineWidth = 1; c.beginPath();
+    for (let x = every; x < a.width; x += every) { c.moveTo(x * s + .5, 0); c.lineTo(x * s + .5, canvas.height); }
+    for (let y = every; y < a.height; y += every) { c.moveTo(0, y * s + .5); c.lineTo(canvas.width, y * s + .5); }
     c.stroke();
-  }
+  };
+  if (s >= 3) lines(1, css("--grid"));
+  lines(8, css("--grid-major"));
   $("frame-title").textContent = `Frame ${cur + 1} of ${frames().length} (${a.width} x ${a.height})`;
   if (document.activeElement !== $("rows")) $("rows").value = f.join("\n");
   $("rows").style.height = `${Math.min(a.height, 32) * 1.15 + 1.5}em`;
@@ -796,7 +804,12 @@ async function start() {
   fromHash();
 }
 
-addEventListener("resize", () => name && drawPaint());
+// the grid follows the width of its section: window resizes, and the layout changing
+let paintRoom = 0;
+new ResizeObserver(() => {
+  const room = GlyphTools.contentWidth($("paint").parentElement);
+  if (name && room !== paintRoom) { paintRoom = room; drawPaint(); }
+}).observe($("paint").parentElement);
 drawPick();
 const ready = start();
 </script>

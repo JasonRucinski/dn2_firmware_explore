@@ -15,6 +15,7 @@
   :root {
     --bg: #f6f5f2; --panel: #fff; --ink: #16181c; --ink-soft: #565b66;
     --rule: #e2e0da; --accent: #b4530a; --off: #ecebe7;
+    --cell-off: #dcdad3; --grid: rgba(255, 255, 255, .9); --grid-major: #fff;
     --dark-bg: #0c0d0f; --dark-ink: #e8e6e1;
     font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
   }
@@ -22,6 +23,7 @@
     :root:not([data-theme="light"]) {
       --bg: #0c0d0f; --panel: #141619; --ink: #e8e6e1; --ink-soft: #9aa0ab;
       --rule: #25282d; --accent: #ff9d3c; --off: #1d2024;
+      --cell-off: #1d2024; --grid: rgba(255, 255, 255, .2); --grid-major: rgba(255, 255, 255, .45);
     }
   }
   * { box-sizing: border-box; }
@@ -40,11 +42,13 @@
                  font-size: .72rem; font-family: ui-monospace, Consolas, monospace; }
   #list button.on { outline: 2px solid var(--accent); }
   #list button.dirty::after { content: "edited"; color: var(--accent); }
-  #grid { display: grid; grid-template-columns: repeat(16, 22px); gap: 1px; background: var(--rule);
-          border: 1px solid var(--rule); user-select: none; touch-action: none; width: max-content; }
-  #grid div { width: 22px; height: 22px; background: var(--off); }
+  /* The grid fills its column, at most 28 px a cell; the white gaps between cells show each pixel. */
+  #grid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; background: var(--grid);
+          border: 1px solid var(--grid-major); user-select: none; touch-action: none;
+          width: 100%; max-width: calc(16 * 28px + 17px); }
+  #grid div { aspect-ratio: 1; background: var(--cell-off); }
   #grid div.lit { background: var(--ink); }
-  .edit { display: grid; gap: .7rem; }
+  .edit { display: grid; gap: .7rem; flex: 1 1 340px; min-width: 0; }
   .previews { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
   .chip { padding: 8px; border-radius: 6px; display: flex; gap: 10px; align-items: center; }
   .chip.light { background: #f6f5f2; color: #16181c; }

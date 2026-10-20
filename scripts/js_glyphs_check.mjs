@@ -152,3 +152,17 @@ ok("with motion off it shows the still glyph", same(lit(still.children[0]), want
   ok("another seed spreads the flips differently",
      J(G.morph(A, B, 3, { spread: "seeded", seed: 1 })) !== J(G.morph(A, B, 3, { spread: "seeded", seed: 2 })));
 }
+
+// The drawing grid's cell: the container's width over the frame's, in whole device pixels, capped.
+{
+  const ctx = {};
+  vm.createContext(ctx);
+  for (const f of ["tools/glyph_anim_core.js", "tools/glyph_tools.js"]) {
+    vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
+  }
+  const fit = ctx.GlyphTools.fitCell;
+  const a = fit(800, 128), b = fit(340, 128, { dpr: 3 }), c = fit(1000, 17), d = fit(340, 128);
+  ok("a 128-wide frame fills the width in whole device pixels; a 17-wide one stops at 24 px a cell",
+     a.device === 6 && a.width === 768 && b.device === 7 && b.width <= 340 && b.width > 340 - 128 / 3
+     && c.css === 24 && c.width === 408 && d.device === 2 && d.width === 256);
+}
