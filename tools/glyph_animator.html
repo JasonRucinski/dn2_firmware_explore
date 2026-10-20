@@ -1,0 +1,474 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glyph Animator</title>
+<!--
+  Draw animated 1-bit glyphs: a list of frames that a knob value picks from.
+
+  Open this file in Chrome or Edge. Press "Open file" and pick
+  site/js/mods/glyph-anims.js, or start a new animation. "Save" writes the file
+  in place; other browsers get a download. The firmware format (columns of
+  32-bit big-endian words, top row in the most significant bit) goes out as a
+  .bin file or hex text, and comes back in the same way.
+  Local tool: not part of the published site. The model is glyph_anim_core.js.
+-->
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #fff; --ink: #16181c; --ink-soft: #565b66;
+    --rule: #e2e0da; --accent: #b4530a; --off: #ecebe7;
+    font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c0d0f; --panel: #141619; --ink: #e8e6e1; --ink-soft: #9aa0ab;
+      --rule: #25282d; --accent: #ff9d3c; --off: #1d2024;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); }
+  h1 { font-size: 1.3rem; margin: 0 0 .3rem; }
+  h2 { font-size: 1rem; margin: 0 0 .5rem; }
+  a { color: var(--accent); }
+  button, select, input { font: inherit; }
+  button { padding: .3rem .7rem; border: 1px solid var(--rule); border-radius: 6px;
+           background: var(--panel); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  button:disabled { opacity: .45; cursor: default; }
+  select, input[type=number], input[type=text] { padding: .25rem .4rem; border: 1px solid var(--rule);
+           border-radius: 6px; background: var(--panel); color: var(--ink); }
+  input[type=number] { width: 4.5rem; }
+  .bar { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; margin: .5rem 0; }
+  .muted { color: var(--ink-soft); font-size: .9rem; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 1.4rem; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; min-width: 0; }
+  #paint { display: block; touch-action: none; cursor: crosshair; max-width: 100%; }
+  .strip { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .4rem; }
+  .strip button { flex: none; display: grid; justify-items: center; gap: .15rem; padding: .3rem;
+                  font-size: .7rem; font-family: ui-monospace, Consolas, monospace; }
+  .strip button.on { outline: 2px solid var(--accent); }
+  canvas.px { image-rendering: pixelated; display: block; max-width: 100%; }
+  .chips { display: grid; gap: .6rem; }
+  .chip { padding: 8px; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; overflow: hidden; }
+  .chip.light { background: #f6f5f2; }
+  .chip.dark { background: #0c0d0f; }
+  #knob { width: 100%; }
+  #readout { font-family: ui-monospace, Consolas, monospace; font-size: .9rem; }
+  textarea { width: 100%; height: 7rem; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+             background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; }
+  label { display: inline-flex; gap: .3rem; align-items: center; }
+</style>
+
+<h1>Glyph Animator</h1>
+<p class="muted">Draw a glyph as a list of frames. The knob picks the frame, as on the unit.
+  For still glyphs, use the <a href="glyph_editor.html">Glyph Editor</a>.</p>
+
+<div class="bar">
+  <button id="open" class="primary">Open file</button>
+  <button id="save" disabled>Save</button>
+  <span id="status" class="muted">Open site/js/mods/glyph-anims.js, or make a new animation.</span>
+</div>
+
+<section>
+  <h2>Animation</h2>
+  <div class="bar">
+    <select id="pick" aria-label="Animation"></select>
+    <button id="del-anim">Delete</button>
+  </div>
+  <div class="bar">
+    <input id="new-name" type="text" placeholder="name" size="10" aria-label="Name of the new animation">
+    <select id="preset" aria-label="Frame size">
+      <option value="17x17">17 x 17</option><option value="19x17">19 x 17</option>
+      <option value="11x11">11 x 11</option><option value="128x64">128 x 64</option>
+      <option value="custom">Other size</option>
+    </select>
+    <label>W <input id="new-w" type="number" min="1" max="128" value="17"></label>
+    <label>H <input id="new-h" type="number" min="1" max="64" value="17"></label>
+    <label>Frames <input id="new-n" type="number" min="1" max="128" value="13"></label>
+    <button id="create">New</button>
+  </div>
+</section>
+
+<div class="layout" id="work" hidden>
+  <div>
+    <section>
+      <h2 id="frame-title">Frame</h2>
+      <canvas id="paint"></canvas>
+      <div class="bar">
+        <button data-op="up">Up</button><button data-op="down">Down</button>
+        <button data-op="left">Left</button><button data-op="right">Right</button>
+        <button data-op="flipx">Mirror</button><button data-op="flipy">Flip</button>
+        <button data-op="invert">Invert</button><button data-op="clear">Clear</button>
+        <button id="undo">Undo</button>
+        <label><input id="onion" type="checkbox" checked> Onion skin</label>
+      </div>
+      <p class="muted">Click or drag to paint. The first pixel you touch sets the colour of the stroke.
+        Onion skin shows the previous frame faintly.</p>
+    </section>
+
+    <section>
+      <h2>Frames</h2>
+      <div class="strip" id="strip"></div>
+      <div class="bar">
+        <button id="f-add">Add</button><button id="f-dup">Duplicate</button>
+        <button id="f-del">Delete</button><button id="f-left">Move left</button>
+        <button id="f-right">Move right</button><button id="f-prev">Copy previous</button>
+      </div>
+      <div class="bar">
+        <label>From <input id="tw-from" type="number" min="1" value="1"></label>
+        <label>to <input id="tw-to" type="number" min="1" value="2"></label>
+        <button id="tween">Dissolve between</button>
+      </div>
+      <p class="muted">Dissolve replaces the frames between the two you give with steps from one to the other.</p>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <h2>Knob</h2>
+      <input id="knob" type="range" min="0" max="127" value="0" aria-label="Knob value">
+      <div class="bar">
+        <span id="readout"></span>
+        <select id="range" aria-label="Range">
+          <option value="0x7f00">range 0x7f00</option><option value="0x8000">range 0x8000</option>
+        </select>
+      </div>
+      <div class="chips">
+        <div class="chip light" id="pv-light"></div>
+        <div class="chip dark" id="pv-dark"></div>
+      </div>
+      <div class="bar">
+        <button id="play">Play</button>
+        <label>Speed <input id="fps" type="number" min="1" max="60" value="12"> frames/s</label>
+      </div>
+      <p class="muted">The knob shows the frame the unit picks: round(value x (frames - 1) / range).
+        Play shows the frames in order.</p>
+    </section>
+
+    <section>
+      <h2>Firmware format</h2>
+      <div class="bar">
+        <button id="bin-out">Download .bin</button><button id="hex-out">Show hex</button>
+        <button id="bin-in">Import .bin</button><button id="hex-in">Import hex</button>
+      </div>
+      <textarea id="hex" spellcheck="false" aria-label="Hex words"></textarea>
+      <p class="muted">Each frame is its columns, left to right. Each column is one 32-bit
+        big-endian word, with the top row in the most significant bit. A frame taller than
+        32 rows uses more words per column. Import uses the size of this animation.</p>
+      <div class="bar">
+        <button id="json-out">Download JSON</button><button id="json-in">Import JSON</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="glyph_anim_core.js"></script>
+<script>
+const G = GlyphAnim;
+const $ = (id) => document.getElementById(id);
+let handle = null, anims = {}, savedText = "", name = null, cur = 0, undo = [], timer = null;
+
+const status = (t) => { $("status").textContent = t; };
+const anim = () => anims[name];
+const frames = () => anim().frames;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function serialiseAll() { return G.serialise(anims); }
+
+function remember() {
+  undo.push(JSON.stringify({ frames: frames(), cur }));
+  if (undo.length > 200) undo.shift();
+}
+
+function changed() {
+  $("save").disabled = serialiseAll() === savedText;
+  drawAll();
+}
+
+/* ---- drawing ---- */
+
+function drawFrame(canvas, frame, scale, ink, bg) {
+  const h = frame.length, w = frame[0].length;
+  canvas.width = w * scale; canvas.height = h * scale;
+  const c = canvas.getContext("2d");
+  c.fillStyle = bg; c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = ink;
+  frame.forEach((row, y) => { for (let x = 0; x < w; x++) if (row[x] === "#") c.fillRect(x * scale, y * scale, scale, scale); });
+}
+
+function cellSize() {
+  const a = anim();
+  const room = Math.min($("paint").parentElement.clientWidth - 2, 560);
+  return Math.max(2, Math.min(22, Math.floor(room / a.width)));
+}
+
+function drawPaint() {
+  const a = anim(), f = frames()[cur], s = cellSize(), canvas = $("paint");
+  canvas.width = a.width * s; canvas.height = a.height * s;
+  const c = canvas.getContext("2d");
+  c.fillStyle = css("--off"); c.fillRect(0, 0, canvas.width, canvas.height);
+  const prev = $("onion").checked && cur > 0 ? frames()[cur - 1] : null;
+  for (let y = 0; y < a.height; y++) {
+    for (let x = 0; x < a.width; x++) {
+      if (f[y][x] === "#") { c.globalAlpha = 1; c.fillStyle = css("--ink"); }
+      else if (prev && prev[y][x] === "#") { c.globalAlpha = .22; c.fillStyle = css("--ink"); }
+      else continue;
+      c.fillRect(x * s, y * s, s, s);
+    }
+  }
+  c.globalAlpha = 1;
+  if (s >= 6) {
+    c.strokeStyle = css("--bg"); c.lineWidth = 1; c.beginPath();
+    for (let x = 1; x < a.width; x++) { c.moveTo(x * s + .5, 0); c.lineTo(x * s + .5, canvas.height); }
+    for (let y = 1; y < a.height; y++) { c.moveTo(0, y * s + .5); c.lineTo(canvas.width, y * s + .5); }
+    c.stroke();
+  }
+  $("frame-title").textContent = `Frame ${cur + 1} of ${frames().length} (${a.width} x ${a.height})`;
+}
+
+function drawStrip() {
+  const a = anim();
+  const scale = Math.max(1, Math.min(3, Math.floor(48 / Math.max(a.width, a.height))));
+  $("strip").replaceChildren(...frames().map((f, i) => {
+    const b = document.createElement("button");
+    const cv = document.createElement("canvas");
+    cv.className = "px";
+    drawFrame(cv, f, scale, css("--ink"), css("--off"));
+    b.append(cv, String(i + 1));
+    if (i === cur) b.className = "on";
+    b.onclick = () => { cur = i; drawAll(); };
+    return b;
+  }));
+  $("strip").children[cur]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+
+function knobIndex() { return G.knobFrame(+$("knob").value, frames().length, G.RANGES[$("range").value]); }
+
+function drawPreview(index = knobIndex()) {
+  const f = frames()[index];
+  for (const [id, ink, bg] of [["pv-light", "#16181c", "#f6f5f2"], ["pv-dark", "#e8e6e1", "#0c0d0f"]]) {
+    $(id).replaceChildren(...[1, 2, 3].map((s) => {
+      const cv = document.createElement("canvas");
+      cv.className = "px";
+      drawFrame(cv, f, s, ink, bg);
+      return cv;
+    }));
+  }
+  $("readout").textContent = `knob ${$("knob").value}: frame ${knobIndex() + 1} of ${frames().length}`;
+}
+
+function drawAll() {
+  if (!name) { $("work").hidden = true; return; }
+  $("work").hidden = false;
+  cur = Math.min(cur, frames().length - 1);
+  drawPaint(); drawStrip();
+  if (!timer) drawPreview();
+}
+
+function drawPick() {
+  $("pick").replaceChildren(...Object.keys(anims).map((n) => new Option(`${n} (${anims[n].width} x ${anims[n].height}, ${anims[n].frames.length} frames)`, n)));
+  if (name) $("pick").value = name;
+}
+
+/* ---- painting ---- */
+
+let stroke = null;
+function cellAt(e) {
+  const r = $("paint").getBoundingClientRect(), a = anim();
+  const x = Math.floor((e.clientX - r.left) / r.width * a.width);
+  const y = Math.floor((e.clientY - r.top) / r.height * a.height);
+  return x >= 0 && y >= 0 && x < a.width && y < a.height ? [x, y] : null;
+}
+function setPixel(x, y, lit) {
+  const f = frames()[cur];
+  if ((f[y][x] === "#") === lit) return false;
+  frames()[cur] = f.map((r, i) => (i === y ? r.slice(0, x) + (lit ? "#" : ".") + r.slice(x + 1) : r));
+  return true;
+}
+$("paint").addEventListener("pointerdown", (e) => {
+  const p = cellAt(e);
+  if (!p) return;
+  remember();
+  stroke = frames()[cur][p[1]][p[0]] !== "#";
+  setPixel(p[0], p[1], stroke);
+  $("paint").setPointerCapture?.(e.pointerId);
+  changed();
+});
+$("paint").addEventListener("pointermove", (e) => {
+  if (stroke === null) return;
+  const p = cellAt(e);
+  if (p && setPixel(p[0], p[1], stroke)) changed();
+});
+addEventListener("pointerup", () => { stroke = null; });
+
+document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
+  remember();
+  frames()[cur] = G.OPS[b.dataset.op](frames()[cur]);
+  changed();
+}));
+$("undo").onclick = () => {
+  if (!undo.length) return;
+  const s = JSON.parse(undo.pop());
+  anim().frames = s.frames; cur = s.cur;
+  changed();
+};
+$("onion").onchange = drawPaint;
+
+/* ---- frames ---- */
+
+function editFrames(fn) {
+  remember();
+  fn(frames());
+  changed();
+}
+$("f-add").onclick = () => {
+  if (frames().length >= G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  editFrames((fs) => { fs.splice(cur + 1, 0, G.blank(anim().width, anim().height)); cur++; });
+};
+$("f-dup").onclick = () => {
+  if (frames().length >= G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  editFrames((fs) => { fs.splice(cur + 1, 0, fs[cur].slice()); cur++; });
+};
+$("f-del").onclick = () => {
+  if (frames().length <= 1) return status("An animation needs one frame at least.");
+  editFrames((fs) => { fs.splice(cur, 1); cur = Math.max(0, cur - 1); });
+};
+$("f-left").onclick = () => cur > 0 && editFrames((fs) => { [fs[cur - 1], fs[cur]] = [fs[cur], fs[cur - 1]]; cur--; });
+$("f-right").onclick = () => cur < frames().length - 1 && editFrames((fs) => { [fs[cur + 1], fs[cur]] = [fs[cur], fs[cur + 1]]; cur++; });
+$("f-prev").onclick = () => cur > 0 && editFrames((fs) => { fs[cur] = fs[cur - 1].slice(); });
+$("tween").onclick = () => {
+  const a = +$("tw-from").value - 1, b = +$("tw-to").value - 1, n = frames().length;
+  if (!(a >= 0 && b < n && b - a >= 2)) return status("Give two frames with one frame or more between them.");
+  editFrames(() => { anim().frames = G.tween(frames(), a, b); });
+  status(`Frames ${a + 2} to ${b} are now a dissolve.`);
+};
+
+/* ---- knob and playback ---- */
+
+$("knob").oninput = () => drawPreview();
+$("range").onchange = () => drawPreview();
+$("play").onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "Play"; drawPreview(); return; }
+  let i = 0;
+  $("play").textContent = "Stop";
+  const tick = () => { drawPreview(i); i = (i + 1) % frames().length; };
+  tick();
+  timer = setInterval(tick, 1000 / Math.max(1, Math.min(60, +$("fps").value || 12)));
+};
+
+/* ---- animations ---- */
+
+$("preset").onchange = () => {
+  const v = $("preset").value;
+  if (v !== "custom") { const [w, h] = v.split("x"); $("new-w").value = w; $("new-h").value = h; }
+};
+$("create").onclick = () => {
+  const n = $("new-name").value.trim(), w = +$("new-w").value, h = +$("new-h").value, count = +$("new-n").value;
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(n)) return status("Give a name of letters, digits and _.");
+  if (anims[n]) return status(`There is already an animation called ${n}.`);
+  if (!(w >= 1 && w <= G.LIMITS.width && h >= 1 && h <= G.LIMITS.height)) return status("The size is 1 to 128 wide and 1 to 64 high.");
+  if (!(count >= 1 && count <= G.LIMITS.frames)) return status("The frame count is 1 to 128.");
+  anims[n] = { width: w, height: h, frames: Array.from({ length: count }, () => G.blank(w, h)) };
+  select(n);
+  changed();
+};
+$("del-anim").onclick = () => {
+  if (!name || !confirm(`Delete the animation ${name}?`)) return;
+  delete anims[name];
+  select(Object.keys(anims)[0] ?? null);
+  changed();
+};
+$("pick").onchange = () => select($("pick").value);
+
+function select(n) {
+  name = n; cur = 0; undo = [];
+  if (timer) $("play").click();
+  drawPick(); drawAll();
+}
+
+/* ---- files ---- */
+
+function loadText(text, label = "the file") {
+  anims = text.trim().startsWith("{") ? G.fromJSON(text) : G.parse(text);
+  savedText = text.trim().startsWith("{") ? "" : text;
+  const n = Object.keys(anims).length;
+  status(n ? `${n} animation${n === 1 ? "" : "s"} loaded from ${label}.` : `No animations in ${label}.`);
+  select(Object.keys(anims)[0] ?? null);
+  changed();
+}
+
+function download(data, filename, type) {
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([data], { type })), download: filename });
+  a.click();
+}
+
+function pickFile(accept) {
+  return new Promise((done) => {
+    const input = Object.assign(document.createElement("input"), { type: "file", accept });
+    input.onchange = () => done(input.files[0]);
+    input.click();
+  });
+}
+
+$("open").onclick = async () => {
+  try {
+    if (window.showOpenFilePicker) {
+      [handle] = await showOpenFilePicker({ types: [{ description: "Animations", accept: { "text/javascript": [".js"], "application/json": [".json"] } }] });
+      loadText(await (await handle.getFile()).text(), handle.name);
+    } else {
+      const f = await pickFile(".js,.json");
+      loadText(await f.text(), f.name);
+    }
+  } catch (e) { if (e.name !== "AbortError") status(e.message); }
+};
+
+$("save").onclick = async () => {
+  const text = serialiseAll();
+  if (handle && handle.name.endsWith(".js")) {
+    const w = await handle.createWritable();
+    await w.write(text); await w.close();
+    status(`Saved ${handle.name} at ${new Date().toLocaleTimeString()}.`);
+  } else {
+    download(text, "glyph-anims.js", "text/javascript");
+    status("Downloaded glyph-anims.js. Put it in site/js/mods/.");
+  }
+  savedText = text;
+  changed();
+};
+
+$("bin-out").onclick = () => {
+  const a = anim();
+  download(G.encode(a.frames, a.width, a.height), `${name}_${a.width}x${a.height}_${a.frames.length}.bin`, "application/octet-stream");
+};
+$("hex-out").onclick = () => { const a = anim(); $("hex").value = G.toHex(G.encode(a.frames, a.width, a.height), a.width, a.height); };
+
+function importFrames(bytes) {
+  const a = anim();
+  const fs = G.decode(bytes, a.width, a.height);
+  if (fs.length > G.LIMITS.frames) throw new Error(`${fs.length} frames is more than ${G.LIMITS.frames}`);
+  remember();
+  a.frames = fs; cur = 0;
+  status(`Imported ${fs.length} frames of ${a.width} x ${a.height}.`);
+  changed();
+}
+$("bin-in").onclick = async () => {
+  const f = await pickFile(".bin");
+  try { importFrames(new Uint8Array(await f.arrayBuffer())); } catch (e) { status(e.message); }
+};
+$("hex-in").onclick = () => { try { importFrames(G.fromHex($("hex").value)); } catch (e) { status(e.message); } };
+
+$("json-out").onclick = () => download(JSON.stringify(anims, null, 1), "glyph-anims.json", "application/json");
+$("json-in").onclick = async () => {
+  const f = await pickFile(".json");
+  try {
+    const more = G.fromJSON(await f.text());
+    Object.assign(anims, more);
+    select(Object.keys(more)[0] ?? name);
+    changed();
+    status(`Imported ${Object.keys(more).length} animations from ${f.name}.`);
+  } catch (e) { status(e.message); }
+};
+
+addEventListener("resize", () => name && drawPaint());
+drawPick();
+</script>

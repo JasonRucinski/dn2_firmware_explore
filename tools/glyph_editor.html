@@ -54,9 +54,12 @@
              width: 18ch; height: 17.5em; background: var(--panel); color: var(--ink);
              border: 1px solid var(--rule); border-radius: 6px; padding: 4px; }
   .hint { color: var(--ink-soft); font-size: .85rem; max-width: 40rem; margin: 0; }
+  h1 + .hint { margin: -.4rem 0 .8rem; }
+  a { color: var(--accent); }
 </style>
 
 <h1>Glyph Editor</h1>
+<p class="hint">For glyphs with frames, use the <a href="glyph_animator.html">Glyph Animator</a>.</p>
 <div class="bar">
   <button id="open" class="primary">Open glyphs.js</button>
   <button id="save" disabled>Save</button>
