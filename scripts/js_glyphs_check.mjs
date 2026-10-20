@@ -4,6 +4,8 @@
 import { GLYPHS, SIZE, glyphSvg, runs } from "../site/js/mods/glyphs.js";
 import { mountGlyphs, stepGlyphs } from "../site/js/app/glyphs-page.js";
 import { ANIMS } from "../site/js/mods/glyph-anims.js";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 const ok = (name, pass) => { console.log(`${pass ? "OK  " : "FAIL"} ${name}`); if (!pass) process.exitCode = 1; };
 
@@ -60,3 +62,93 @@ const still = { ...node("span"), dataset: { glyph: "waverider" } };
 mountGlyphs({ ...doc, querySelectorAll: () => [still] }, false);
 ok("with motion off it shows the still glyph", same(lit(still.children[0]), want(GLYPHS.waverider)));
 
+
+// The glyph tools' drawing and morph (tools/glyph_anim_core.js, tools/glyph_tools.js), as the
+// two editor pages load them: classic scripts in one global scope.
+{
+  const ctx = {};
+  vm.createContext(ctx);
+  for (const f of ["tools/glyph_anim_core.js", "tools/glyph_tools.js"]) {
+    vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
+  }
+  const G = ctx.GlyphAnim, T = ctx.GlyphTools;
+  const J = JSON.stringify;
+  const draw = (pts, w, h) => G.plot(G.blank(w, h), pts);
+
+  // shapes: integer pixels, known cases
+  ok("Bresenham lines: shallow, steep, one point and backwards",
+     J(G.line(0, 0, 5, 2)) === J([[0, 0], [1, 0], [2, 1], [3, 1], [4, 2], [5, 2]])
+     && J(G.line(1, 0, 2, 4)) === J([[1, 0], [1, 1], [2, 2], [2, 3], [2, 4]])
+     && J(G.line(3, 3, 3, 3)) === J([[3, 3]])
+     && J(draw(G.line(5, 2, 0, 0), 6, 3)) === J(draw(G.line(0, 0, 5, 2), 6, 3)));
+  ok("a rectangle outline and a filled one, from either corner",
+     J(draw(G.rect(1, 1, 4, 3), 6, 5)) === J(["......", ".####.", ".#..#.", ".####.", "......"])
+     && J(draw(G.rect(4, 3, 1, 1, true), 6, 5)) === J(["......", ".####.", ".####.", ".####.", "......"]));
+  ok("an 8x5 ellipse outline has the midpoint shape",
+     J(draw(G.ellipse(0, 0, 7, 4), 8, 5)) === J(["..####..", ".#....#.", "#......#", ".#....#.", "..####.."]));
+  const circle = draw(G.ellipse(0, 0, 8, 8), 9, 9);
+  const flipped = circle.map((r) => [...r].reverse().join("")), turned = circle.map((_, y) => circle.map((r) => r[y]).join(""));
+  ok("a 9x9 circle is the same mirrored and turned, and touches each side once",
+     J(circle) === J(flipped) && J(circle) === J([...circle].reverse()) && J(circle) === J(turned)
+     && circle[4] === "#.......#" && circle[0] === "...###...");
+  const filled = draw(G.ellipse(1, 1, 10, 6, true), 12, 8);
+  ok("a filled ellipse is its outline with every row spanned",
+     filled.every((r, y) => { const s = r.indexOf("#"), e = r.lastIndexOf("#"); return s < 0 || !r.slice(s, e + 1).includes("."); })
+     && J(filled.map((r) => r.indexOf("#"))) === J(draw(G.ellipse(1, 1, 10, 6), 12, 8).map((r) => r.indexOf("#"))));
+  ok("Shift: a line snaps to 0, 45 or 90 degrees, a box to a square",
+     J(G.constrain("line", 0, 0, 9, 4)) === J([9, 0]) && J(G.constrain("line", 0, 0, 2, 9)) === J([0, 9])
+     && J(G.constrain("line", 0, 0, 5, 4)) === J([5, 5]) && J(G.constrain("rect", 5, 5, 2, 9)) === J([1, 9])
+     && J(G.shape("ellipse", 0, 0, 8, 3, { shift: true })) === J(G.ellipse(0, 0, 8, 8)));
+  ok("points off the frame are dropped", J(G.plot(G.blank(3, 2), [[-1, 0], [1, 1], [3, 0], [0, 5]])) === J(["...", ".#."]));
+
+  // the shared drag
+  const st = { tool: "rect", filled: false, erase: false };
+  const d = T.drag(st, G.blank(6, 5), 1, 1);
+  d.move(4, 3); d.move(2, 2);
+  ok("a shape drag previews from the start each move: moving back shrinks it",
+     J(d.frame) === J(["......", ".##...", ".##...", "......", "......"]));
+  const full = G.OPS.invert(G.blank(6, 3));
+  const er = T.drag({ tool: "line", filled: false, erase: false }, full, 0, 1, { button: 2 });
+  er.move(5, 1);
+  const pen = T.drag({ tool: "pencil", filled: false, erase: false }, G.blank(6, 3), 0, 0);
+  pen.move(5, 2);
+  ok("the right button erases; a fast pencil drag leaves no gaps",
+     J(er.frame) === J(["######", "......", "######"]) && !er.on
+     && J(pen.frame) === J(draw(G.line(0, 0, 5, 2), 6, 3)));
+
+  // easing
+  const want = { linear: 0.5, "quad-in": 0.25, "quad-out": 0.75, "quad-inout": 0.5, "cubic-in": 0.125,
+    "cubic-out": 0.875, "cubic-inout": 0.5, "sine-in": 1 - Math.SQRT1_2, "sine-out": Math.SQRT1_2, "sine-inout": 0.5 };
+  ok("every easing curve gives 0 at t=0, 1 at t=1 and its value at t=0.5",
+     Object.keys(G.EASE).length === 10 && Object.entries(want).every(([k, v]) =>
+       Math.abs(G.EASE[k](0)) < 1e-12 && Math.abs(G.EASE[k](1) - 1) < 1e-12 && Math.abs(G.EASE[k](0.5) - v) < 1e-12));
+
+  // morph
+  const A = draw(G.ellipse(1, 1, 10, 8), 12, 10), B = draw(G.rect(3, 2, 9, 7, true), 12, 10);
+  let ends = true;
+  for (const blend of [G.dissolve, G.move]) {
+    for (const spread of ["ordered", "seeded"]) {
+      ends &&= J(blend(A, B, 0, { spread, seed: 3 })) === J(A) && J(blend(A, B, 1, { spread, seed: 3 })) === J(B);
+    }
+  }
+  const tw = G.tween([A, G.blank(12, 10), B], 0, 2, { count: 5, ease: "cubic-inout" });
+  ok("the morph's ends are A and B exactly, and the key frames stay as they were",
+     ends && tw.length === 7 && J(tw[0]) === J(A) && J(tw[6]) === J(B));
+  let same = true, steady = true, grows = true;
+  for (const method of ["dissolve", "move"]) {
+    for (const spread of ["ordered", "seeded"]) {
+      const o = { method, ease: "sine-inout", spread, seed: 7 };
+      same &&= J(G.morph(A, B, 6, o)) === J(G.morph(A, B, 6, { ...o }));
+    }
+  }
+  const dis = G.morph(A, B, 9, { ease: "quad-in" });
+  const toB = (f) => f.join("").split("").filter((c, i) => c === B.join("")[i]).length;
+  for (let i = 0; i < dis.length; i++) {
+    steady &&= dis[i].every((r, y) => [...r].every((c, x) => A[y][x] !== B[y][x] || c === A[y][x]));
+    if (i) grows &&= toB(dis[i]) >= toB(dis[i - 1]);
+  }
+  ok("the same inputs always give the same in-betweens, for both morphs and both pixel orders", same);
+  ok("a dissolve only flips pixels that differ, and each step is closer to B", steady && grows);
+  ok("another seed spreads the flips differently",
+     J(G.morph(A, B, 3, { spread: "seeded", seed: 1 })) !== J(G.morph(A, B, 3, { spread: "seeded", seed: 2 })));
+}

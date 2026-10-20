@@ -56,6 +56,10 @@
   .hint { color: var(--ink-soft); font-size: .85rem; max-width: 40rem; margin: 0; }
   h1 + .hint { margin: -.4rem 0 .8rem; }
   a { color: var(--accent); }
+  .palette { margin-bottom: 0; }
+  .palette button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .palette label { display: inline-flex; gap: .25rem; align-items: center; }
+  .palette input:disabled + * , .palette label:has(input:disabled) { opacity: .5; }
 </style>
 
 <h1>Glyph Editor</h1>
@@ -70,6 +74,7 @@
   <div id="list"></div>
   <div class="edit" id="edit" hidden>
     <strong id="name"></strong>
+    <div class="bar" id="palette" aria-label="Drawing tools"></div>
     <div id="grid"></div>
     <div class="bar">
       <button data-op="up">Up</button><button data-op="down">Down</button>
@@ -84,12 +89,17 @@
       <div class="chip dark" id="pv-dark"></div>
       <textarea id="rows" spellcheck="false" aria-label="Rows of the glyph"></textarea>
     </div>
-    <p class="hint">Click or drag to paint. The first pixel you touch sets the colour of the stroke.
+    <p class="hint">Pick a tool and drag on the grid. The pencil's first pixel sets the colour of
+      the stroke. Line, Rectangle and Ellipse draw from where you press to where you let go.
+      Hold Shift for a square, a circle or a line in steps of 45 degrees. Erase, or the right
+      mouse button, draws dark pixels.
       The previews show 1x, 2x and 3x in the light and the dark theme. You can also type
       or paste the 16 rows in the box: <code>#</code> is lit and <code>.</code> is dark.</p>
   </div>
 </div>
 
+<script src="glyph_anim_core.js"></script>
+<script src="glyph_tools.js"></script>
 <script>
 const N = 16;
 const GLYPH_RE = /(\n  (?:\/\/[^\n]*\n  )?([a-z0-9]+): \[\n)((?:    "[.#]{16}",\n){16})(  \],)/g;
@@ -154,28 +164,39 @@ function set(rows) {
   drawEdit();
 }
 
-function setPixel(x, y, lit) {
-  const rows = glyphs[current];
-  if ((rows[y][x] === "#") === lit) return;
-  const row = rows[y].slice(0, x) + (lit ? "#" : ".") + rows[y].slice(x + 1);
-  glyphs[current] = rows.map((r, i) => (i === y ? row : r));
-  drawEdit();
-}
-
-let stroke = null;
+/* Drawing: the palette and the drag are shared with the animator (glyph_tools.js). */
+const tools = GlyphTools.palette($("palette"));
+let stroke = null, lastCell = null;
+const cellAt = (e) => {
+  const d = document.elementFromPoint(e.clientX, e.clientY)?.closest("#grid div");
+  return d ? [+d.dataset.x, +d.dataset.y] : null;
+};
+function show(rows) { glyphs[current] = rows; drawEdit(); }
+$("grid").addEventListener("contextmenu", (e) => e.preventDefault());
 $("grid").addEventListener("pointerdown", (e) => {
   const d = e.target.closest("#grid div");
-  if (!d) return;
+  if (!d || (e.button !== 0 && e.button !== 2)) return;
+  e.preventDefault();
   undo.push(glyphs[current]);
-  stroke = !d.classList.contains("lit");
-  setPixel(+d.dataset.x, +d.dataset.y, stroke);
+  lastCell = [+d.dataset.x, +d.dataset.y];
+  stroke = GlyphTools.drag(tools, glyphs[current], lastCell[0], lastCell[1], { button: e.button });
+  show(stroke.frame);
 });
-$("grid").addEventListener("pointermove", (e) => {
-  if (stroke === null) return;
-  const d = document.elementFromPoint(e.clientX, e.clientY)?.closest("#grid div");
-  if (d) setPixel(+d.dataset.x, +d.dataset.y, stroke);
+addEventListener("pointermove", (e) => {
+  if (!stroke) return;
+  const p = cellAt(e);
+  if (p) { lastCell = p; show(stroke.move(p[0], p[1], e.shiftKey)); }
 });
-addEventListener("pointerup", () => { stroke = null; });
+for (const type of ["keydown", "keyup"]) {
+  addEventListener(type, (e) => {      // Shift pressed or let go during a drag redraws the shape
+    if (stroke && e.key === "Shift" && tools.tool !== "pencil") show(stroke.move(lastCell[0], lastCell[1], e.shiftKey));
+  });
+}
+addEventListener("pointerup", () => {
+  if (!stroke) return;
+  if (undo.at(-1).join() === glyphs[current].join()) undo.pop();     // a drag that changed nothing
+  stroke = null;
+});
 
 const blank = ".".repeat(N);
 const OPS = {
