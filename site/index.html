@@ -21,6 +21,10 @@
 </header>
 
 <div class="note">
+  <p><strong>Every tool here runs in your browser.</strong> Your browser builds the file. There is no
+  install and no command line, and the pages upload nothing: they are static files with no server.
+  You can read all of their code in the
+  <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
   <p><strong>Read this before you flash anything.</strong> These tools make firmware images.
   They do not send anything to an instrument, and they never will. You put an image on your
   device yourself, as a separate step that you decide to do.</p>
@@ -101,7 +105,6 @@
     <a class="cta" href="waverider.html">Try Waverider &#8594;</a>
   </p>
   <p class="cta-note">
-    Runs entirely in your browser: no install, no command line, nothing uploaded.
     The page also has the manual, the tests and how it is made.
   </p>
 
@@ -130,7 +133,6 @@
     <a class="cta" href="transients.html">Open the Transient Swapper →</a>
   </p>
   <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
     There is a command-line version below if you prefer it.
   </p>
 
@@ -229,9 +231,6 @@ rim.wav,   0.5,</pre>
   <p style="margin-top:1.2rem">
     <a class="cta" href="destinations.html">Open the Destinations tool &#8594;</a>
   </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
-  </p>
 
   <dl class="facts">
     <dt>Opens</dt><dd>SYN <code>ATRG ARST BTRG BRST PHRT KSA KSB1 KSB2</code>, Amp <code>DEL MODE RSET</code>, Portamento <code>PTIM PORT</code></dd>
@@ -269,9 +268,6 @@ dnfw mods apply firmware.syx --mod moddest --mod transients --from my_hits/ -o m
 
   <p style="margin-top:1.2rem">
     <a class="cta" href="fx.html">Open the FX Modulation tool &#8594;</a>
-  </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
   </p>
 
   <dl class="facts">
@@ -314,7 +310,6 @@ dnfw mods apply firmware.syx --mod fxmod --mod moddest --mod lfowaves -o modded.
     <a class="cta" href="lfo4.html">Open the LFO4 tool &#8594;</a>
   </p>
   <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
     Apply it last. First build FX Modulation or Modulation Destinations. Then load their download.
   </p>
 
@@ -356,9 +351,6 @@ dnfw mods apply firmware.syx --mod moddest --mod lfo4 -o modded.syx</pre>
   <p style="margin-top:1.2rem">
     <a class="cta" href="lfo.html">Open the LFO Waves tool &#8594;</a>
   </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
-  </p>
 
   <dl class="facts">
     <dt>Adds</dt><dd><code>STEP</code> (STPS), <code>PULS</code> (WDTH), <code>NOIS</code> (TYPE), <code>TRAP</code> (SLOP), <code>WTB1 WTB2 WTB3</code> (POS)</dd>
@@ -388,9 +380,6 @@ dnfw mods apply firmware.syx --mod lfowaves --wavetable 2=my_table.wav -o modded
 
   <p style="margin-top:1.2rem">
     <a class="cta" href="arp.html">Open the MIDI Arpeggiator tool &#8594;</a>
-  </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
   </p>
 
   <dl class="facts">
@@ -422,9 +411,6 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
   <p style="margin-top:1.2rem">
     <a class="cta" href="layer-midi.html">Open the Layering to MIDI tool &#8594;</a>
   </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
-  </p>
 
   <dl class="facts">
     <dt>Adds</dt><dd>MIDI note-on and note-off for every note layered onto a MIDI track. Tracks with no layer stay stock</dd>
@@ -453,9 +439,6 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
 
   <p style="margin-top:1.2rem">
     <a class="cta" href="reload-confirm.html">Open the Reload confirm tool &#8594;</a>
-  </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
   </p>
 
   <dl class="facts">
@@ -487,7 +470,6 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
     <a class="cta" href="arp-modes.html">Open the Arp Modes tool &#8594;</a>
   </p>
   <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
     A sound saved in SHUF or RAND opens with its arp OFF on stock firmware.
   </p>
 
@@ -519,9 +501,6 @@ dnfw mods apply firmware.syx --mod midiarp --mod arpmodes -o modded.syx</pre>
 
   <p style="margin-top:1.2rem">
     <a class="cta" href="boot.html">Open the Boot Screen tool &#8594;</a>
-  </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
   </p>
 
   <dl class="facts">
@@ -562,9 +541,6 @@ one is checked against factory firmware on the same patch, so the fix is the onl
 
   <p style="margin-top:1.2rem">
     <a class="cta" href="lfo-fix.html">Open the LFO ONE/HALF fix &#8594;</a>
-  </p>
-  <p class="cta-note">
-    Runs entirely in your browser. There is no install and no command line, and nothing is uploaded.
   </p>
 
   <dl class="facts">
