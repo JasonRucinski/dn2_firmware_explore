@@ -85,6 +85,7 @@
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="waverider" aria-hidden="true"></span>
     <h3>Waverider, a sixth machine</h3>
     <span class="mod-id">waverider</span>
     <span class="mod-version"><!-- dnfw:version waverider -->v0.3.4<!-- /dnfw:version --></span>
@@ -114,6 +115,7 @@
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="transients" aria-hidden="true"></span>
     <h3>FM drum transients</h3>
     <span class="mod-id">transients</span>
     <span class="mod-version"><!-- dnfw:version transients -->v1.0.0<!-- /dnfw:version --></span>
@@ -212,6 +214,7 @@ rim.wav,   0.5,</pre>
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="moddest" aria-hidden="true"></span>
     <h3>More modulation destinations</h3>
     <span class="mod-id">moddest</span>
     <span class="mod-version"><!-- dnfw:version moddest -->v1.0.0<!-- /dnfw:version --></span>
@@ -252,6 +255,7 @@ dnfw mods apply firmware.syx --mod moddest --mod transients --from my_hits/ -o m
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="fxmod" aria-hidden="true"></span>
     <h3>LFO modulation of the FX</h3>
     <span class="mod-id">fxmod</span>
     <span class="mod-version"><!-- dnfw:version fxmod -->v1.0.1<!-- /dnfw:version --></span>
@@ -294,6 +298,7 @@ dnfw mods apply firmware.syx --mod fxmod --mod moddest --mod lfowaves -o modded.
 
 <article class="mod" data-mod="lfo4">
   <div class="mod-head">
+    <span class="glyph" data-glyph="lfo4" aria-hidden="true"></span>
     <h3>A fourth LFO</h3>
     <span class="mod-id">lfo4</span>
     <span class="mod-version"><!-- dnfw:version lfo4 -->v1.0.2<!-- /dnfw:version --></span>
@@ -334,6 +339,7 @@ dnfw mods apply firmware.syx --mod moddest --mod lfo4 -o modded.syx</pre>
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="lfowaves" aria-hidden="true"></span>
     <h3>LFO waves</h3>
     <span class="mod-id">lfowaves</span>
     <span class="mod-version"><!-- dnfw:version lfowaves -->v1.0.0<!-- /dnfw:version --></span>
@@ -368,6 +374,7 @@ dnfw mods apply firmware.syx --mod lfowaves --wavetable 2=my_table.wav -o modded
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="midiarp" aria-hidden="true"></span>
     <h3>Arpeggiator on MIDI tracks</h3>
     <span class="mod-id">midiarp</span>
     <span class="mod-version"><!-- dnfw:version midiarp -->v1.0.0<!-- /dnfw:version --></span>
@@ -400,6 +407,7 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="layermidi" aria-hidden="true"></span>
     <h3>Layering onto MIDI tracks</h3>
     <span class="mod-id">layermidi</span>
     <span class="mod-version"><!-- dnfw:version layermidi -->v1.0.0<!-- /dnfw:version --></span>
@@ -430,6 +438,7 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="reloadconfirm" aria-hidden="true"></span>
     <h3>Reload confirm</h3>
     <span class="mod-id">reloadconfirm</span>
     <span class="mod-version"><!-- dnfw:version reloadconfirm -->v1.0.0<!-- /dnfw:version --></span>
@@ -461,6 +470,7 @@ dnfw mods apply firmware.syx --mod lfowaves --mod moddest --mod midiarp -o modde
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="arpmodes" aria-hidden="true"></span>
     <h3>Arpeggiator SHUF and RAND</h3>
     <span class="mod-id">arpmodes</span>
     <span class="mod-version"><!-- dnfw:version arpmodes -->v1.0.0<!-- /dnfw:version --></span>
@@ -495,6 +505,7 @@ dnfw mods apply firmware.syx --mod midiarp --mod arpmodes -o modded.syx</pre>
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="bootscreen" aria-hidden="true"></span>
     <h3>Boot screen</h3>
     <span class="mod-id">bootscreen</span>
     <span class="mod-version"><!-- dnfw:version bootscreen -->v1.0.0<!-- /dnfw:version --></span>
@@ -529,6 +540,7 @@ one is checked against factory firmware on the same patch, so the fix is the onl
 
 <article class="mod">
   <div class="mod-head">
+    <span class="glyph" data-glyph="lfolength" aria-hidden="true"></span>
     <h3>LFO ONE and HALF: the right length, and a hold at the end</h3>
     <span class="mod-id">lfolength</span>
     <span class="mod-version"><!-- dnfw:version lfolength -->v1.0.1<!-- /dnfw:version --></span>
@@ -643,11 +655,11 @@ fixed the jump on audio tracks only. It is superseded by the fix above and kept 
   </thead>
   <tbody>
     <tr>
-      <td><strong>Arp offsets in scale</strong> <code>arpscale</code></td>
+      <td><span class="glyph" data-glyph="arpscale" aria-hidden="true"></span><strong>Arp offsets in scale</strong> <code>arpscale</code></td>
       <td><span class="tag ready">Confirmed on hardware</span> The step offsets of the arp move by degrees of the scale and root of the track, not by semitones. A switch in SETTINGS &gt; PERSONALIZE turns it on. For now, it is on the command line only (<code>dnfw mods apply --mod arpscale</code>). The mod is the work of <a href="https://github.com/w-winter">w-winter</a> (pull request #212).</td>
     </tr>
     <tr>
-      <td><strong>Arpeggiator p-locks</strong> <code>arpplocks</code></td>
+      <td><span class="glyph" data-glyph="arpplocks" aria-hidden="true"></span><strong>Arpeggiator p-locks</strong> <code>arpplocks</code></td>
       <td><span class="tag ready">Confirmed on hardware</span> MODE, SPEED, RANGE and N.LEN lockable per trig. The mod changed after the hardware test, and the new version passed in the emulator. For now, it is on the command line only (<code>dnfw mods apply --mod arpplocks</code>).</td>
     </tr>
     <tr>
@@ -684,3 +696,4 @@ fixed the jump on audio tracks only. It is superseded by the fix above and kept 
 </div>
 
 <script type="module" src="js/app/index-page.js"></script>
+<script type="module" src="js/app/glyphs-page.js"></script>
