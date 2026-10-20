@@ -117,7 +117,8 @@
     of this one. A glyph of a different size goes at the top left. It is not scaled.</p>
 </section>
 
-<div class="layout" id="work" hidden>
+<div id="work" hidden>
+<div class="layout">
   <div>
     <section>
       <h2 id="frame-title">Frame</h2>
@@ -135,18 +136,6 @@
         the stroke. Line, Rectangle and Ellipse draw from where you press to where you let go.
         Hold Shift for a square, a circle or a line in steps of 45 degrees. Erase, or the right
         mouse button, draws dark pixels. Onion skin shows the previous frame faintly.</p>
-      <h2>Rows</h2>
-      <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
-      <div class="bar">
-        <button id="rows-apply">Apply to this frame</button>
-        <button id="rows-add">Add as new frames</button>
-        <button id="copy-frame">Copy frame</button>
-        <button id="copy-all">Copy all frames</button>
-      </div>
-      <p class="muted">The box shows this frame: <code>#</code> is lit and <code>.</code> is dark.
-        Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
-        the top left. Rows that are larger are cut to the frame size. To add several frames, paste
-        blocks of rows with a blank line between them.</p>
     </section>
 
     <section>
@@ -247,6 +236,22 @@
       </div>
     </section>
   </div>
+</div>
+
+  <section>
+    <h2>Rows</h2>
+    <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
+    <div class="bar">
+      <button id="rows-apply">Apply to this frame</button>
+      <button id="rows-add">Add as new frames</button>
+      <button id="copy-frame">Copy frame</button>
+      <button id="copy-all">Copy all frames</button>
+    </div>
+    <p class="muted">The box shows this frame: <code>#</code> is lit and <code>.</code> is dark.
+      Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
+      the top left. Rows that are larger are cut to the frame size. To add several frames, paste
+      blocks of rows with a blank line between them.</p>
+  </section>
 </div>
 
 <script src="glyph_anim_core.js"></script>
