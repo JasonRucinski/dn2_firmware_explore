@@ -77,6 +77,25 @@ p  { max-width: 42rem; }
 .mod-id {
   font-family: var(--mono); font-size: .8rem; color: var(--ink-soft);
 }
+
+/* A mod's 1-bit glyph (js/mods/glyphs.js): 16 px art drawn at a whole multiple,
+ * in the text colour, so one set serves the light and the dark theme. */
+.glyph {
+  --glyph-scale: 2;
+  display: inline-block; flex: none; vertical-align: middle;
+  width: calc(16px * var(--glyph-scale)); height: calc(16px * var(--glyph-scale));
+}
+.glyph svg { display: block; width: 100%; height: 100%; }
+/* The glyph stays left of the title at every width. On a card and in a table
+ * row it sits in the left padding of the title block, centred on the first line,
+ * so the card keeps its own padding and only the title text moves right. */
+.mod-head:has(> .glyph), td:has(> .glyph) {
+  position: relative; padding-left: calc(32px + .75rem);
+}
+.mod-head > .glyph { position: absolute; left: 0; top: calc((1.18rem * 1.6 - 32px) / 2); }
+td > .glyph { position: absolute; left: 0; top: calc(.5rem + (.92rem * 1.6 - 32px) / 2); }
+h1:has(> .glyph) { display: flex; align-items: flex-start; gap: .8rem; }
+h1 > .glyph { --glyph-scale: 3; margin-top: calc((1.05em - 48px) / 2); }
 .mod-version {
   font-family: var(--mono); font-size: .8rem; color: var(--ink-soft);
 }
