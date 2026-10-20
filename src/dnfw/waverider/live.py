@@ -666,6 +666,7 @@ FM_SEL = 2 * math.pi / SHAPE_MAX              # the level's increment: + 2 pi FM
 # MOVE's), becomes the ratio it is mixed in at, r, which glides toward it by 1/32 a sample (about
 # 3 ms) so a LEV2 step does not click: y = o1 + r x FMB (phase.asm's wr_ph_fmmix).
 FM_GLIDE = _f32(1 / 32)
+FM_SETTLED = 2.0 ** -34    # (target - r)^2 below this, r takes the target: the mix is then one multiply, or none at 0
 PHASE_MAX = 128                           # longer blocks play without WARP and FM (the buffer's size)
 
 
@@ -897,11 +898,17 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             ys[k] = y
         mixed = osc1 = ys[0]
         if ys[1] is not None and fm:           # 0.3.6: o1 + r FMB, r gliding to osc 2's own gain
-            out_mix = []
-            for o1, o2 in zip(mixed, ys[1]):
-                fm_r = _f32(fm_r + _f32(_f32(fm_target - fm_r) * FM_GLIDE))
-                out_mix.append(_f32(o1 + _f32(o2 * fm_r)))
-            mixed = out_mix
+            d = _f32(fm_target - fm_r)
+            if _f32(d * d) < FM_SETTLED:        # settled (page5.asm): r is the target, one multiply or none
+                fm_r = fm_target
+                if fm_r != 0.0:
+                    mixed = [_f32(o1 + _f32(o2 * fm_r)) for o1, o2 in zip(mixed, ys[1])]
+            else:
+                out_mix = []
+                for o1, o2 in zip(mixed, ys[1]):
+                    fm_r = _f32(fm_r + _f32(_f32(fm_target - fm_r) * FM_GLIDE))
+                    out_mix.append(_f32(o1 + _f32(o2 * fm_r)))
+                mixed = out_mix
         elif ys[1] is not None:
             mixed = ([_f32(a + b) for a, b in zip(mixed, ys[1])] if precision == "float32"
                      else [a + b for a, b in zip(mixed, ys[1])])

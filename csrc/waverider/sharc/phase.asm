@@ -32,7 +32,8 @@
 //   reader's gain becomes G = live.fm_gain(), LEV 100 at the default TRIM: FM alone sets the depth (0.3.6).
 //   Clobbers R0, R1.
 //
-// wr_ph_fmmix: page5.asm's wr_p5_fm_mix jumps here (R0 = the shaper flag, R9 = t). For each sample,
+// wr_ph_fmmix / wr_ph_fmgo: page5.asm's wr_p5_fm_mix jumps to wr_ph_fmgo while r glides (a settled r,
+//   within 2^-17 of its target, takes page5.asm's loops: one multiply, or nothing at LEV2 0). For each sample,
 //   r += (target - r) / 32, b = o1 + r FMB, with osc 1 copied for the shaper when R0 is not 0; r kept per
 //   voice at DM 0x2e6040 + 4t. Then wr_p5_post. Clobbers R0-R3, R8-R13, I0-I2.
 //
@@ -416,6 +417,8 @@ wr_ph_fmmix.:
       I1 = R11;
       R8 = DM(0, I1);                   // r, as this voice left it
       R9 = DM(0x2e6028);                // the target
+.GLOBAL wr_ph_fmgo.;
+wr_ph_fmgo.:                            // page5.asm's wr_p5_fm_mix comes here while r glides (R0, R8, R9, R11 set)
       R10 = 0x3d000000;                 // 1/32
       R12 = DM(0x2dde88);
       I0 = R12;                         // the track buffer: o1, then the mix

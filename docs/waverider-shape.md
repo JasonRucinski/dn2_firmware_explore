@@ -65,8 +65,12 @@ and `csrc/waverider/sharc/phase.asm` do the work on the DSP. `dnfw.waverider.liv
   MOVE) over G is the ratio r it is mixed in at: b = o1 + r FMB (`wr_ph_fmmix`). r glides toward it by 1/32 a
   sample (about 3 ms), per voice at DM 0x2e6040, so a LEV2 step does not click. DCLK sees G as osc 2's gain while
   FM is on, so it fades table and POS jumps as before, and LEV2 changes go through r.
-  - Cost: osc 2 runs at LEV2 0 when FM is above 0 (its whole pass, about 2,800 instructions per voice and block,
-    in a case that was silent before); the mix loop gains 4 instructions a sample.
+  - Three mixes, chosen once a block: while r glides, the loop above (4 instructions a sample more than a plain
+    add); once r is within 2^-17 of its target, it takes the target and the mix is one multiply and an add
+    (page5.asm); at LEV2 0, osc 2 is not added at all.
+  - Cost (`scripts/sharc_waverider_p5_cost.py`, FM 64 at LEV2 100, per voice and block): +517 once r has settled
+    (blocks 16 to 40; 0.3.5: +482), +609 while it glides (about 12 blocks after a LEV2 change). FM above 0 at LEV2 0
+    runs osc 2's whole pass, about 2,800 instructions, in a case that was silent before.
   - The shaper (Ring, AM) still takes o2 from the mix, so it follows LEV2.
   - Checks: the shape gate's FM 127 cases at LEV2 0, at LEV2 50 and across a LEV2 jump from 100 to 0, bit for
     bit; `test_fm_plays_at_lev2_0_and_its_depth_does_not_follow_lev2` in the model.
