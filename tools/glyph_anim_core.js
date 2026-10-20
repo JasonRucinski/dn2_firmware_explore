@@ -334,6 +334,154 @@ export const ANIMS = {
     return rows.map((r) => r.join(""));
   }
 
+  /* ---- selection: a 1-bit mask the size of the frame, `#` selected ---- */
+
+  const maskNone = (w, h) => blank(w, h);
+  const maskAll = (w, h) => Array.from({ length: h }, () => "#".repeat(w));
+  const maskEmpty = (m) => !m || m.every((r) => !r.includes("#"));
+  const maskRect = (w, h, x0, y0, x1, y1) => plot(blank(w, h), rect(x0, y0, x1, y1, true));
+  const maskInvert = (m) => m.map((r) => r.replace(/./g, (c) => (c === "#" ? "." : "#")));
+
+  /** Combine a new selection with the old: replace, add (or) or subtract (and not). */
+  function maskCombine(old, next, mode = "replace") {
+    if (mode === "replace" || !old) return next.slice();
+    return old.map((r, y) => [...r].map((c, x) => {
+      const n = next[y][x] === "#";
+      return (mode === "add" ? c === "#" || n : c === "#" && !n) ? "#" : ".";
+    }).join(""));
+  }
+
+  /** The connected pixels with the same value as (x, y), 4- or 8-connected, as a mask. */
+  function wand(frame, x, y, { connect = 4 } = {}) {
+    const h = frame.length, w = frame[0].length, want = frame[y][x];
+    const seen = Array.from({ length: h }, () => Array(w).fill(false));
+    const steps = connect === 8 ? [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+      : [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const stack = [[x, y]];
+    seen[y][x] = true;
+    while (stack.length) {
+      const [px, py] = stack.pop();
+      for (const [dx, dy] of steps) {
+        const nx = px + dx, ny = py + dy;
+        if (nx >= 0 && ny >= 0 && nx < w && ny < h && !seen[ny][nx] && frame[ny][nx] === want) {
+          seen[ny][nx] = true; stack.push([nx, ny]);
+        }
+      }
+    }
+    return seen.map((r) => r.map((s) => (s ? "#" : ".")).join(""));
+  }
+
+  /** `result` inside the mask, `frame` outside it; with no selection, all of `result`. */
+  function within(frame, result, mask) {
+    if (maskEmpty(mask)) return result.slice();
+    return frame.map((r, y) => [...r].map((c, x) => (mask[y][x] === "#" ? result[y][x] : c)).join(""));
+  }
+
+  /** The bounds of a mask, [x0, y0, x1, y1]; the whole frame for no selection. */
+  function maskBounds(m, w, h) {
+    if (maskEmpty(m)) return [0, 0, w - 1, h - 1];
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    m.forEach((r, y) => [...r].forEach((c, x) => {
+      if (c === "#") { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    }));
+    return [x0, y0, x1, y1];
+  }
+
+  /** Bucket: the region of (x, y)'s colour set to `on`, kept inside the mask if there is one. */
+  function flood(frame, x, y, on = true, { connect = 4, mask = null } = {}) {
+    const region = wand(frame, x, y, { connect });
+    const limit = maskEmpty(mask) ? region : maskCombine(region, maskInvert(mask), "subtract");
+    return within(frame, frame.map((r) => (on ? "#" : ".").repeat(r.length)), limit);
+  }
+
+  /** Lift the selected pixels: the layer (rows and mask) and the frame they leave behind
+   *  (dark where they were, or the same frame for a copy). */
+  function lift(frame, mask, { copy = false } = {}) {
+    const layer = { rows: frame.map((r, y) => [...r].map((c, x) => (mask[y][x] === "#" ? c : ".")).join("")), mask: mask.slice() };
+    const base = copy ? frame.slice() : within(frame, blank(frame[0].length, frame.length), mask);
+    return { layer, base };
+  }
+
+  /** The layer stamped on the frame at an offset in whole cells: inside its mask it covers
+   *  the frame, lit and dark alike. Returns the frame and the moved mask. */
+  function stamp(frame, layer, dx = 0, dy = 0) {
+    const h = frame.length, w = frame[0].length;
+    const rows = frame.map((r) => [...r]), mask = blank(w, h).map((r) => [...r]);
+    layer.mask.forEach((r, y) => [...r].forEach((c, x) => {
+      const nx = x + dx, ny = y + dy;
+      if (c === "#" && nx >= 0 && ny >= 0 && nx < w && ny < h) { rows[ny][nx] = layer.rows[y][x]; mask[ny][nx] = "#"; }
+    }));
+    return { frame: rows.map((r) => r.join("")), mask: mask.map((r) => r.join("")) };
+  }
+
+  /* ---- fills: patterns and gradients, the same pixels for the same settings ---- */
+
+  // interleaved gradient noise (Jimenez 2014): a threshold with an even, blue-noise-like spread
+  const ign = (x, y) => { const v = 52.9829189 * ((0.06711056 * x + 0.00583715 * y) % 1); return v - Math.floor(v); };
+
+  const FILLS = ["bayer", "checker", "hatch", "crosshatch", "halftone", "noise", "blue", "linear", "radial"];
+
+  /** Whether a pattern lights (x, y). `p`: density 0..1, angle in degrees, spacing, size,
+   *  cell, seed, offset (moves the pattern along x), and for gradients the bounds. */
+  function patternAt(kind, x, y, p) {
+    const d = p.density ?? 0.5, off = Math.round(p.offset ?? 0);
+    const X = x - off;
+    switch (kind) {
+      case "bayer": return threshold(((X % 8) + 8) % 8, y, "ordered") < d;
+      case "checker": { const s = Math.max(1, p.size ?? 1); return (Math.floor(X / s) + Math.floor(y / s)) % 2 !== 0; }
+      case "hatch": case "crosshatch": {
+        const sp = Math.max(2, Math.round(p.spacing ?? 4));
+        const one = (deg) => {          // distance across the lines, in steps of one pixel row or column
+          const a = (deg * Math.PI) / 180, nx = -Math.sin(a), ny = Math.cos(a);
+          const d = Math.round((X * nx + y * ny) / Math.max(Math.abs(nx), Math.abs(ny)));
+          return ((d % sp) + sp) % sp === 0;
+        };
+        const ang = p.angle ?? 45;
+        return kind === "hatch" ? one(ang) : one(ang) || one(ang + 90);
+      }
+      case "halftone": {
+        const c = Math.max(2, Math.round(p.cell ?? 4)), r = Math.sqrt(d / Math.PI) * c;
+        const cx = (Math.floor(X / c) + 0.5) * c - 0.5, cy = (Math.floor(y / c) + 0.5) * c - 0.5;
+        return (X - cx) ** 2 + (y - cy) ** 2 <= r * r;
+      }
+      case "noise": return threshold(X & 0xffff, y, "seeded", p.seed ?? 1) < d;
+      case "blue": return ign(X, y) < d;
+      case "linear": case "radial": {
+        const [x0, y0, x1, y1] = p.bounds;
+        let v;
+        if (kind === "linear") {
+          const a = ((p.angle ?? 0) * Math.PI) / 180, ux = Math.cos(a), uy = Math.sin(a);
+          const cs = [[x0, y0], [x1, y0], [x0, y1], [x1, y1]].map(([cx, cy]) => cx * ux + cy * uy);
+          const lo = Math.min(...cs), hi = Math.max(...cs);
+          v = hi > lo ? (x * ux + y * uy - lo) / (hi - lo) : 1;
+        } else {
+          const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot((x1 - x0) / 2, (y1 - y0) / 2) || 1;
+          v = 1 - Math.hypot(x - cx, y - cy) / R;
+        }
+        if (p.invert) v = 1 - v;
+        return v > threshold(((x % 8) + 8) % 8, y, "ordered");
+      }
+      default: return false;
+    }
+  }
+
+  /** A fill of the selection (all of the frame with none): pattern pixels lit, others dark. */
+  function fill(frame, kind, params = {}, mask = null) {
+    const h = frame.length, w = frame[0].length;
+    const p = { ...params, bounds: params.bounds ?? maskBounds(mask, w, h) };
+    const result = Array.from({ length: h }, (_, y) => Array.from({ length: w }, (_, x) =>
+      (patternAt(kind, x, y, p) ? "#" : ".")).join(""));
+    return within(frame, result, mask);
+  }
+
+  /** The settings for frame i of n in a range: each number in `to` eased from its value in `from`. */
+  function rangeParams(from, to, i, n, ease = "linear") {
+    const t = n > 1 ? i / (n - 1) : 1, e = (EASE[ease] ?? EASE.linear)(t);
+    const out = { ...from };
+    for (const [k, v] of Object.entries(to ?? {})) if (typeof v === "number" && typeof from[k] === "number") out[k] = from[k] + (v - from[k]) * e;
+    return out;
+  }
+
   /** Change the frame size, keeping the top-left pixels. */
   function resize(frame, width, height) {
     return Array.from({ length: height }, (_, y) =>
@@ -456,7 +604,9 @@ export const ANIMS = {
 
   const api = { gif, gifDelay, GIF_COLOURS, parseBlocks, fitRows, framesText, LIMITS, RANGES, knobFrame, blank, valid, serialise, parse, fromJSON, wordsPerColumn,
     encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows,
-    threshold, EASE, move, morph, line, rect, ellipse, constrain, shape, plot };
+    threshold, EASE, move, morph, line, rect, ellipse, constrain, shape, plot,
+    maskNone, maskAll, maskEmpty, maskRect, maskInvert, maskCombine, maskBounds, wand, within, flood,
+    lift, stamp, FILLS, patternAt, fill, rangeParams };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphAnim = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -6,49 +6,23 @@
   Edit the mod glyphs of the site (site/js/mods/glyphs.js) by hand.
 
   Open this file in Chrome or Edge, press "Open glyphs.js" and pick
-  site/js/mods/glyphs.js. Paint pixels, then press "Save": the file is written
-  in place. Only the 16 rows of each glyph change; comments and code stay.
+  site/js/mods/glyphs.js. Draw, select and fill, then press "Save": the file is
+  written in place. Only the 16 rows of each glyph change; comments and code stay.
   A browser without the File System Access API gets a download instead.
-  Local tool: not part of the published site.
+  Local tool: not part of the published site. The tool bar, the selection and the
+  fills are shared with the animator (glyph_tools.js, glyph_fills_panel.js).
 -->
+<link rel="stylesheet" href="glyph_tools.css">
 <style>
-  :root {
-    --bg: #f6f5f2; --panel: #fff; --ink: #16181c; --ink-soft: #565b66;
-    --rule: #e2e0da; --accent: #b4530a; --off: #ecebe7;
-    --cell-off: #dcdad3; --grid: rgba(255, 255, 255, .9); --grid-major: #fff;
-    --dark-bg: #0c0d0f; --dark-ink: #e8e6e1;
-    font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0c0d0f; --panel: #141619; --ink: #e8e6e1; --ink-soft: #9aa0ab;
-      --rule: #25282d; --accent: #ff9d3c; --off: #1d2024;
-      --cell-off: #1d2024; --grid: rgba(255, 255, 255, .2); --grid-major: rgba(255, 255, 255, .45);
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); }
-  h1 { font-size: 1.3rem; margin: 0 0 .8rem; }
-  button { font: inherit; padding: .35rem .8rem; border: 1px solid var(--rule); border-radius: 6px;
-           background: var(--panel); color: var(--ink); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  button:disabled { opacity: .45; cursor: default; }
-  .bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: 1rem; }
   #status { color: var(--ink-soft); font-size: .9rem; }
   .main { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
   #list { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: .4rem;
-          flex: 1 1 300px; max-width: 520px; }
+          flex: 1 1 260px; max-width: 420px; }
   #list button { display: grid; justify-items: center; gap: .2rem; padding: .4rem .2rem;
                  font-size: .72rem; font-family: ui-monospace, Consolas, monospace; }
   #list button.on { outline: 2px solid var(--accent); }
   #list button.dirty::after { content: "edited"; color: var(--accent); }
-  /* The grid fills its column, at most 28 px a cell; the white gaps between cells show each pixel. */
-  #grid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 1px; background: var(--grid);
-          border: 1px solid var(--grid-major); user-select: none; touch-action: none;
-          width: 100%; max-width: calc(16 * 28px + 17px); }
-  #grid div { aspect-ratio: 1; background: var(--cell-off); }
-  #grid div.lit { background: var(--ink); }
-  .edit { display: grid; gap: .7rem; flex: 1 1 340px; min-width: 0; }
+  .edit { flex: 1 1 340px; min-width: 0; }
   .previews { display: flex; gap: .8rem; flex-wrap: wrap; align-items: center; }
   .chip { padding: 8px; border-radius: 6px; display: flex; gap: 10px; align-items: center; }
   .chip.light { background: #f6f5f2; color: #16181c; }
@@ -58,12 +32,7 @@
              width: 18ch; height: 17.5em; background: var(--panel); color: var(--ink);
              border: 1px solid var(--rule); border-radius: 6px; padding: 4px; }
   .hint { color: var(--ink-soft); font-size: .85rem; max-width: 40rem; margin: 0; }
-  h1 + .hint { margin: -.4rem 0 .8rem; }
-  a { color: var(--accent); }
-  .palette { margin-bottom: 0; }
-  .palette button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  .palette label { display: inline-flex; gap: .25rem; align-items: center; }
-  .palette input:disabled + * , .palette label:has(input:disabled) { opacity: .5; }
+  h1 + .hint { margin: 0 0 .8rem; }
 </style>
 
 <h1>Glyph Editor</h1>
@@ -77,33 +46,48 @@
 <div class="main">
   <div id="list"></div>
   <div class="edit" id="edit" hidden>
-    <strong id="name"></strong>
-    <div class="bar" id="palette" aria-label="Drawing tools"></div>
-    <div id="grid"></div>
-    <div class="bar">
-      <button data-op="up">Up</button><button data-op="down">Down</button>
-      <button data-op="left">Left</button><button data-op="right">Right</button>
-      <button data-op="flipx">Mirror</button><button data-op="invert">Invert</button>
-      <button data-op="clear">Clear</button><button data-op="bug">Add bug</button>
-      <button data-op="undo">Undo</button><button data-op="revert">Revert</button>
-      <button id="send">Send to animator</button>
-    </div>
-    <div class="previews">
-      <div class="chip light" id="pv-light"></div>
-      <div class="chip dark" id="pv-dark"></div>
+    <section class="card">
+      <h2 id="name"></h2>
+      <div id="toolbar"></div>
+      <div id="context"></div>
+      <div class="surface-box"><canvas id="paint" class="surface"></canvas></div>
+      <div class="bar">
+        <button data-op="up">Up</button><button data-op="down">Down</button>
+        <button data-op="left">Left</button><button data-op="right">Right</button>
+        <button data-op="flipx">Mirror</button><button data-op="invert">Invert</button>
+        <button data-op="clear">Clear</button><button data-op="bug">Add bug</button>
+        <button data-op="undo">Undo</button><button data-op="revert">Revert</button>
+        <button id="send">Send to animator</button>
+      </div>
+      <p class="hint">Pick a tool in the bar, or press its key. Press ? for all the shortcuts.</p>
+    </section>
+
+    <details class="card" open>
+      <summary>Fills</summary>
+      <div id="fills"></div>
+    </details>
+
+    <details class="card" open>
+      <summary>Preview</summary>
+      <div class="previews">
+        <div class="chip light" id="pv-light"></div>
+        <div class="chip dark" id="pv-dark"></div>
+      </div>
+      <p class="hint">1x, 2x and 3x, in the light and the dark theme.</p>
+    </details>
+
+    <details class="card" open>
+      <summary>Rows</summary>
       <textarea id="rows" spellcheck="false" aria-label="Rows of the glyph"></textarea>
-    </div>
-    <p class="hint">Pick a tool and drag on the grid. The pencil's first pixel sets the colour of
-      the stroke. Line, Rectangle and Ellipse draw from where you press to where you let go.
-      Hold Shift for a square, a circle or a line in steps of 45 degrees. Erase, or the right
-      mouse button, draws dark pixels.
-      The previews show 1x, 2x and 3x in the light and the dark theme. You can also type
-      or paste the 16 rows in the box: <code>#</code> is lit and <code>.</code> is dark.</p>
+      <p class="hint">Type or paste the 16 rows: <code>#</code> is lit and <code>.</code> is dark.</p>
+    </details>
   </div>
 </div>
 
 <script src="glyph_anim_core.js"></script>
+<script src="glyph_icons.js"></script>
 <script src="glyph_tools.js"></script>
+<script src="glyph_fills_panel.js"></script>
 <script>
 const N = 16;
 const GLYPH_RE = /(\n  (?:\/\/[^\n]*\n  )?([a-z0-9]+): \[\n)((?:    "[.#]{16}",\n){16})(  \],)/g;
@@ -111,6 +95,7 @@ let handle = null, source = "", glyphs = {}, saved = {}, current = null, undo = 
 
 const $ = (id) => document.getElementById(id);
 const status = (t) => { $("status").textContent = t; };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
 function parse(text) {
   const out = {};
@@ -146,60 +131,58 @@ function drawList() {
 
 function drawEdit() {
   const rows = glyphs[current];
-  $("grid").replaceChildren(...rows.flatMap((row, y) => [...row].map((c, x) => {
-    const d = document.createElement("div");
-    d.dataset.x = x; d.dataset.y = y;
-    if (c === "#") d.className = "lit";
-    return d;
-  })));
+  ed.render();
   for (const t of ["light", "dark"]) $(`pv-${t}`).innerHTML = [1, 2, 3].map((s) => svg(rows, s)).join("");
   if (document.activeElement !== $("rows")) $("rows").value = rows.join("\n");
   $("name").textContent = current;
   const dirty = Object.keys(glyphs).some((id) => glyphs[id].join() !== saved[id].join());
   $("save").disabled = !dirty;
   drawList();
+  fills.refresh();
 }
 
-function select(id) { current = id; undo = []; $("edit").hidden = false; drawEdit(); }
+function select(id) {
+  ed.drop();
+  current = id; undo = []; $("edit").hidden = false;
+  drawEdit();
+}
 
 function set(rows) {
+  ed.drop();
   undo.push(glyphs[current]);
   glyphs[current] = rows;
   drawEdit();
 }
 
-/* Drawing: the palette and the drag are shared with the animator (glyph_tools.js). */
-const tools = GlyphTools.palette($("palette"));
-let stroke = null, lastCell = null;
-const cellAt = (e) => {
-  const d = document.elementFromPoint(e.clientX, e.clientY)?.closest("#grid div");
-  return d ? [+d.dataset.x, +d.dataset.y] : null;
-};
-function show(rows) { glyphs[current] = rows; drawEdit(); }
-$("grid").addEventListener("contextmenu", (e) => e.preventDefault());
-$("grid").addEventListener("pointerdown", (e) => {
-  const d = e.target.closest("#grid div");
-  if (!d || (e.button !== 0 && e.button !== 2)) return;
-  e.preventDefault();
-  undo.push(glyphs[current]);
-  lastCell = [+d.dataset.x, +d.dataset.y];
-  stroke = GlyphTools.drag(tools, glyphs[current], lastCell[0], lastCell[1], { button: e.button });
-  show(stroke.frame);
-});
-addEventListener("pointermove", (e) => {
-  if (!stroke) return;
-  const p = cellAt(e);
-  if (p) { lastCell = p; show(stroke.move(p[0], p[1], e.shiftKey)); }
-});
-for (const type of ["keydown", "keyup"]) {
-  addEventListener(type, (e) => {      // Shift pressed or let go during a drag redraws the shape
-    if (stroke && e.key === "Shift" && tools.tool !== "pencil") show(stroke.move(lastCell[0], lastCell[1], e.shiftKey));
-  });
+function undoOnce() {
+  ed.drop();
+  if (undo.length) { glyphs[current] = undo.pop(); drawEdit(); }
 }
-addEventListener("pointerup", () => {
-  if (!stroke) return;
-  if (undo.at(-1).join() === glyphs[current].join()) undo.pop();     // a drag that changed nothing
-  stroke = null;
+
+/* The drawing surface, the selection and the fills are shared with the animator. */
+const ed = GlyphTools.surface({
+  canvas: $("paint"), toolbar: $("toolbar"), context: $("context"), max: 28,
+  frame: () => glyphs[current],
+  set: (rows) => { glyphs[current] = rows; drawEdit(); },
+  begin: () => undo.push(glyphs[current]),
+  unbegin: () => undo.pop(),
+  end: () => drawEdit(),
+  undo: undoOnce,
+  selected: () => fills.refresh(),
+});
+function thumb(canvas, rows) {
+  const s = 3;
+  canvas.width = rows[0].length * s; canvas.height = rows.length * s;
+  const c = canvas.getContext("2d");
+  c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = css("--ink");
+  rows.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] === "#") c.fillRect(x * s, y * s, s, s); });
+}
+const fills = GlyphFills.panel($("fills"), {
+  targets: () => (current ? [glyphs[current]] : [GlyphAnim.blank(N, N)]),
+  mask: () => ed.mask,
+  apply: ([rows]) => set(rows),
+  thumb,
 });
 
 const blank = ".".repeat(N);
@@ -223,7 +206,7 @@ const OPS = {
 };
 document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
   const op = b.dataset.op;
-  if (op === "undo") { if (undo.length) { glyphs[current] = undo.pop(); drawEdit(); } return; }
+  if (op === "undo") return undoOnce();
   if (op === "revert") { set(saved[current]); return; }
   set(OPS[op](glyphs[current]));
 }));
@@ -264,6 +247,7 @@ $("open").addEventListener("click", async () => {
 });
 
 $("save").addEventListener("click", async () => {
+  ed.drop();
   const text = serialise();
   if (handle) {
     const w = await handle.createWritable();
