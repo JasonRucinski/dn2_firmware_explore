@@ -2,9 +2,10 @@
 
 Documentation version 1.6, 2026-10-17. It describes Waverider 0.3.1 (alpha 5).
 
-Waverider is a sixth synth machine for the Digitone II. A Waverider track plays two wavetable
-oscillators, a sub-oscillator and a noise generator. Its own modulator (MOVE) sweeps each
-oscillator through its table.
+Waverider is a sixth synth machine for the Digitone II. Waverider has two wavetable oscillators,
+a sub-oscillator, noise, FM, wave folding, phase warping and a collection of additional shapers
+like AM, ring modulation and formant. The tables are on the +Drive. Its own modulator (MOVE)
+sweeps each oscillator through its table.
 
 This is an alpha. Sounds that you save may not load the same way in a later version. Try it on a
 new project. Back up the +Drive first, and keep the stock 1.11 firmware file for recovery.
