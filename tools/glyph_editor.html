@@ -77,6 +77,7 @@
       <button data-op="flipx">Mirror</button><button data-op="invert">Invert</button>
       <button data-op="clear">Clear</button><button data-op="bug">Add bug</button>
       <button data-op="undo">Undo</button><button data-op="revert">Revert</button>
+      <button id="send">Send to animator</button>
     </div>
     <div class="previews">
       <div class="chip light" id="pv-light"></div>
@@ -201,6 +202,14 @@ document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click"
   if (op === "revert") { set(saved[current]); return; }
   set(OPS[op](glyphs[current]));
 }));
+
+/** The animator's URL for this glyph: its id and its pixels as it is now, edits included. */
+function animatorUrl(id, rows) {
+  const px = rows.map((r) => r.match(/.{4}/g)
+    .map((q) => parseInt(q.replace(/#/g, "1").replace(/\./g, "0"), 2).toString(16)).join("")).join("-");
+  return `glyph_animator.html#from=${id}&px=${px}`;
+}
+$("send").addEventListener("click", () => window.open(animatorUrl(current, glyphs[current]), "_blank"));
 
 $("rows").addEventListener("input", () => {
   const rows = $("rows").value.split(/\r?\n/).map((r) => r.trim()).filter(Boolean);

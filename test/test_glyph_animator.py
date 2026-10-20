@@ -18,7 +18,7 @@ def test_the_animator_model_under_node():
         pytest.skip("node is not on PATH; the animator check cannot run")
     done = subprocess.run([node, str(HARNESS)], capture_output=True, text=True, cwd=ROOT)
     assert done.returncode == 0, done.stdout + done.stderr
-    assert done.stdout.count("OK  ") == 12
+    assert done.stdout.count("OK  ") == 21
 
 
 def test_the_two_editors_link_to_each_other():

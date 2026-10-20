@@ -9,7 +9,10 @@
   site/js/mods/glyph-anims.js, or start a new animation. "Save" writes the file
   in place; other browsers get a download. The firmware format (columns of
   32-bit big-endian words, top row in the most significant bit) goes out as a
-  .bin file or hex text, and comes back in the same way.
+  .bin file or hex text, and comes back in the same way. The still glyphs of
+  site/js/mods/glyphs.js load as the page loads over http; from disk, press
+  "Open glyphs.js". glyph_animator.html#from=ID&px=HEX starts from one of them
+  (the still editor's "Send to animator").
   Local tool: not part of the published site. The model is glyph_anim_core.js.
 -->
 <style>
@@ -57,6 +60,7 @@
   textarea { width: 100%; height: 7rem; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
              background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; }
   label { display: inline-flex; gap: .3rem; align-items: center; }
+  textarea.rows { height: 12rem; white-space: pre; overflow: auto; line-height: 1.15; }
 </style>
 
 <h1>Glyph Animator</h1>
@@ -89,6 +93,22 @@
   </div>
 </section>
 
+<section>
+  <h2>Still glyphs</h2>
+  <div class="bar">
+    <button id="still-open">Open glyphs.js</button>
+    <span id="still-status" class="muted">Reading site/js/mods/glyphs.js.</span>
+  </div>
+  <div class="strip" id="still"></div>
+  <div class="bar">
+    <button id="still-new" disabled>New animation from it</button>
+    <button id="still-insert" disabled>Insert after this frame</button>
+    <button id="still-replace" disabled>Replace this frame</button>
+  </div>
+  <p class="muted">Pick a still glyph, then use it as frame 1 of a new animation, or as a frame
+    of this one. A glyph of a different size goes at the top left. It is not scaled.</p>
+</section>
+
 <div class="layout" id="work" hidden>
   <div>
     <section>
@@ -104,6 +124,18 @@
       </div>
       <p class="muted">Click or drag to paint. The first pixel you touch sets the colour of the stroke.
         Onion skin shows the previous frame faintly.</p>
+      <h2>Rows</h2>
+      <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
+      <div class="bar">
+        <button id="rows-apply">Apply to this frame</button>
+        <button id="rows-add">Add as new frames</button>
+        <button id="copy-frame">Copy frame</button>
+        <button id="copy-all">Copy all frames</button>
+      </div>
+      <p class="muted">The box shows this frame: <code>#</code> is lit and <code>.</code> is dark.
+        Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
+        the top left. Rows that are larger are cut to the frame size. To add several frames, paste
+        blocks of rows with a blank line between them.</p>
     </section>
 
     <section>
@@ -143,6 +175,21 @@
       </div>
       <p class="muted">The knob shows the frame the unit picks: round(value x (frames - 1) / range).
         Play shows the frames in order.</p>
+    </section>
+
+    <section>
+      <h2>Animated GIF</h2>
+      <div class="bar">
+        <select id="gif-scale" aria-label="Scale">
+          <option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option>
+          <option value="4">4x</option><option value="8">8x</option>
+        </select>
+        <select id="gif-theme" aria-label="Colours">
+          <option value="light">Light colours</option><option value="dark">Dark colours</option>
+        </select>
+        <button id="gif-save">Save GIF</button>
+      </div>
+      <p class="muted">The GIF plays the frames in order at the speed above, and loops.</p>
     </section>
 
     <section>
@@ -224,6 +271,8 @@ function drawPaint() {
     c.stroke();
   }
   $("frame-title").textContent = `Frame ${cur + 1} of ${frames().length} (${a.width} x ${a.height})`;
+  if (document.activeElement !== $("rows")) $("rows").value = f.join("\n");
+  $("rows").style.height = `${Math.min(a.height, 32) * 1.15 + 1.5}em`;
 }
 
 function drawStrip() {
@@ -343,6 +392,47 @@ $("tween").onclick = () => {
   status(`Frames ${a + 2} to ${b} are now a dissolve.`);
 };
 
+/* ---- rows as text ---- */
+
+function readBlocks() {
+  const r = G.parseBlocks($("rows").value);
+  if (r.error) status(r.error);
+  return r.blocks ?? null;
+}
+const trimNote = (n) => n ? ` Some rows were larger than ${anim().width} x ${anim().height} and were cut.` : "";
+
+$("rows-apply").onclick = () => {
+  const blocks = readBlocks();
+  if (!blocks) return;
+  const { frame, trimmed } = G.fitRows(blocks[0], anim().width, anim().height);
+  editFrames((fs) => { fs[cur] = frame; });
+  status(`Frame ${cur + 1} is now the rows from the box.${trimNote(trimmed)}` +
+    (blocks.length > 1 ? " Only the first block was used: use Add as new frames for the others." : ""));
+  $("rows").value = frame.join("\n");
+};
+$("rows-add").onclick = () => {
+  const blocks = readBlocks();
+  if (!blocks) return;
+  if (frames().length + blocks.length > G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  let cut = false;
+  editFrames((fs) => {
+    const add = blocks.map((b) => { const r = G.fitRows(b, anim().width, anim().height); cut ||= r.trimmed; return r.frame; });
+    fs.splice(cur + 1, 0, ...add);
+    cur += add.length;
+  });
+  status(`Added ${blocks.length} frame${blocks.length === 1 ? "" : "s"} after the frame you were on.${trimNote(cut)}`);
+};
+
+async function copyText(text, what) {
+  try { await navigator.clipboard.writeText(text); status(`Copied ${what}.`); }
+  catch {
+    $("rows").value = text; $("rows").select();
+    status(document.execCommand("copy") ? `Copied ${what}.` : `Select the box and copy ${what} by hand.`);
+  }
+}
+$("copy-frame").onclick = () => copyText(frames()[cur].join("\n"), `frame ${cur + 1}`);
+$("copy-all").onclick = () => copyText(G.framesText(frames()), `all ${frames().length} frames`);
+
 /* ---- knob and playback ---- */
 
 $("knob").oninput = () => drawPreview();
@@ -381,9 +471,9 @@ $("del-anim").onclick = () => {
 $("pick").onchange = () => select($("pick").value);
 
 function select(n) {
-  name = n; cur = 0; undo = [];
+  name = n && anims[n] ? n : null; cur = 0; undo = [];
   if (timer) $("play").click();
-  drawPick(); drawAll();
+  drawPick(); drawAll(); drawStill();
 }
 
 /* ---- files ---- */
@@ -469,6 +559,131 @@ $("json-in").onclick = async () => {
   } catch (e) { status(e.message); }
 };
 
+/* ---- animated GIF ---- */
+
+function gifBytes() {
+  const a = anim();
+  return G.gif(a.frames, a.width, a.height, { scale: +$("gif-scale").value, theme: $("gif-theme").value,
+    delay: G.gifDelay(+$("fps").value || 12) });
+}
+$("gif-save").onclick = async () => {
+  const bytes = gifBytes(), file = `${name}_${$("gif-scale").value}x_${$("gif-theme").value}.gif`;
+  try {
+    if (window.showSaveFilePicker) {
+      const h = await showSaveFilePicker({ suggestedName: file, types: [{ description: "GIF", accept: { "image/gif": [".gif"] } }] });
+      const w = await h.createWritable();
+      await w.write(bytes); await w.close();
+      status(`Saved ${h.name}: ${frames().length} frames.`);
+    } else {
+      download(bytes, file, "image/gif");
+      status(`Downloaded ${file}.`);
+    }
+  } catch (e) { if (e.name !== "AbortError") status(e.message); }
+};
+
+/* ---- the still glyphs ---- */
+
+let still = {}, stillId = null;
+
+function setStill(text, label) {
+  still = G.parseStill(text);
+  const n = Object.keys(still).length;
+  $("still-status").textContent = n ? `${n} still glyphs from ${label}.` : `No still glyphs in ${label}.`;
+  if (!still[stillId]) stillId = null;
+  drawStill();
+}
+
+function drawStill() {
+  $("still").replaceChildren(...Object.entries(still).map(([id, rows]) => {
+    const b = document.createElement("button");
+    const cv = document.createElement("canvas");
+    cv.className = "px";
+    drawFrame(cv, rows, 2, css("--ink"), css("--off"));
+    b.append(cv, id);
+    b.dataset.id = id;
+    if (id === stillId) b.className = "on";
+    b.onclick = () => { stillId = id; drawStill(); };
+    return b;
+  }));
+  $("still-new").disabled = !stillId;
+  $("still-insert").disabled = $("still-replace").disabled = !stillId || !name;
+}
+
+function uniqueName(base) {
+  let n = base.replace(/[^A-Za-z0-9_]/g, "_"), i = 2;
+  if (!/^[A-Za-z]/.test(n)) n = "g" + n;
+  const root = n;
+  while (anims[n]) n = `${root}_${i++}`;
+  return n;
+}
+
+function newFromGlyph(id, rows) {
+  const n = uniqueName(id);
+  anims[n] = { width: rows[0].length, height: rows.length, frames: [rows.slice()] };
+  select(n);
+  changed();
+  status(`New animation ${n}: frame 1 is the ${id} glyph, ${rows[0].length} x ${rows.length}.`);
+}
+
+/** The picked glyph at the size of this animation, and a note when the sizes differ. */
+function fitted() {
+  const rows = still[stillId], a = anim();
+  const same = rows.length === a.height && rows[0].length === a.width;
+  const note = same ? "" : ` The glyph is ${rows[0].length} x ${rows.length} and this animation is ` +
+    `${a.width} x ${a.height}, so it is at the top left and not scaled.`;
+  return [G.resize(rows, a.width, a.height), note];
+}
+
+$("still-new").onclick = () => stillId && newFromGlyph(stillId, still[stillId]);
+$("still-insert").onclick = () => {
+  if (frames().length >= G.LIMITS.frames) return status(`At most ${G.LIMITS.frames} frames.`);
+  const [f, note] = fitted();
+  editFrames((fs) => { fs.splice(cur + 1, 0, f); cur++; });
+  status(`Inserted ${stillId} as frame ${cur + 1}.${note}`);
+};
+$("still-replace").onclick = () => {
+  const [f, note] = fitted();
+  editFrames((fs) => { fs[cur] = f; });
+  status(`Frame ${cur + 1} is now ${stillId}.${note}`);
+};
+$("still-open").onclick = async () => {
+  try {
+    if (window.showOpenFilePicker) {
+      const [h] = await showOpenFilePicker({ types: [{ description: "glyphs.js", accept: { "text/javascript": [".js"] } }] });
+      setStill(await (await h.getFile()).text(), h.name);
+    } else {
+      const f = await pickFile(".js");
+      setStill(await f.text(), f.name);
+    }
+  } catch (e) { if (e.name !== "AbortError") $("still-status").textContent = e.message; }
+};
+
+/** glyph_animator.html#from=ID&px=HEX: the still editor sends a glyph, with its pixels. */
+function fromHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  const id = q.get("from");
+  if (!id) return;
+  const rows = (q.get("px") && G.hexToRows(q.get("px"), 16)) || still[id];
+  if (!rows) return status(`The glyph ${id} is not in glyphs.js. Open the file to load it.`);
+  stillId = still[id] ? id : stillId;
+  newFromGlyph(id, rows);
+  drawStill();
+  history.replaceState(null, "", location.pathname + location.search);
+}
+addEventListener("hashchange", fromHash);
+
+async function start() {
+  try {
+    const r = await fetch("../site/js/mods/glyphs.js", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.statusText);
+    setStill(await r.text(), "site/js/mods/glyphs.js");
+  } catch {
+    $("still-status").textContent = "Open glyphs.js to see the still glyphs.";
+  }
+  fromHash();
+}
+
 addEventListener("resize", () => name && drawPaint());
 drawPick();
+const ready = start();
 </script>

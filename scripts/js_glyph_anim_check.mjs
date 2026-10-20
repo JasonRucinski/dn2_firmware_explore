@@ -68,7 +68,93 @@ const two = { a: { width: 3, height: 2, frames: [["#..", ".#."], ["...", "###"]]
 ok("several animations round-trip through the file", JSON.stringify(G.parse(G.serialise(two))) === JSON.stringify(two));
 ok("JSON reads to the same model", JSON.stringify(G.fromJSON(JSON.stringify(two))) === JSON.stringify(two));
 
-// 4. The tween is plain frames: its ends are the key frames.
+// 4. The still glyphs, and the URL form the still editor sends.
+const stillText = readFileSync(new URL("site/js/mods/glyphs.js", ROOT), "utf8");
+const still = G.parseStill(stillText);
+const ids = [...stillText.split("export const GLYPHS = {")[1].matchAll(/\n  ([a-z0-9]+): \[/g)].map((m) => m[1]);
+ok("every still glyph in glyphs.js reads as 16 rows of 16, and nothing else does",
+   JSON.stringify(Object.keys(still)) === JSON.stringify(ids) && ids.length > 0
+   && Object.values(still).every((r) => r.length === 16 && r.every((row) => row.length === 16)));
+ok("a glyph goes to hex for the URL and back unchanged",
+   Object.values(still).every((r) => JSON.stringify(G.hexToRows(G.rowsToHex(r), 16)) === JSON.stringify(r))
+   && G.rowsToHex(["#..." + ".".repeat(12)]) === "8000" && G.hexToRows("zz", 16) === null);
+
+// 5. Rows as text: paste, blocks, refusal, fit.
+const pb = G.parseBlocks("#.#\n.#.\n\n\n###\r\n  ...  \n");
+ok("pasted text splits into blocks at blank lines", pb.blocks?.length === 2 && pb.blocks[1][1] === "...");
+ok("a character other than # and . is refused, with its line",
+   /Line 2 has "x"/.test(G.parseBlocks("##\n#x\n").error ?? "") && !G.parseBlocks("##\n#x\n").blocks);
+const small = G.fitRows(["##", "#"], 4, 3), big = G.fitRows(["#####", "#", "#", "#"], 4, 3);
+ok("small rows land at the top left, large rows are cut and say so",
+   JSON.stringify(small.frame) === JSON.stringify(["##..", "#...", "...."]) && !small.trimmed
+   && JSON.stringify(big.frame) === JSON.stringify(["####", "#...", "#..."]) && big.trimmed);
+ok("all frames copy as blocks with blank lines between", G.framesText([["#."], [".#"]]) === "#.\n\n.#");
+
+// 6. GIF, decoded by a reader written here, not the encoder's code.
+function readGif(b) {
+  let p = 0;
+  const u16 = () => { const v = b[p] | (b[p + 1] << 8); p += 2; return v; };
+  const sig = String.fromCharCode(...b.slice(0, 6)); p = 6;
+  const W = u16(), H = u16(), packed = b[p++]; p += 2;
+  const gct = []; const n = 2 << (packed & 7);
+  for (let i = 0; i < n; i++) { gct.push([b[p], b[p + 1], b[p + 2]]); p += 3; }
+  const frames = []; let delay = null, loop = false;
+  for (;;) {
+    const t = b[p++];
+    if (t === 0x3b) break;
+    if (t === 0x21) {
+      const label = b[p++];
+      if (label === 0xf9) { delay = b[p + 2] | (b[p + 3] << 8); }
+      if (label === 0xff && String.fromCharCode(...b.slice(p + 1, p + 12)) === "NETSCAPE2.0") loop = b[p + 14] === 0 && b[p + 15] === 0;
+      while (b[p]) p += b[p] + 1;
+      p++;
+      continue;
+    }
+    if (t !== 0x2c) throw new Error("bad block " + t);
+    p += 4; const fw = u16(), fh = u16(); p++;
+    const min = b[p++]; const data = [];
+    while (b[p]) { data.push(...b.slice(p + 1, p + 1 + b[p])); p += b[p] + 1; }
+    p++;
+    // LZW, after the GIF89a specification
+    const clear = 1 << min, eoi = clear + 1;
+    let size = min + 1, next = eoi + 1, dict = [], prev = null, bit = 0;
+    const reset = () => { dict = [...Array(clear)].map((_, i) => [i]); dict.push(null, null); size = min + 1; next = eoi + 1; prev = null; };
+    reset();
+    const out = [];
+    for (;;) {
+      let code = 0;
+      for (let i = 0; i < size; i++, bit++) code |= ((data[bit >> 3] >> (bit & 7)) & 1) << i;
+      if (code === clear) { reset(); continue; }
+      if (code === eoi) break;
+      let entry;
+      if (prev === null) entry = dict[code];
+      else {
+        entry = code < next ? dict[code] : [...dict[prev], dict[prev][0]];
+        if (next < 4096) dict[next++] = [...dict[prev], entry[0]];
+      }
+      out.push(...entry);
+      prev = code;
+      if (next === 1 << size && size < 12) size++;
+    }
+    frames.push({ fw, fh, delay, pixels: out });
+  }
+  return { sig, W, H, gct, frames, loop };
+}
+function gifMatches(anim, scale, theme, delay) {
+  const g = readGif(G.gif(anim.frames, anim.width, anim.height, { scale, theme, delay }));
+  const W = anim.width * scale, H = anim.height * scale, c = G.GIF_COLOURS[theme];
+  return g.sig === "GIF89a" && g.W === W && g.H === H && g.loop && g.frames.length === anim.frames.length
+    && JSON.stringify(g.gct) === JSON.stringify([c.bg, c.ink])
+    && g.frames.every((fr, i) => fr.fw === W && fr.fh === H && fr.delay === delay && fr.pixels.length === W * H
+      && fr.pixels.every((v, j) => v === (anim.frames[i][((j / W) | 0) / scale | 0][(j % W) / scale | 0] === "#" ? 1 : 0)));
+}
+ok("the 13-frame example as a 3x GIF: 13 frames of 51x51, delay 8, pixels equal, loops", gifMatches(anims.sinesquare, 3, "light", 8));
+const noise = { width: 128, height: 64, frames: [0, 1].map(() => [...Array(64)].map(() => [...Array(128)].map(() => (rand() < 0.5 ? "#" : ".")).join(""))) };
+ok("two noisy 128x64 frames as an 8x GIF (1024x512, the code table fills and clears) decode the same", gifMatches(noise, 8, "dark", 2));
+ok("a 1x GIF of one 11x11 frame, and the delay from the speed", gifMatches({ width: 11, height: 11, frames: [G.blank(11, 11)] }, 1, "light", G.gifDelay(12))
+   && G.gifDelay(12) === 8 && G.gifDelay(60) === 2 && G.gifDelay(1) === 100);
+
+// 7. The tween is plain frames: its ends are the key frames.
 const tw = G.tween([G.blank(4, 4), G.blank(4, 4), G.blank(4, 4), G.OPS.invert(G.blank(4, 4))], 0, 3);
 ok("a dissolve fills the frames between, from one key frame toward the other",
    tw[1].join("").split("#").length < tw[2].join("").split("#").length && G.valid({ width: 4, height: 4, frames: tw }));

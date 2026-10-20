@@ -180,8 +180,122 @@ export const ANIMS = {
       (frame[y] ?? "").slice(0, width).padEnd(width, "."));
   }
 
-  const api = { LIMITS, RANGES, knobFrame, blank, valid, serialise, parse, fromJSON, wordsPerColumn,
-    encode, decode, toHex, fromHex, OPS, dissolve, tween, resize };
+  /* ---- the still glyphs (site/js/mods/glyphs.js) ---- */
+
+  const STILL_RE = /\n  (?:\/\/[^\n]*\n  )?([a-z0-9]+): \[\n((?:    "[.#]+",\n)+)  \],/g;
+
+  /** The still glyphs by mod id, read from the text of glyphs.js. */
+  function parseStill(text) {
+    const at = text.indexOf("export const GLYPHS = {");
+    const body = at < 0 ? "" : text.slice(at);
+    const out = {};
+    for (const m of ("\n" + body).matchAll(STILL_RE)) out[m[1]] = m[2].match(/[.#]+/g);
+    return out;
+  }
+
+  /** A frame as hex for a URL: each row as hex digits of 4 pixels, rows joined by "-". */
+  function rowsToHex(rows) {
+    return rows.map((r) => r.padEnd(Math.ceil(r.length / 4) * 4, ".").match(/.{4}/g)
+      .map((q) => parseInt(q.replace(/#/g, "1").replace(/\./g, "0"), 2).toString(16)).join("")).join("-");
+  }
+
+  function hexToRows(hex, width) {
+    const rows = hex.split("-").map((h) => [...h].map((d) => parseInt(d, 16).toString(2).padStart(4, "0")).join("")
+      .replace(/1/g, "#").replace(/0/g, ".").slice(0, width));
+    return rows.every((r) => r.length === width && /^[.#]+$/.test(r)) ? rows : null;
+  }
+
+  /* ---- rows as text, for copy and paste ---- */
+
+  /** Text to blocks of rows: blocks are separated by blank lines. Only `#` and `.` are
+   *  allowed; anything else gives {error} naming the line and the character. */
+  function parseBlocks(text) {
+    const blocks = [];
+    let block = [];
+    const lines = text.replace(/\r/g, "").split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) { if (block.length) blocks.push(block); block = []; continue; }
+      const bad = line.match(/[^.#]/);
+      if (bad) return { error: `Line ${i + 1} has "${bad[0]}". Use only # and .` };
+      block.push(line);
+    }
+    if (block.length) blocks.push(block);
+    if (!blocks.length) return { error: "There are no rows to use." };
+    return { blocks };
+  }
+
+  /** Rows of any size to a width x height frame at the top left; `trimmed` when some did not fit. */
+  function fitRows(rows, width, height) {
+    const trimmed = rows.length > height || rows.some((r) => r.length > width);
+    return { frame: resize(rows, width, height), trimmed };
+  }
+
+  const framesText = (frames) => frames.map((f) => f.join("\n")).join("\n\n");
+
+  /* ---- animated GIF ---- */
+
+  const GIF_COLOURS = { light: { bg: [0xf6, 0xf5, 0xf2], ink: [0x16, 0x18, 0x1c] },
+                        dark: { bg: [0x0c, 0x0d, 0x0f], ink: [0xe8, 0xe6, 0xe1] } };
+
+  /** GIF89a delay in hundredths of a second for a speed in frames a second (browsers slow down below 2). */
+  const gifDelay = (fps) => Math.max(2, Math.round(100 / Math.max(1, fps)));
+
+  /** LZW of 2-colour indices, code size 2, cut into sub-blocks of 255 bytes. */
+  function lzw(indices) {
+    const MIN = 2, CLEAR = 4, EOI = 5;
+    const out = [];
+    let acc = 0, bits = 0, size = MIN + 1, next = EOI + 1, table = new Map();
+    const emit = (code) => {
+      acc |= code << bits; bits += size;
+      while (bits >= 8) { out.push(acc & 255); acc >>>= 8; bits -= 8; }
+    };
+    emit(CLEAR);
+    let prefix = indices[0];
+    for (let i = 1; i < indices.length; i++) {
+      const k = indices[i], key = (prefix << 8) | k, code = table.get(key);
+      if (code !== undefined) { prefix = code; continue; }
+      emit(prefix);
+      if (next === 4096) { emit(CLEAR); table = new Map(); next = EOI + 1; size = MIN + 1; }
+      else { if (next >= 1 << size) size++; table.set(key, next++); }
+      prefix = k;
+    }
+    emit(prefix);
+    emit(EOI);
+    if (bits > 0) out.push(acc & 255);
+    const blocks = [MIN];
+    for (let p = 0; p < out.length; p += 255) {
+      const chunk = out.slice(p, p + 255);
+      blocks.push(chunk.length, ...chunk);
+    }
+    blocks.push(0);
+    return blocks;
+  }
+
+  /** The frames as an animated GIF: 2 colours, each pixel `scale` x `scale`, looping forever. */
+  function gif(frames, width, height, { scale = 1, theme = "light", delay = 8 } = {}) {
+    const W = width * scale, H = height * scale, c = GIF_COLOURS[theme];
+    const le = (v) => [v & 255, (v >> 8) & 255];
+    const bytes = [..."GIF89a"].map((ch) => ch.charCodeAt(0));
+    bytes.push(...le(W), ...le(H), 0x80, 0, 0, ...c.bg, ...c.ink);
+    bytes.push(0x21, 0xff, 11, ...[..."NETSCAPE2.0"].map((ch) => ch.charCodeAt(0)), 3, 1, 0, 0, 0);
+    for (const f of frames) {
+      bytes.push(0x21, 0xf9, 4, 0x04, ...le(delay), 0, 0);
+      bytes.push(0x2c, 0, 0, 0, 0, ...le(W), ...le(H), 0);
+      const idx = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) {
+        const row = f[(y / scale) | 0];
+        for (let x = 0; x < W; x++) idx[y * W + x] = row[(x / scale) | 0] === "#" ? 1 : 0;
+      }
+      const data = lzw(idx);
+      for (let i = 0; i < data.length; i++) bytes.push(data[i]);
+    }
+    bytes.push(0x3b);
+    return Uint8Array.from(bytes);
+  }
+
+  const api = { gif, gifDelay, GIF_COLOURS, parseBlocks, fitRows, framesText, LIMITS, RANGES, knobFrame, blank, valid, serialise, parse, fromJSON, wordsPerColumn,
+    encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphAnim = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);
