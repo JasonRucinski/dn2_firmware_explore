@@ -61,7 +61,7 @@ async function buildImage() {
   const { main, dsp, notes } = state.built;
   await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, main)], [7, replacement(state.firmware, 7, dsp)]]),
+    new Map([[3, replacement(state.firmware, 3, main, "waverider")], [7, replacement(state.firmware, 7, dsp)]]),
     { filename: state.filename, mod: "waverider", suffix: "waverider", note: notes[0] });
 }
 

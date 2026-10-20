@@ -51,7 +51,7 @@ def run(tmp_path_factory):
 
 
 def test_the_harness_ran_every_chain(run):
-    assert sum(name.endswith("MAIN OS == Python") for name, _ in run["rows"]) == len(ORDERS), run["stderr"]
+    assert sum("MAIN OS == Python" in name for name, _ in run["rows"]) == len(ORDERS), run["stderr"]
 
 
 def test_every_check_passes(run):
