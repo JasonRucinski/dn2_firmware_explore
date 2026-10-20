@@ -127,6 +127,9 @@ p-lock it, but it does not change the sound yet.
 - **FM and DETN:** the interval between the two oscillators sets the overtones. DETN at 0, +12, +19 or
   +24 semitones gives a harmonic sound. Most other values give a metallic sound.
 - **WARP and FM change where the oscillator reads its wave.** They do not change POS or the table.
+- **WARP and FM get softer on high notes.** There they would add harsh tones that do not belong to the
+  note. The higher the value, the lower the note where this starts. At 127, WARP starts to get softer at about
+  D#4 and is off from about D#7. FM starts at about G#4 and is off from about G#7.
 
 ## The wavetable pool
 

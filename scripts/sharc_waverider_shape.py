@@ -25,6 +25,7 @@ runs them (a note at block 1), with page 5's frame words (slots 58 FOLD, 61 NPOS
 | FM 127, osc 2 off | bit for bit the control: no osc 2, no FM |
 | FM, WARP, AM, FOLD and the sub | everything on page 5 at once |
 | FM and WARP across a POS jump, DCLK on | DCLK's two reads take the same phases |
+| WARP 127 at G4 and C6, FM 127 at C6, both at C7 | the same, and taming changes samples |
 
 With DNFW_WAVERIDER_NOMIP=1 the tables load without their mip flag, so phase.asm's copy of opt2's
 reader (a pool table before build3 has its levels) plays them. `--only TEXT` runs the cases whose
@@ -95,6 +96,10 @@ def main(argv=None) -> int:
         ("FM, WARP, AM, FOLD and the sub", {**on2, FM: 0x5000, WARP: 0x3000, TYPE: 0x0200, AMT: 0x6000,
                                             FOLD: 0x2000, SUB: 0x6400}),
         ("FM and WARP across a POS jump, DCLK on", {**on2, FM: 0x6000, WARP: 0x5000, g.DCLK: live.DCLK_DEFAULT}),
+        ("tamed: WARP 127 at G4", {g.LEV2: 0, WARP: 0x7F00}, 67),
+        ("tamed: WARP 127 at C6, osc 2 on", {**on2, WARP: 0x7F00}, 84),
+        ("tamed: FM 127 at C6, osc 2 on", {**on2, FM: 0x7F00}, 84),
+        ("tamed: FM 127 and WARP 127 at C7, osc 2 on", {**on2, FM: 0x7F00, WARP: 0x7F00}, 96),
     ]
     jumps = {"FM and WARP across a POS jump, DCLK on"}
     if a.only:
@@ -104,12 +109,13 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory(dir=g.OUT) as tmp:
         snap, m2mach = g.snapshot_path(dk, stock, pathlib.Path(tmp))
         init = g.init_on(snap, m2mach, wr)
-        for name, words in cases:
+        for name, words, *nt in cases:
             over = {g.WAV1: 0x4000, **words}
+            note = nt[0] if nt else 60
 
-            def fb(b, over=over, jump=name in jumps):
+            def fb(b, over=over, jump=name in jumps, note=note):
                 o = {**over, g.WAV1: 0x7800} if jump and b >= g.JUMP_AT else over
-                return g.base_frame(sound, machines, trigger=(b == 1), overrides=o).to_bytes()
+                return g.base_frame(sound, machines, trigger=(b == 1), overrides=o, note=note << 8).to_bytes()
 
             subs, shapes = [], []
 
@@ -139,8 +145,16 @@ def main(argv=None) -> int:
             checks[name] = bad == 0 and (heard > 0 if page5 else heard == 0)
             report["cases"][name] = {"mismatches": bad, "samples_page5_changes": heard,
                                      "frame_words": per_shape[-1] if per_shape else None}
-            tag = name.split(":")[0].replace(",", "").replace(" ", "_").lower()
-            g.wav(f"shape_{tag}.wav", got, a.seconds, wavs, f"the runner: {name}, note 60")
+            if name.startswith("tamed"):                # taming must change what plays
+                tame, live.tame = live.tame, lambda inc, h: 1.0
+                try:
+                    untamed = live.render_two(tables, seq, g.BLOCK, "float32", subs=per_sub, shapes=per_shape)
+                finally:
+                    live.tame = tame
+                report["cases"][name]["samples_taming_changes"] = tamed = sum(1 for x, y in zip(want, untamed) if x != y)
+                checks[name] = checks[name] and tamed > 0
+            tag = (name if name.startswith("tamed") else name.split(":")[0]).replace(":", "").replace(",", "").replace(" ", "_").lower()
+            g.wav(f"shape_{tag}.wav", got, a.seconds, wavs, f"the runner: {name}, note {note}")
     report["checks"] = checks
     report["wavs"] = wavs
     (g.OUT / "shape_report.json").write_text(json.dumps(report, indent=1, default=str) + "\n")

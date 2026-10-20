@@ -686,10 +686,55 @@ def warp_phase(ph: int, k1: float, k2: float) -> int:
     return (_trunc_by(min(a, b), 31) << 1) & 0xFFFFFFFF
 
 
-def fm_offsets(o2: list[float], word: int) -> list[int]:
-    """Osc 2's samples as phase offsets for osc 1: TRUNC (o2 x c) BY 24, << 8 (cycles, mod 1)."""
+def fm_offsets(o2: list[float], word: int, t: float = 1.0) -> list[int]:
+    """Osc 2's samples as phase offsets for osc 1: TRUNC (o2 x c) BY 24, << 8 (cycles, mod 1).
+    T is taming's factor (`tame`), applied to c as phase.asm's wr_ph_tame does."""
     c = _f32(float(word & 0xFFFF) * _f32(FM_SCALE))
+    if t != 1.0:
+        c = _f32(c * t)
     return [(_trunc_by(_f32(m * c), 24) << 8) & 0xFFFFFFFF for m in o2]
+
+
+# Taming (owner, 2026-10-19: "go with taming"): WARP and FM scale down at high notes, where they
+# would alias, once a block (the eurorack reference's Tame, MIT; our own code). With f the
+# oscillator's increment in cycles and h how much the effect speeds the wave up (WARP: k1; FM:
+# 1 + 2 pi FM/127), t = clamp(A - B f h, 0, 1)^3, A = 0.5 / (0.5 - m), B = 1 / (0.5 - m),
+# m = 0.5 / TAME_ORDER: 1 below f h = m, 0 from f h = 1/2. WARP plays at v t, between two entries
+# of its table (blending the slopes to 1 instead dulled the sound: at t = 0.9 harmonics 5 and up
+# fell 3 to 10 dB, where WARP 100 keeps them); FM's depth c goes to t c, with f from the faster of
+# the two oscillators. At t = 1 nothing changes. The mip level is still chosen from the untamed WARP
+# and FM (phase_sel): with less bend it would pick a brighter level, and alias more (the model
+# study, 2026-10-19).
+TAME_ORDER = 8.0
+TAME_A = _f32(0.5 / (0.5 - 0.5 / TAME_ORDER))
+TAME_B = _f32(1 / (0.5 - 0.5 / TAME_ORDER))
+
+
+def tame(inc: int, h: float) -> float:
+    """Taming's factor for increment INC (u32) and speed-up H, in wr_ph_tame's float32 order."""
+    f = _f32((inc & 0xFFFFFFFF) * 2.0 ** -32)
+    a = _f32(TAME_A - _f32(_f32(f * h) * TAME_B))
+    a = min(max(a, 0.0), 1.0)
+    return _f32(_f32(a * a) * a)
+
+
+def tame_warp(v: int, inc: int) -> tuple[float, float]:
+    """WARP v's (k1, k2) tamed for INC, in wr_ph_tame's order: t = tame(inc, k1); below 1,
+    x = v t, i = TRUNC x, f = x - i, each of k1, k2 as e_i + (e_i+1 - e_i) f."""
+    tab = warp_table()
+    t = tame(inc, tab[v][0])
+    if t >= 1.0:
+        return tab[v]
+    x = _f32(float(v) * t)
+    i = trunc(x)
+    f = _f32(x - float(i))
+    return tuple(_f32(a + _f32(_f32(b - a) * f)) for a, b in zip(tab[i], tab[i + 1]))
+
+
+def tame_fm(word: int, inc: int, inc2: int) -> float:
+    """FM's taming factor: h = 1 + FM x 2 pi / 0x7f00, f from the faster oscillator."""
+    h = _f32(_f32(float(word & 0xFFFF) * _f32(FM_SEL)) + 1.0)
+    return tame(max(inc, inc2), h)
 
 
 def read_phases(phase: int, inc: int, count: int, warp=None, offsets=None) -> list[int]:
@@ -816,8 +861,8 @@ def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs
             phase0 = phase[k]
             ph = sel = None
             if bend or (fm and k == 0):         # page 5: WARP on both oscillators, FM on osc 1
-                offs = fm_offsets(ys[1], fm) if fm and k == 0 else None
-                ph = read_phases(phase0, inc, block, bend, offs)
+                offs = fm_offsets(ys[1], fm, tame_fm(fm, inc, incs[1])) if fm and k == 0 else None
+                ph = read_phases(phase0, inc, block, tame_warp(wv, inc) if bend else None, offs)
                 sel = phase_sel(inc, bend, incs[1] if offs else None, fm)
             samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision, ph, sel)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]

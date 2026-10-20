@@ -28,8 +28,9 @@
 //     p = phase + i inc (+ TRUNC (FMB[i] x c) BY 24 << 8, c = FM x f32(1 / (0x7f00 T)))
 //     WARP v = min(word >> 8, 127), (k1, k2) from the table at DM 0x2e6500:
 //     q = (p >> 1) x 2^-31; p' = (TRUNC min(q k1, 1 - (1 - q) k2) BY 31) << 1
+//   with k1, k2 and c tamed first (phase.asm's wr_ph_tame, dnfw.waverider.live.tame),
 //   then PH[N] = phase + N inc (what the reader keeps), the level's increment
-//   TRUNC ((inc + inc2 x FM x f32(2 pi / 0x7f00)) x k1) at DM 0x2e6018, and the PH flag
+//   TRUNC ((inc + inc2 x FM x f32(2 pi / 0x7f00)) x k1) at DM 0x2e6018 (untamed), and the PH flag
 //   (DM 0x2e6014). Then on to wr_dclk_pre, as before. Clobbers R0-R15, I0-I2.
 //
 // Two more ways in, each by a JUMP another source sends here instead of where it went:
@@ -59,7 +60,7 @@
 //   0x2e6004  FM state;  0x2e6008 the track buffer while osc 2 plays into FMB
 //   0x2e600c  FM's c;    0x2e6010 FM x f32(2 pi / 0x7f00), for the level
 //   0x2e6014  1: the reader reads PH;  0x2e6018 the level's increment;  0x2e601c I3, kept
-//   0x2e6020  WARP's v for this voice (wr_p5_voice)
+//   0x2e6020  WARP's v for this voice (wr_p5_voice);  0x2e6024 the untamed k1 (phase.asm's wr_ph_tame)
 //   0x2e6080  FMB, osc 2's samples under FM, 128 float32
 //   0x2e6280  PH, 129 u32
 //   0x2e6500  WARP's (k1, k2), 128 pairs of float32 (dnfw.waverider.live.warp_table)
@@ -460,13 +461,13 @@ wr_p5_phase.:
       R5 = R5 - R5;
       R0 = DM(0x2e6020);                // WARP's v (wr_p5_voice)
       R0 = PASS R0;
-      IF EQ JUMP 0x172ec1;                   // -> wr_p5_ph_go. (no WARP, no FM)
+      IF EQ JUMP 0x172ec7;                   // -> wr_p5_ph_go. (no WARP, no FM)
 .GLOBAL wr_p5_ph_on.;
 wr_p5_ph_on.:
       R13 = DM(4, I4);                  // N
       R1 = 128;
       COMP(R13, R1);
-      IF GT JUMP 0x172ec1;                   // -> wr_p5_ph_go. (longer than PH)
+      IF GT JUMP 0x172ec7;                   // -> wr_p5_ph_go. (longer than PH)
       CALL 0x172caf;                         // -> wr_p5_t146. (R9 = t, for inc2)
       R0 = DM(0x2e6020);                // v
 .GLOBAL wr_p5_ph_fm.;
@@ -488,10 +489,11 @@ wr_p5_ph_fm.:
       R15 = 31;
       R10 = 24;
       R12 = DM(0x2e600c);               // c
+      CALL 0x1736e7;                         // -> wr_ph_tame. (phase.asm: taming, k1, k2 and c)
       R5 = PASS R5;
-      IF EQ JUMP 0x172e70;                   // -> wr_p5_ph_warp.
+      IF EQ JUMP 0x172e73;                   // -> wr_p5_ph_warp.
       R0 = PASS R0;
-      IF EQ JUMP 0x172e58;                   // -> wr_p5_ph_fmonly.
+      IF EQ JUMP 0x172e5b;                   // -> wr_p5_ph_fmonly.
       // FM and WARP
       LCNTR = R13, DO wr_p5_phb_end. UNTIL LCE;
 .NOCOMPRESS;
@@ -513,7 +515,7 @@ wr_p5_ph_fm.:
 wr_p5_phb_end.:
       R8 = R8 + R11, DM(I2, M6) = R1;
 .COMPRESS;
-      JUMP 0x172e91;                         // -> wr_p5_ph_end.
+      JUMP 0x172e94;                         // -> wr_p5_ph_end.
 .GLOBAL wr_p5_ph_fmonly.;
 wr_p5_ph_fmonly.:
       LCNTR = R13, DO wr_p5_phf_end. UNTIL LCE;
@@ -527,7 +529,7 @@ wr_p5_ph_fmonly.:
 wr_p5_phf_end.:
       R8 = R8 + R11, DM(I2, M6) = R1;
 .COMPRESS;
-      JUMP 0x172e91;                         // -> wr_p5_ph_end.
+      JUMP 0x172e94;                         // -> wr_p5_ph_end.
 .GLOBAL wr_p5_ph_warp.;
 wr_p5_ph_warp.:
       LCNTR = R13, DO wr_p5_phw_end. UNTIL LCE;
@@ -553,7 +555,7 @@ wr_p5_ph_end.:
       F0 = FLOAT R11 BY R12;
       R2 = DM(0x2e6010);                // (a load between: no single-operand compute after a float one)
       R5 = PASS R5;
-      IF EQ JUMP 0x172eae;                   // -> wr_p5_sel_warp.
+      IF EQ JUMP 0x172eb1;                   // -> wr_p5_sel_warp.
       R1 = LSHIFT R9 BY 5;
       R12 = 0x2de808;                   // osc 2's reader block, word 2: inc2
       R1 = R12 + R1;
@@ -567,7 +569,8 @@ wr_p5_ph_end.:
 wr_p5_sel_warp.:
       R1 = DM(0x2e6020);                // v
       R1 = PASS R1;
-      IF EQ JUMP 0x172eb6;                   // -> wr_p5_sel_put. (no WARP: k1 is 1)
+      IF EQ JUMP 0x172ebc;                   // -> wr_p5_sel_put. (no WARP: k1 is 1)
+      R6 = DM(0x2e6024);                // the untamed k1 (wr_ph_tame): the level as without taming
       F0 = F0 * F6;
 .GLOBAL wr_p5_sel_put.;
 wr_p5_sel_put.:

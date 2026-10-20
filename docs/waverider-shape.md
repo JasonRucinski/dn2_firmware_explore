@@ -41,9 +41,27 @@ and `csrc/waverider/sharc/phase.asm` do the work on the DSP. `dnfw.waverider.liv
 - **FM's order:** osc 2 plays into its own buffer (FMB), then osc 1, then FMB is added. The mix is o1 + o2 as
   before. MOVE's random shapes then step osc 2 before osc 1 in a block. When both oscillators wrap in one
   block, the two random values change places.
+- **Taming (Waverider 0.3.5, owner 2026-10-19: "go with taming"):** WARP and FM scale down at high notes,
+  once a block, before the phases are written (`wr_ph_tame` in phase.asm, `live.tame`). The form is the
+  eurorack reference's Tame (MIT; our own code): t = clamp(A - B f h, 0, 1)^3, with f the oscillator's
+  increment in cycles, h the speed-up (WARP: k1; FM: 1 + 2 pi FM / 127), A = 8/7 and B = 16/7 (order 8).
+  - WARP plays at v t, read between two table entries. Blending the slopes toward 1 was tried first and
+    rejected: at t = 0.9 it dropped harmonics 5 and up by 3 to 10 dB, where a plain WARP 100 keeps them.
+  - FM's depth goes to t c, with f from the faster of the two oscillators (osc 2's increment is read from
+    the voice's own reader block).
+  - The mip level is chosen from the untamed WARP and FM. With the tamed values it picks a brighter level
+    and aliases more: WARP 127 at C6 measured -26 dB against -41 in the model study.
+  - At t = 1 the code skips taming, so a note below the start sounds bit for bit as in 0.3.4.
+  - Alias against 0.3.4 (`live.render_two`, both oscillators on Prim. at POS 0, the measure of the
+    integrated-wavetable study): WARP 127 at C5 -37 dB (-33), C6 -43 (-31), F#6 -49 (-22), C7 -61 (-17).
+    FM 127 at F#6 -36 (-19), C7 -68 (-16). Brightness (spectral centroid) under WARP 127: 0.94 at C5,
+    0.70 at C6.
+  - Cost: +75 instructions per voice and block with all of page 5 on at C4 (no taming), +115 at C7.
+  - Checks: the shape gate's four tamed cases (G4, C6, C7) and `scripts/sharc_waverider_tame_voices.py`
+    (WARP and FM 127 at C6 on all 16 voice slots) are bit for bit the model, and taming changes the samples.
 - **WARP and FM at 0** skip their code: the reader is the reader of 0.2.0 and the voice is bit for bit the
   same.
-- **Checks:** `scripts/sharc_waverider_shape.py` runs 15 cases in digikit's SHARC runner, and each is bit for bit the
+- **Checks:** `scripts/sharc_waverider_shape.py` runs 19 cases in digikit's SHARC runner, and each is bit for bit the
   model. `test/test_waverider_shape.py` checks the model.
 - **Cost** (`scripts/sharc_waverider_p5_cost.py`, instructions per voice and block): FOLD 369, Ring 363, AM 431,
   WARP 710, FM 482, WARP and FM 1,138. All of AM, FOLD, WARP and FM: 1,898, about 4.6 % of a block on 16 voices.
