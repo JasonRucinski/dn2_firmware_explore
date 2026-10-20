@@ -25,7 +25,7 @@ async function buildImage() {
   const { content, notes } = apply(state.firmware);
   await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, content)]]),
+    new Map([[3, replacement(state.firmware, 3, content, "reloadconfirm")]]),
     { filename: state.filename, mod: "reloadconfirm", suffix: "reloadconfirm", note: notes[0] });
 }
 

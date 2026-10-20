@@ -45,7 +45,7 @@ async function buildImage() {
   const { content, notes } = apply(state.firmware);
   const bytes = await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, content)]]),
+    new Map([[3, replacement(state.firmware, 3, content, "lfo4")]]),
     { filename: state.filename, mod: "lfo4", suffix: "lfo4", note: notes[0], unavailable });
   const rows = $("buildVerdict").querySelectorAll(".pass, .fail");
   const passed = $("buildVerdict").querySelectorAll(".pass").length;

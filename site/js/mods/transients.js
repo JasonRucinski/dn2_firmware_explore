@@ -197,7 +197,7 @@ export function apply(firmware, entries) {
   }
 
   return {
-    section: replacement(firmware, SECTION, content),
+    section: replacement(firmware, SECTION, content, ID),
     notes,
     extents: extents(firmware),
   };

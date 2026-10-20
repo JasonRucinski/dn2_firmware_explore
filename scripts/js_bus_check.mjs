@@ -15,10 +15,25 @@ import { build, load, replacement, verify } from "../site/js/firmware.js";
 import * as fxmod from "../site/js/mods/fxmod.js";
 import * as lfo4 from "../site/js/mods/lfo4.js";
 import * as waverider from "../site/js/mods/waverider.js";
+import { locate, xxh32 } from "../site/js/modinfo.js";
 
 const arg = (n) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 ? process.argv[i + 1] : null; };
 const same = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const checks = [];
+// the /modinfo record's build part (20..247, the hash at 252): the browser fills it at every
+// build (modinfo.js); the Python payloads here are the mods' own, before `dnfw mods apply`'s fill
+const blank = (b) => {
+  const out = b.slice(), at = locate(out);
+  if (at >= 0) { out.fill(0, at + 20, at + 248); out.fill(0, at + 252, at + 256); }
+  return out;
+};
+const listed = (b) => {
+  const at = locate(b), rec = b.subarray(at, at + 256);
+  const hash = (rec[252] << 24 | rec[253] << 16 | rec[254] << 8 | rec[255]) >>> 0;
+  const ids = [...Array(rec[68]).keys()].map((k) =>
+    new TextDecoder().decode(rec.subarray(72 + 16 * k, 84 + 16 * k)).replace(/\0.*$/s, ""));
+  return hash === xxh32(rec.subarray(0, 252)) ? ids : null;
+};
 
 const run = {
   fxmod: async (f) => new Map([[3, fxmod.apply(f).content]]),
@@ -33,7 +48,7 @@ for (const order of [["fxmod", "waverider"], ["waverider", "fxmod"], ["lfo4", "w
   for (const mod of order) {
     const sections = await run[mod](firmware);
     main = sections.get(3);
-    const parts = new Map([...sections].map(([id, c]) => [id, replacement(firmware, id, c)]));
+    const parts = new Map([...sections].map(([id, c]) => [id, replacement(firmware, id, c, mod)]));
     const reloaded = await load(await build(firmware, parts));
     const v = await verify(reloaded);
     checks.push([`${order.join(" then ")}: after ${mod}, the rebuilt image verifies `
@@ -41,7 +56,12 @@ for (const order of [["fxmod", "waverider"], ["waverider", "fxmod"], ["lfo4", "w
     firmware = reloaded;
   }
   const py = new Uint8Array(readFileSync(`${arg("py-dir")}/${order.join("-")}.bin`));
-  checks.push([`${order.join(" then ")}: MAIN OS == Python`, same(main, py)]);
+  checks.push([`${order.join(" then ")}: MAIN OS == Python, the record's build part aside`,
+               same(blank(main), blank(py))]);
+  const ids = listed(firmware.container.find(3).unpack());
+  const want = order.slice(order.indexOf("waverider"));        // mods before Waverider leave no record
+  checks.push([`${order.join(" then ")}: the record checks out and lists ${want.join(", ")}`,
+               ids !== null && ids.join() === want.join()]);
 }
 
 for (const [name, ok] of checks) console.log(`${ok ? "OK" : "FAIL"}  ${name}`);

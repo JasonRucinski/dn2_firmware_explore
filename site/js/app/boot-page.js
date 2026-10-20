@@ -206,7 +206,7 @@ async function buildImage() {
   const { content, notes } = apply(state.firmware, images(), options());
   await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, content)]]),
+    new Map([[3, replacement(state.firmware, 3, content, "bootscreen")]]),
     { filename: state.filename, mod: "bootscreen", suffix: ascii() ? "bootscreen-ascii" : spin() ? "bootscreen-spin" : "bootscreen", note: notes[0] });
 }
 

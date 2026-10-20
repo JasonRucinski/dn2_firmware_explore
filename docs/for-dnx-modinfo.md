@@ -6,13 +6,13 @@
 
 ## The gate, in three states
 
-DNX's rule, adopted here. **The root listing is the primary signal; the error string only corroborates it,** since it's stock firmware's English text and may change.
+DNX's rule, adopted here. **The root listing is the primary signal. The error string only corroborates it,** since it's stock firmware's English text and may change.
 - **Supported:** `/` lists `waverider`, and `/modinfo/0` reads a valid record whose capabilities DNX needs.
 - **Not supported:** `/` answers and doesn't list `waverider`. The open of `/modinfo/0` then corroborates it with the session's own **`Error: Could not resolve path`**, stock 1.11's exact answer (measured in the emulator, `scripts/emu_modinfo.py`).
 - **Could not ask:**
-  - a timeout, a busy port or any other answer;
+  - a timeout, a busy port or any other answer.
   - **a contradiction:** `/` lists `waverider` while `/modinfo/0` is refused, which a Waverider build from before rev 1 would also give.
-  DNX says so; it never resolves a contradiction or silence into "stock".
+  DNX says so. It never resolves a contradiction or silence into "stock".
 
 **The coarse gate needs no new firmware.** Every Waverider build since the store landed lists `waverider` among the roots, and stock doesn't. Use `/modinfo` for everything the listing can't say: which capabilities, which image.
 
@@ -54,13 +54,19 @@ DNX's rule, adopted here. **The root listing is the primary signal; the error st
 | `bytes - 4` | 4 | xxHash32 of everything before it, seed 0 (the hash the store and the pool records use): 252 in version 1 |
 
 **The record grows by appending.** A reader:
-- takes the hash from `bytes - 4`;
-- accepts a `bytes` larger than it knows;
+- takes the hash from `bytes - 4`.
+- accepts a `bytes` larger than it knows.
 - reads only the fields it knows.
 
 This is unlike the pool record, whose size is fixed and whose hash sits at a constant.
 
 **The image id answers "which image is this".** Two builds of the same mods and tag differ in it. On 2026-10-06, `tbl128` and `tbl128b` had the same tag and differed only in a loader constant, which a full pool alone would have shown.
+
+**Website builds fill the record too (from 2026-10-21).** The browser builder (`site/js/modinfo.js`) runs the same fill at every build of MAIN OS. Before that date, a website build shipped the record unfilled: `MODINFO-UNFILLED` at 24, and a zero image id and hash. Such a record fails the hash check. A website build differs from a `dnfw mods apply` build in four fields:
+- the tag is `web-` and the mod ids, for example `web-waverider-fxmod`.
+- the commit is `web-` and the Waverider version, for example `web-0.3.6`.
+- each mod's code hash is 0.
+- the mods list starts at Waverider. A mod applied on the website before Waverider leaves no record, so the list does not name it.
 
 ## The capabilities
 
@@ -78,7 +84,7 @@ One bit per thing DNX does differently.
 | 0x80 | erase | enables the "remove every Waverider table and pool list" control (`/wavepool/129`, docs/for-dnx-waverider-erase.md) |
 
 **Unknown bits must be ignored.** That's the opposite of the pool record's rule, where an undefined flag is refused, and the difference is deliberate:
-- a data record must not be half-understood;
+- a data record must not be half-understood.
 - a capability set grows by design, and an older DNX meeting newer firmware should lose features, not refuse the device.
 
 ## A Waverider build without `/modinfo` (DNX's rule)

@@ -25,7 +25,7 @@ async function buildImage() {
   const { content, notes } = apply(state.firmware);
   await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, content)]]),
+    new Map([[3, replacement(state.firmware, 3, content, "lfolength")]]),
     { filename: state.filename, mod: "lfolength", suffix: "lfofix", note: notes[0] });
 }
 
