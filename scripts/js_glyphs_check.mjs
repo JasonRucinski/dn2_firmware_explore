@@ -166,3 +166,76 @@ ok("with motion off it shows the still glyph", same(lit(still.children[0]), want
      a.device === 6 && a.width === 768 && b.device === 7 && b.width <= 340 && b.width > 340 - 128 / 3
      && c.css === 24 && c.width === 408 && d.device === 2 && d.width === 256);
 }
+
+// Selection and fills (glyph_anim_core.js, glyph_fills_panel.js, glyph_icons.js).
+{
+  const ctx = {};
+  vm.createContext(ctx);
+  for (const f of ["tools/glyph_anim_core.js", "tools/glyph_icons.js", "tools/glyph_tools.js", "tools/glyph_fills_panel.js"]) {
+    vm.runInContext(readFileSync(new URL(`../${f}`, import.meta.url), "utf8"), ctx);
+  }
+  const G = ctx.GlyphAnim, F = ctx.GlyphFills, T = ctx.GlyphTools, I = ctx.GlyphIcons;
+  const J = JSON.stringify;
+  const a = G.maskRect(6, 4, 0, 0, 2, 1), b = G.maskRect(6, 4, 2, 1, 4, 2);
+  ok("selection masks: add, subtract, invert, all and none",
+     J(G.maskCombine(a, b, "add")) === J(["###...", "#####.", "..###.", "......"])
+     && J(G.maskCombine(a, b, "subtract")) === J(["###...", "##....", "......", "......"])
+     && J(G.maskCombine(a, b, "replace")) === J(b)
+     && J(G.maskInvert(a)) === J(["...###", "...###", "######", "######"])
+     && G.maskEmpty(G.maskNone(6, 4)) && !G.maskEmpty(G.maskAll(6, 4)) && J(G.maskBounds(b, 6, 4)) === J([2, 1, 4, 2]));
+  const ring = G.plot(G.blank(9, 9), G.rect(1, 1, 7, 7));            // a square ring, a hole inside
+  const diag = ["#..", ".#.", "..#"];
+  const lit = (f) => f.join("").split("#").length - 1;
+  ok("the magic wand: a ring's lit pixels, its hole, the outside; 4- and 8-connected diagonals",
+     J(G.wand(ring, 1, 1)) === J(ring) && lit(G.wand(ring, 4, 4)) === 25 && lit(G.wand(ring, 0, 0)) === 32
+     && J(G.wand(diag, 0, 0, { connect: 4 })) === J(["#..", "...", "..."]) && J(G.wand(diag, 0, 0, { connect: 8 })) === J(diag));
+  const top = G.maskRect(9, 9, 0, 0, 8, 3);
+  ok("the bucket fills the area it is clicked in, and only inside the selection when there is one",
+     J(G.flood(ring, 4, 4, true)) === J(G.plot(G.blank(9, 9), G.rect(1, 1, 7, 7, true)))
+     && G.flood(ring, 4, 4, true, { mask: top })[5] === ring[5] && G.flood(ring, 4, 4, true, { mask: top })[2] === ".#######.");
+  const blank = G.blank(16, 8);
+  const bay = G.fill(blank, "bayer", { density: 0.5 });
+  ok("Bayer at 50% is a checker, at 25% a quarter, at 0% none and at 100% all",
+     bay.every((r, y) => [...r].every((c, x) => (c === "#") === ((x + y) % 2 === 0)))
+     && lit(G.fill(blank, "bayer", { density: 0.25 })) === 32 && lit(G.fill(blank, "bayer", { density: 0 })) === 0
+     && lit(G.fill(blank, "bayer", { density: 1 })) === 128);
+  ok("checker, hatching and cross-hatching give their known rows",
+     G.fill(blank, "checker", { size: 2 })[0] === "..##..##..##..##" && G.fill(blank, "checker", { size: 2 })[2] === "##..##..##..##.."
+     && J(G.fill(blank, "hatch", { angle: 45, spacing: 4 }).slice(0, 4)) === J(["#...#...#...#...", ".#...#...#...#..", "..#...#...#...#.", "...#...#...#...#"])
+     && G.fill(blank, "hatch", { angle: 0, spacing: 4 })[4] === "#".repeat(16)
+     && G.fill(blank, "crosshatch", { angle: 45, spacing: 4 })[1] === ".#.#.#.#.#.#.#.#");
+  const big = G.blank(64, 64);
+  ok("halftone, noise and even noise come near their density, and the seed moves the noise",
+     Math.abs(lit(G.fill(big, "noise", { density: 0.3, seed: 2 })) / 4096 - 0.3) < 0.03
+     && Math.abs(lit(G.fill(big, "blue", { density: 0.3 })) / 4096 - 0.3) < 0.03
+     && Math.abs(lit(G.fill(big, "halftone", { density: 0.3, cell: 8 })) / 4096 - 0.3) < 0.05
+     && J(G.fill(blank, "noise", { density: 0.5, seed: 1 })) !== J(G.fill(blank, "noise", { density: 0.5, seed: 2 })));
+  const lin = G.fill(G.blank(32, 4), "linear", { angle: 0 }), rad = G.fill(G.blank(33, 33), "radial", {});
+  ok("a linear gradient is dark at its start and lit at its end; a radial one lit at the centre and dark at the corners",
+     lin.every((r) => r[0] === "." && r[31] === "#") && rad[16][16] === "#" && rad[0][0] === "." && rad[32][32] === "."
+     && G.fill(G.blank(32, 4), "linear", { angle: 0, invert: true }).every((r) => r[0] === "#" && r[31] === "."));
+  const box = G.maskRect(16, 8, 4, 2, 11, 5), inside = G.fill(G.OPS.invert(blank), "bayer", { density: 0.5 }, box);
+  const lbox = G.fill(blank, "linear", { angle: 0 }, box);
+  ok("a fill stays inside the selection, and a gradient runs across the selection's bounds",
+     inside.every((r, y) => [...r].every((c, x) => (box[y][x] === "#" ? c === ((x + y) % 2 === 0 ? "#" : ".") : c === "#")))
+     && lbox.slice(2, 6).every((r) => r[4] === "." && r[11] === "#") && lbox[0] === blank[0]);
+  let same = true;
+  for (const k of G.FILLS) same &&= J(G.fill(ring, k, { density: 0.4, angle: 30, seed: 5 })) === J(G.fill(ring, k, { density: 0.4, angle: 30, seed: 5 }));
+  ok("every fill gives the same pixels on a second run", same && G.FILLS.length === 9);
+  const lifted = G.lift(ring, G.maskRect(9, 9, 0, 0, 4, 4));
+  const moved = G.stamp(lifted.base, lifted.layer, 3, 2), back = G.stamp(lifted.base, lifted.layer, 0, 0);
+  const layerAt = (f) => f.slice(2, 7).map((r) => r.slice(3, 8));
+  const copied = G.lift(ring, G.maskAll(9, 9), { copy: true });
+  ok("a move keeps the pixels: the layer lands whole, the frame under it stays until it drops, the mask moves too",
+     J(back.frame) === J(ring) && J(layerAt(moved.frame)) === J(ring.slice(0, 5).map((r) => r.slice(0, 5)))
+     && J(moved.mask) === J(G.maskRect(9, 9, 3, 2, 7, 6))
+     && J(copied.base) === J(ring) && J(G.stamp(G.blank(9, 9), copied.layer).frame) === J(ring));
+  const p = G.rangeParams({ density: 0, angle: 0, seed: 3 }, { density: 1, angle: 90 }, 1, 3, "linear");
+  const eased = F.results([blank, blank, blank], "bayer", { density: 0 }, null, { ease: "linear", to: { density: 1 } });
+  ok("over a range of frames a setting eases with t = i/(n-1): first, middle and last",
+     p.density === 0.5 && p.angle === 45 && p.seed === 3 && lit(eased[0]) === 0 && lit(eased[1]) === 64 && lit(eased[2]) === 128);
+  ok("every tool and toggle has a 16x16 icon and a one-letter shortcut, and no two share a key",
+     [...T.TOOLS, ...T.TOGGLES].every((t) => I.ICONS[t.id]?.length === 16 && I.ICONS[t.id].every((r) => /^[.#]{16}$/.test(r)) && /^[A-Z]$/.test(t.key))
+     && new Set([...T.TOOLS, ...T.TOGGLES].map((t) => t.key)).size === T.TOOLS.length + T.TOGGLES.length
+     && I.iconSvg("bucket").includes('fill="currentColor"'));
+}
