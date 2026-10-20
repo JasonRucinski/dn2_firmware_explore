@@ -13,46 +13,19 @@
   site/js/mods/glyphs.js load as the page loads over http; from disk, press
   "Open glyphs.js". glyph_animator.html#from=ID&px=HEX starts from one of them
   (the still editor's "Send to animator").
-  Local tool: not part of the published site. The model is glyph_anim_core.js.
+  Local tool: not part of the published site. The model is glyph_anim_core.js;
+  the tool bar, the selection and the fills are shared with the still editor
+  (glyph_tools.js, glyph_fills_panel.js, glyph_tools.css).
 -->
+<link rel="stylesheet" href="glyph_tools.css">
 <style>
-  :root {
-    --bg: #f6f5f2; --panel: #fff; --ink: #16181c; --ink-soft: #565b66;
-    --rule: #e2e0da; --accent: #b4530a; --off: #ecebe7;
-    --cell-off: #dcdad3; --grid: rgba(255, 255, 255, .9); --grid-major: #fff;
-    font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #0c0d0f; --panel: #141619; --ink: #e8e6e1; --ink-soft: #9aa0ab;
-      --rule: #25282d; --accent: #ff9d3c; --off: #1d2024;
-      --cell-off: #1d2024; --grid: rgba(255, 255, 255, .2); --grid-major: rgba(255, 255, 255, .45);
-    }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); }
-  h1 { font-size: 1.3rem; margin: 0 0 .3rem; }
-  h2 { font-size: 1rem; margin: 0 0 .5rem; }
-  a { color: var(--accent); }
-  button, select, input { font: inherit; }
-  button { padding: .3rem .7rem; border: 1px solid var(--rule); border-radius: 6px;
-           background: var(--panel); color: var(--ink); cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  button:disabled { opacity: .45; cursor: default; }
-  select, input[type=number], input[type=text] { padding: .25rem .4rem; border: 1px solid var(--rule);
-           border-radius: 6px; background: var(--panel); color: var(--ink); }
-  input[type=number] { width: 4.5rem; }
-  .bar { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; margin: .5rem 0; }
-  .muted { color: var(--ink-soft); font-size: .9rem; }
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 1.4rem; align-items: start; }
   @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-  section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; min-width: 0; }
-  #paint { display: block; touch-action: none; cursor: crosshair; height: auto; image-rendering: pixelated; }
   .strip { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .4rem; }
   .strip button { flex: none; display: grid; justify-items: center; gap: .15rem; padding: .3rem;
                   font-size: .7rem; font-family: ui-monospace, Consolas, monospace; }
   .strip button.on { outline: 2px solid var(--accent); }
-  canvas.px { image-rendering: pixelated; display: block; max-width: 100%; }
+  .strip button[aria-selected="true"] { background: var(--off); border-color: var(--accent); }
   .chips { display: grid; gap: .6rem; }
   .chip { padding: 8px; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; overflow: hidden; }
   .chip.light { background: #f6f5f2; }
@@ -61,14 +34,13 @@
   #readout { font-family: ui-monospace, Consolas, monospace; font-size: .9rem; }
   textarea { width: 100%; height: 7rem; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
              background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; }
-  label { display: inline-flex; gap: .3rem; align-items: center; }
-  .palette button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
-  .palette label:has(input:disabled) { opacity: .5; }
   #curve { display: block; border: 1px solid var(--rule); border-radius: 4px; background: var(--off); }
   .morph-preview { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .3rem; min-height: 1rem; }
   .morph-preview figure { margin: 0; display: grid; justify-items: center; gap: .1rem;
                           font-size: .7rem; font-family: ui-monospace, Consolas, monospace; color: var(--ink-soft); }
   textarea.rows { height: 12rem; white-space: pre; overflow: auto; line-height: 1.15; }
+  .frame-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline; justify-content: space-between; }
+  .frame-head h2 { margin: 0 0 .5rem; font-size: 1rem; }
 </style>
 
 <h1>Glyph Animator</h1>
@@ -81,8 +53,8 @@
   <span id="status" class="muted">Open site/js/mods/glyph-anims.js, or make a new animation.</span>
 </div>
 
-<section>
-  <h2>Animation</h2>
+<details class="card" open>
+  <summary>Animation</summary>
   <div class="bar">
     <select id="pick" aria-label="Animation"></select>
     <button id="del-anim">Delete</button>
@@ -99,10 +71,10 @@
     <label>Frames <input id="new-n" type="number" min="1" max="128" value="13"></label>
     <button id="create">New</button>
   </div>
-</section>
+</details>
 
-<section>
-  <h2>Still glyphs</h2>
+<details class="card" open>
+  <summary>Still glyphs</summary>
   <div class="bar">
     <button id="still-open">Open glyphs.js</button>
     <span id="still-status" class="muted">Reading site/js/mods/glyphs.js.</span>
@@ -115,41 +87,44 @@
   </div>
   <p class="muted">Pick a still glyph, then use it as frame 1 of a new animation, or as a frame
     of this one. A glyph of a different size goes at the top left. It is not scaled.</p>
-</section>
+</details>
 
 <div id="work" hidden>
 <div class="layout">
   <div>
-    <section>
-      <h2 id="frame-title">Frame</h2>
-      <div class="bar" id="palette" aria-label="Drawing tools"></div>
-      <canvas id="paint"></canvas>
+    <section class="card">
+      <div class="frame-head">
+        <h2 id="frame-title">Frame</h2>
+        <label><input id="onion" type="checkbox" checked> Onion skin</label>
+      </div>
+      <div id="toolbar"></div>
+      <div id="context"></div>
+      <div class="surface-box"><canvas id="paint" class="surface"></canvas></div>
       <div class="bar">
         <button data-op="up">Up</button><button data-op="down">Down</button>
         <button data-op="left">Left</button><button data-op="right">Right</button>
         <button data-op="flipx">Mirror</button><button data-op="flipy">Flip</button>
         <button data-op="invert">Invert</button><button data-op="clear">Clear</button>
         <button id="undo">Undo</button>
-        <label><input id="onion" type="checkbox" checked> Onion skin</label>
       </div>
-      <p class="muted">Pick a tool and drag on the frame. The pencil's first pixel sets the colour of
-        the stroke. Line, Rectangle and Ellipse draw from where you press to where you let go.
-        Hold Shift for a square, a circle or a line in steps of 45 degrees. Erase, or the right
-        mouse button, draws dark pixels. Onion skin shows the previous frame faintly.</p>
+      <p class="muted">Pick a tool in the bar, or press its key. Press ? for all the shortcuts.
+        Onion skin shows the previous frame faintly.</p>
     </section>
 
-    <section>
+    <section class="card">
       <h2>Frames</h2>
-      <div class="strip" id="strip"></div>
+      <div class="strip" id="strip" role="listbox" aria-label="Frames" aria-multiselectable="true"></div>
       <div class="bar">
         <button id="f-add">Add</button><button id="f-dup">Duplicate</button>
         <button id="f-del">Delete</button><button id="f-left">Move left</button>
         <button id="f-right">Move right</button><button id="f-prev">Copy previous</button>
       </div>
+      <p class="muted" id="range-note">Shift-click picks a range of frames. Ctrl-click adds or removes one frame.
+        A fill then goes on every frame you picked.</p>
     </section>
 
-    <section>
-      <h2>Morph</h2>
+    <details class="card" open>
+      <summary>Morph</summary>
       <div class="bar">
         <label>From frame <input id="mo-a" type="number" min="1" value="1"></label>
         <label>to frame <input id="mo-b" type="number" min="1" value="2"></label>
@@ -181,11 +156,16 @@
         each pixel that differs at its own point, so the same settings always give the same
         frames. Move slides each lit pixel toward the nearest lit pixel of the other frame.
         The curve shows how fast the change goes, and the dots are the new frames.</p>
-    </section>
+    </details>
+
+    <details class="card" open>
+      <summary>Fills</summary>
+      <div id="fills"></div>
+    </details>
   </div>
 
   <div>
-    <section>
+    <section class="card">
       <h2>Knob</h2>
       <input id="knob" type="range" min="0" max="127" value="0" aria-label="Knob value">
       <div class="bar">
@@ -206,8 +186,8 @@
         Play shows the frames in order.</p>
     </section>
 
-    <section>
-      <h2>Animated GIF</h2>
+    <details class="card" open>
+      <summary>Animated GIF</summary>
       <div class="bar">
         <select id="gif-scale" aria-label="Scale">
           <option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option>
@@ -219,10 +199,10 @@
         <button id="gif-save">Save GIF</button>
       </div>
       <p class="muted">The GIF plays the frames in order at the speed above, and loops.</p>
-    </section>
+    </details>
 
-    <section>
-      <h2>Firmware format</h2>
+    <details class="card">
+      <summary>Firmware format</summary>
       <div class="bar">
         <button id="bin-out">Download .bin</button><button id="hex-out">Show hex</button>
         <button id="bin-in">Import .bin</button><button id="hex-in">Import hex</button>
@@ -234,12 +214,12 @@
       <div class="bar">
         <button id="json-out">Download JSON</button><button id="json-in">Import JSON</button>
       </div>
-    </section>
+    </details>
   </div>
 </div>
 
-  <section>
-    <h2>Rows</h2>
+  <details class="card" open>
+    <summary>Rows</summary>
     <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
     <div class="bar">
       <button id="rows-apply">Apply to this frame</button>
@@ -251,11 +231,13 @@
       Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
       the top left. Rows that are larger are cut to the frame size. To add several frames, paste
       blocks of rows with a blank line between them.</p>
-  </section>
+  </details>
 </div>
 
 <script src="glyph_anim_core.js"></script>
+<script src="glyph_icons.js"></script>
 <script src="glyph_tools.js"></script>
+<script src="glyph_fills_panel.js"></script>
 <script>
 const G = GlyphAnim;
 const $ = (id) => document.getElementById(id);
@@ -269,6 +251,7 @@ const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v
 function serialiseAll() { return G.serialise(anims); }
 
 function remember() {
+  ed.drop();
   undo.push(JSON.stringify({ frames: frames(), cur }));
   if (undo.length > 200) undo.shift();
 }
@@ -289,39 +272,10 @@ function drawFrame(canvas, frame, scale, ink, bg) {
   frame.forEach((row, y) => { for (let x = 0; x < w; x++) if (row[x] === "#") c.fillRect(x * scale, y * scale, scale, scale); });
 }
 
-/** The grid fills the width of its section; a cell is that width over the frame width, in
- *  whole device pixels, and at most 24 CSS pixels so a small glyph does not grow huge. */
-function cellSize() {
-  const room = GlyphTools.contentWidth($("paint").parentElement);
-  return GlyphTools.fitCell(room, anim().width, { max: 24, dpr: devicePixelRatio || 1 });
-}
-
+/** The drawing surface (glyph_tools.js) draws the frame, the grid and the selection. */
 function drawPaint() {
-  const a = anim(), f = frames()[cur], fit = cellSize(), s = fit.device, canvas = $("paint");
-  canvas.width = a.width * s; canvas.height = a.height * s;
-  canvas.style.width = `${fit.width}px`;
-  const c = canvas.getContext("2d");
-  c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
-  const prev = $("onion").checked && cur > 0 ? frames()[cur - 1] : null;
-  for (let y = 0; y < a.height; y++) {
-    for (let x = 0; x < a.width; x++) {
-      if (f[y][x] === "#") { c.globalAlpha = 1; c.fillStyle = css("--ink"); }
-      else if (prev && prev[y][x] === "#") { c.globalAlpha = .22; c.fillStyle = css("--ink"); }
-      else continue;
-      c.fillRect(x * s, y * s, s, s);
-    }
-  }
-  c.globalAlpha = 1;
-  // A white grid shows each pixel: a line between every cell when a cell is 3 device pixels
-  // or more, and a brighter line every 8 cells at any size.
-  const lines = (every, colour) => {
-    c.strokeStyle = colour; c.lineWidth = 1; c.beginPath();
-    for (let x = every; x < a.width; x += every) { c.moveTo(x * s + .5, 0); c.lineTo(x * s + .5, canvas.height); }
-    for (let y = every; y < a.height; y += every) { c.moveTo(0, y * s + .5); c.lineTo(canvas.width, y * s + .5); }
-    c.stroke();
-  };
-  if (s >= 3) lines(1, css("--grid"));
-  lines(8, css("--grid-major"));
+  const a = anim(), f = frames()[cur];
+  ed.render();
   $("frame-title").textContent = `Frame ${cur + 1} of ${frames().length} (${a.width} x ${a.height})`;
   if (document.activeElement !== $("rows")) $("rows").value = f.join("\n");
   $("rows").style.height = `${Math.min(a.height, 32) * 1.15 + 1.5}em`;
@@ -337,7 +291,11 @@ function drawStrip() {
     drawFrame(cv, f, scale, css("--ink"), css("--off"));
     b.append(cv, String(i + 1));
     if (i === cur) b.className = "on";
-    b.onclick = () => { cur = i; drawAll(); };
+    b.setAttribute("role", "option");
+    b.setAttribute("aria-selected", String(picked.size > 1 && picked.has(i)));
+    b.setAttribute("aria-label", `Frame ${i + 1}`);
+    b.dataset.frame = i;
+    b.onclick = (e) => pickFrame(i, e);
     return b;
   }));
   $("strip").children[cur]?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -362,7 +320,10 @@ function drawAll() {
   if (!name) { $("work").hidden = true; return; }
   $("work").hidden = false;
   cur = Math.min(cur, frames().length - 1);
+  picked = new Set([...picked].filter((i) => i < frames().length));
+  if (!picked.size) picked.add(cur);
   drawPaint(); drawStrip(); drawMorph();
+  fills.refresh();
   if (!timer) drawPreview();
 }
 
@@ -371,69 +332,76 @@ function drawPick() {
   if (name) $("pick").value = name;
 }
 
-/* ---- painting ---- */
+/* ---- drawing, the selection and the fills: shared with the still editor ---- */
 
-/* The palette and the drag are shared with the still editor (glyph_tools.js). */
-const tools = GlyphTools.palette($("palette"));
-let stroke = null, lastCell = null, strokeStart = null;
-function cellAt(e, clamp = false) {
-  const r = $("paint").getBoundingClientRect(), a = anim();
-  let x = Math.floor((e.clientX - r.left) / r.width * a.width);
-  let y = Math.floor((e.clientY - r.top) / r.height * a.height);
-  if (clamp) { x = Math.max(0, Math.min(a.width - 1, x)); y = Math.max(0, Math.min(a.height - 1, y)); }
-  return x >= 0 && y >= 0 && x < a.width && y < a.height ? [x, y] : null;
-}
-function showStroke(rows) {
-  if (rows.join() === frames()[cur].join()) return;
-  frames()[cur] = rows;
-  changed();
-}
-$("paint").addEventListener("contextmenu", (e) => e.preventDefault());
-$("paint").addEventListener("pointerdown", (e) => {
-  const p = cellAt(e);
-  if (!p || (e.button !== 0 && e.button !== 2)) return;
-  e.preventDefault();
-  remember();
-  strokeStart = frames()[cur].join("\n");
-  lastCell = p;
-  stroke = GlyphTools.drag(tools, frames()[cur], p[0], p[1], { button: e.button });
-  showStroke(stroke.frame);
-  try { $("paint").setPointerCapture(e.pointerId); } catch { /* a pointer that is not active */ }
+const ed = GlyphTools.surface({
+  canvas: $("paint"), toolbar: $("toolbar"), context: $("context"), max: 24,
+  frame: () => (name ? frames()[cur] : null),
+  set: (rows) => { frames()[cur] = rows; changed(); },
+  begin: () => remember(),
+  unbegin: () => undo.pop(),
+  end: () => changed(),
+  undo: () => undoOnce(),
+  onion: () => ($("onion").checked && cur > 0 ? frames()[cur - 1] : null),
+  selected: () => name && fills.refresh(),
 });
-addEventListener("pointermove", (e) => {
-  if (!stroke) return;
-  const p = cellAt(e, tools.tool !== "pencil");
-  if (p) { lastCell = p; showStroke(stroke.move(p[0], p[1], e.shiftKey)); }
-});
-for (const type of ["keydown", "keyup"]) {
-  addEventListener(type, (e) => {      // Shift pressed or let go during a drag redraws the shape
-    if (stroke && e.key === "Shift" && tools.tool !== "pencil") showStroke(stroke.move(lastCell[0], lastCell[1], e.shiftKey));
-  });
+function thumb(canvas, rows) {
+  const s = Math.max(1, Math.min(3, Math.floor(48 / Math.max(rows[0].length, rows.length))));
+  drawFrame(canvas, rows, s, css("--ink"), css("--off"));
 }
-addEventListener("pointerup", () => {
-  if (!stroke) return;
-  if (frames()[cur].join("\n") === strokeStart) undo.pop();         // a drag that changed nothing
-  stroke = null;
+/** The frames a fill goes on: the picked range, or the frame shown. */
+const fillTargets = () => (picked.size > 1 ? [...picked].sort((p, q) => p - q) : [cur]);
+const fills = GlyphFills.panel($("fills"), {
+  targets: () => (name ? fillTargets().map((i) => frames()[i]) : [G.blank(1, 1)]),
+  mask: () => ed.mask,
+  apply: (out) => {
+    const idx = fillTargets();
+    editFrames((fs) => { idx.forEach((i, k) => { fs[i] = out[k]; }); }, { keepPick: true });
+    status(`Filled ${idx.length} frame${idx.length === 1 ? "" : "s"}${ed.mask ? ", inside the selection" : ""}.`);
+  },
+  thumb,
 });
+
+/* ---- the frame range: click, Shift-click a range, Ctrl-click one more or one less ---- */
+let picked = new Set([0]), anchor = 0;
+function pickFrame(i, e = {}) {
+  ed.drop();
+  if (e.shiftKey) {
+    picked = new Set();
+    for (let k = Math.min(anchor, i); k <= Math.max(anchor, i); k++) picked.add(k);
+  } else if (e.ctrlKey || e.metaKey) {
+    if (picked.has(i) && picked.size > 1) picked.delete(i); else picked.add(i);
+    anchor = i;
+  } else { picked = new Set([i]); anchor = i; }
+  cur = i;
+  drawAll();
+  const n = picked.size;
+  $("range-note").textContent = n > 1 ? `${n} frames picked: a fill goes on each of them.`
+    : "Shift-click picks a range of frames. Ctrl-click adds or removes one frame. A fill then goes on every frame you picked.";
+}
 
 document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
   remember();
   frames()[cur] = G.OPS[b.dataset.op](frames()[cur]);
   changed();
 }));
-$("undo").onclick = () => {
+function undoOnce() {
+  ed.drop();
   if (!undo.length) return;
   const s = JSON.parse(undo.pop());
   anim().frames = s.frames; cur = s.cur;
   changed();
-};
+}
+$("undo").onclick = undoOnce;
 $("onion").onchange = drawPaint;
 
 /* ---- frames ---- */
 
-function editFrames(fn) {
+/** One undo step over the frames. Adding, deleting or moving frames forgets the picked range. */
+function editFrames(fn, { keepPick = false } = {}) {
   remember();
   fn(frames());
+  if (!keepPick) { picked = new Set([cur]); anchor = cur; }
   changed();
 }
 $("f-add").onclick = () => {
@@ -597,7 +565,8 @@ $("del-anim").onclick = () => {
 $("pick").onchange = () => select($("pick").value);
 
 function select(n) {
-  name = n && anims[n] ? n : null; cur = 0; undo = [];
+  ed.drop();
+  name = n && anims[n] ? n : null; cur = 0; undo = []; picked = new Set([0]); anchor = 0;
   if (timer) $("play").click();
   drawPick(); drawAll(); drawStill();
 }
@@ -809,12 +778,6 @@ async function start() {
   fromHash();
 }
 
-// the grid follows the width of its section: window resizes, and the layout changing
-let paintRoom = 0;
-new ResizeObserver(() => {
-  const room = GlyphTools.contentWidth($("paint").parentElement);
-  if (name && room !== paintRoom) { paintRoom = room; drawPaint(); }
-}).observe($("paint").parentElement);
 drawPick();
 const ready = start();
 </script>
