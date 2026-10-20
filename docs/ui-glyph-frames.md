@@ -21,7 +21,7 @@ A dump of WaveTone's list, read straight from the flash, shows 60 frames of 17 x
 
 - **The frame count is not fixed.** It is 2 to 101 frames a list, median 13. Among the lists the picker uses: the round dial has 96 frames, the wave morph 60, and other value glyphs 25 to 97. Choice icons (algorithms, routing, filter types) have 2 to 8.
 - **The frame size is not fixed either.** 17 x 17 (24 lists) and 19 x 17 (23 lists) are the most common, then 11 x 11 (9). Three lists hold full-screen 128 x 64 sequences.
-- **The storage format.** Each frame is `w` columns of one 32-bit word, most significant bit at the top row. That is why a row-by-row dump looks rotated.
+- **The storage format.** Each frame is `w` columns. A column is ceil(h / 32) 32-bit big-endian words, the top word first, with the most significant bit at the top row. That is why a row-by-row dump looks rotated. A frame of 32 rows or fewer has one word a column. The 128 x 64 sequences, with two words a column, decode cleanly this way [D].
 - **Every value glyph seen is stored frames.** No list among the 64 the picker uses is drawn by maths.
 
 ## The chain
