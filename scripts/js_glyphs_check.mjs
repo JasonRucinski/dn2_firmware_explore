@@ -2,7 +2,8 @@
 // pixels in currentColor with crisp edges, and the page module fills every data-glyph element
 // with a known id and leaves an unknown one empty. Run by test/test_js_glyphs.py.
 import { GLYPHS, SIZE, glyphSvg, runs } from "../site/js/mods/glyphs.js";
-import { mountGlyphs } from "../site/js/app/glyphs-page.js";
+import { mountGlyphs, stepGlyphs } from "../site/js/app/glyphs-page.js";
+import { ANIMS } from "../site/js/mods/glyph-anims.js";
 
 const ok = (name, pass) => { console.log(`${pass ? "OK  " : "FAIL"} ${name}`); if (!pass) process.exitCode = 1; };
 
@@ -39,3 +40,23 @@ const unknown = { ...node("span"), dataset: { glyph: "nosuchmod" } };
 mountGlyphs({ ...doc, querySelectorAll: () => [known, unknown] });
 ok("the page module draws a known glyph and leaves an unknown one empty",
    known.children.length === 1 && known.children[0].tag === "svg" && unknown.children.length === 0);
+
+// A mod with an animation plays it: frame 0 on mount, the next frame on each step, round again
+// at the end; with motion off it shows its still glyph.
+const lit = (svg) => { const s = new Set(); for (const r of svg.children) for (let x = +r.attrs.x; x < +r.attrs.x + +r.attrs.width; x++) s.add(`${x},${r.attrs.y}`); return s; };
+const want = (rows) => { const s = new Set(); rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === "#") s.add(`${x},${y}`); })); return s; };
+const same = (a, b) => a.size === b.size && [...a].every((p) => b.has(p));
+const anim = ANIMS.waverider;
+ok("waverider has an animation of two frames or more", !!anim && anim.frames.length > 1);
+const el = { ...node("span"), dataset: { glyph: "waverider" } };
+ok("the page module plays one animated glyph", mountGlyphs({ ...doc, querySelectorAll: () => [el] }) === 1);
+let frames = true;
+for (let i = 0; i <= anim.frames.length; i++) {
+  frames &&= same(lit(el.children[0]), want(anim.frames[i % anim.frames.length]));
+  stepGlyphs();
+}
+ok("each step shows the next frame's exact pixels, and it loops", frames);
+const still = { ...node("span"), dataset: { glyph: "waverider" } };
+mountGlyphs({ ...doc, querySelectorAll: () => [still] }, false);
+ok("with motion off it shows the still glyph", same(lit(still.children[0]), want(GLYPHS.waverider)));
+

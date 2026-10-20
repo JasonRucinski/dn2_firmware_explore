@@ -304,9 +304,13 @@ const SVG = "http://www.w3.org/2000/svg";
 /** The glyph of mod `id` as an <svg> element, or null when it has none. */
 export function glyphSvg(id, doc = document) {
   const rows = GLYPHS[id];
-  if (!rows) return null;
+  return rows ? rowsSvg(rows, doc) : null;
+}
+
+/** Rows of `#` and `.` as an <svg> element, one <rect> per lit run (an animation frame, too). */
+export function rowsSvg(rows, doc = document) {
   const svg = doc.createElementNS(SVG, "svg");
-  svg.setAttribute("viewBox", `0 0 ${SIZE} ${SIZE}`);
+  svg.setAttribute("viewBox", `0 0 ${rows[0].length} ${rows.length}`);
   svg.setAttribute("shape-rendering", "crispEdges");
   svg.setAttribute("fill", "currentColor");
   svg.setAttribute("focusable", "false");
