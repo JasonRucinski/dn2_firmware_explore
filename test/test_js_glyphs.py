@@ -31,6 +31,21 @@ def test_every_offered_mod_has_a_16x16_glyph():
         assert sum(r.count("#") for r in rows) > 0, mid
 
 
+def test_the_bug_fixes_and_only_they_carry_the_bug():
+    src = (SITE / "js/mods/glyphs.js").read_text(encoding="utf-8")
+    badge = re.findall(r'"([.#]{5})"', src.split("export const BUG_BADGE = [", 1)[1].split("]", 1)[0])
+    assert len(badge) == 6
+    index = (SITE / "index.html").read_text(encoding="utf-8")
+    fixes = set(re.findall(r'<span class="mod-id">([a-z0-9]+)</span>',
+                           index.split('id="bug-fixes"', 1)[1].split("<h2", 1)[0]))
+    assert fixes, "the index lists no bug fixes"
+    for mid, rows in glyphs().items():
+        has = [r[11:] for r in rows[10:]] == badge
+        assert has == (mid in fixes), mid
+        if has:      # a dark row and column keep the bug apart from the rest of the glyph
+            assert rows[9][10:] == "......" and all(r[10] == "." for r in rows[9:]), mid
+
+
 def test_the_pages_name_known_glyphs_and_load_the_module():
     found = glyphs()
     shown = set()

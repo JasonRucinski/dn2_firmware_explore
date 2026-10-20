@@ -5,10 +5,15 @@
  * of 16 characters, `#` lit and `.` dark. The SVG draws each run of lit pixels
  * as one <rect> filled with currentColor, so a glyph takes the text colour of
  * whatever holds it, in the light and the dark theme alike. Original art.
+ * A mod that fixes a factory bug carries a small bug in its lower right corner
+ * (BUG_BADGE, with a dark row and column round it).
  * `app/glyphs-page.js` puts them on the pages.
  */
 
 export const SIZE = 16;
+
+/** The bug in the lower right corner of a bug-fix mod's glyph: rows 10 to 15, columns 11 to 15. */
+export const BUG_BADGE = ["#...#", ".#.#.", ".###.", "#####", ".###.", "#.#.#"];
 
 export const GLYPHS = {
   // A wavetable seen in depth: a sine at the back turns into a square at the front.
@@ -68,7 +73,7 @@ export const GLYPHS = {
     "............####",
     "................",
   ],
-  // An LFO over the repeats of a delay.
+  // An LFO over the letters FX.
   fxmod: [
     "................",
     "...###..........",
@@ -78,14 +83,14 @@ export const GLYPHS = {
     "..........###...",
     "................",
     "................",
-    ".##.............",
-    ".##.............",
-    ".##..##.........",
-    ".##..##.........",
-    ".##..##..##.....",
-    ".##..##..##.....",
-    ".##..##..##..##.",
-    ".##..##..##..##.",
+    "..#####..#...#..",
+    "..#......#...#..",
+    "..#.......#.#...",
+    "..####.....#....",
+    "..#.......#.#...",
+    "..#......#...#..",
+    "..#......#...#..",
+    "................",
   ],
   // An LFO and the digit four.
   lfo4: [
@@ -163,36 +168,36 @@ export const GLYPHS = {
     "................",
     "................",
   ],
-  // The reload arrow round a check mark.
+  // A cartoon cat squashed flat: X eyes, tongue out, the body a pancake.
   reloadconfirm: [
     "................",
-    "....#######....#",
-    "...##..........#",
-    "..#............#",
-    ".##........#...#",
-    ".#........######",
-    ".#.......##...#.",
-    "##..#...##....#.",
-    ".#..##.##.....#.",
-    ".#...###......#.",
-    ".#....#.......#.",
-    ".##..........##.",
-    "..#..........#..",
-    "...##......##...",
-    "....########....",
+    "................",
+    "................",
+    ".#....#.........",
+    ".##..##.........",
+    "#.####.#........",
+    "#......#........",
+    "#.#.#..#........",
+    "#..#...#........",
+    "#.#.#..#######..",
+    "#.......#....#..",
+    "#.##...#.....###",
+    ".#..##########..",
+    "..##.#.#..#.#...",
+    "..##............",
     "................",
   ],
-  // A die, and arp notes out of order.
+  // A random LFO, stepped like sample and hold, and arp notes out of order.
   arpmodes: [
-    "#########.......",
-    "#.......#.......",
-    "#.#.....#.......",
-    "#.......#.......",
-    "#...#...#.......",
-    "#.......#.......",
-    "#.....#.#.......",
-    "#.......#.......",
-    "#########.......",
+    "................",
+    "...####.........",
+    "...#..#.....####",
+    "...#..#.###.#..#",
+    "####..#.#.#.#..#",
+    "......#.#.#.#..#",
+    "......###.#.#...",
+    "..........###...",
+    "................",
     "................",
     ".......##.......",
     ".......##....##.",
@@ -220,7 +225,7 @@ export const GLYPHS = {
     ".....######.....",
     "................",
   ],
-  // A one-shot LFO that rises, holds, and stops at the end marker.
+  // A one-shot LFO that rises, holds, and stops at the end marker; a bug fix.
   lfolength: [
     "................",
     "..............#.",
@@ -231,13 +236,13 @@ export const GLYPHS = {
     "...#............",
     "...#..........#.",
     "..#.............",
-    "..#...........#.",
     "..#.............",
-    ".#............#.",
-    ".#..............",
-    "#.............#.",
-    "################",
-    "................",
+    "..#........#...#",
+    ".#..........#.#.",
+    ".#..........###.",
+    "#..........#####",
+    "##########..###.",
+    "...........#.#.#",
   ],
   // Arp notes rising to a lock.
   arpplocks: [
