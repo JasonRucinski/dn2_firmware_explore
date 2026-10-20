@@ -159,19 +159,179 @@ export const ANIMS = {
     clear: (f) => blank(f[0].length, f.length),
   };
 
-  const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  /* ---- morph: dissolve and move, with easing ---- */
 
-  /** A dissolve from frame a to frame b at t in 0..1: an ordered dither picks each pixel. */
-  function dissolve(a, b, t) {
-    return a.map((row, y) => [...row].map((c, x) =>
-      ((BAYER4[(y % 4) * 4 + (x % 4)] + 0.5) / 16 < t ? b[y][x] : c)).join(""));
+  /** An 8x8 Bayer matrix: 64 thresholds spread evenly over the frame. */
+  const BAYER8 = (() => {
+    const m = [0];
+    for (let n = 1; n < 8; n *= 2) {
+      const next = Array(4 * n * n);
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          const v = 4 * m[y * n + x];
+          const w = 2 * n;
+          next[y * w + x] = v; next[y * w + x + n] = v + 2;
+          next[(y + n) * w + x] = v + 3; next[(y + n) * w + x + n] = v + 1;
+        }
+      }
+      m.length = 0; m.push(...next);
+    }
+    return m;
+  })();
+
+  /** A pixel's own threshold in (0, 1): ordered (Bayer 8x8) or seeded (an integer hash). */
+  function threshold(x, y, spread = "ordered", seed = 1) {
+    if (spread !== "seeded") return (BAYER8[(y % 8) * 8 + (x % 8)] + 0.5) / 64;
+    let h = (Math.imul(x + 1, 0x9e3779b1) ^ Math.imul(y + 1, 0x85ebca77) ^ Math.imul(seed | 0, 0xc2b2ae3d)) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
+    return (((h ^ (h >>> 16)) >>> 0) + 0.5) / 4294967296;
   }
 
-  /** Frames strictly between `from` and `to` become dissolve steps; returns the new list. */
-  function tween(frames, from, to) {
-    const out = frames.slice();
-    for (let i = from + 1; i < to; i++) out[i] = dissolve(frames[from], frames[to], (i - from) / (to - from));
+  const sineIn = (t) => 1 - Math.cos((t * Math.PI) / 2);
+  /** Easing curves: the frame position t in 0..1 to the blend amount, 0 at 0 and 1 at 1. */
+  const EASE = {
+    linear: (t) => t,
+    "quad-in": (t) => t * t,
+    "quad-out": (t) => 1 - (1 - t) * (1 - t),
+    "quad-inout": (t) => (t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t)),
+    "cubic-in": (t) => t * t * t,
+    "cubic-out": (t) => 1 - (1 - t) ** 3,
+    "cubic-inout": (t) => (t < 0.5 ? 4 * t * t * t : 1 - 4 * (1 - t) ** 3),
+    "sine-in": sineIn,
+    "sine-out": (t) => Math.sin((t * Math.PI) / 2),
+    "sine-inout": (t) => (1 - Math.cos(t * Math.PI)) / 2,
+  };
+
+  /** A dissolve from frame a to frame b at amount t in 0..1: each pixel that differs flips
+   *  when t passes its own threshold, so the same inputs always give the same frame. */
+  function dissolve(a, b, t, { spread = "ordered", seed = 1 } = {}) {
+    if (t <= 0) return a.slice();
+    if (t >= 1) return b.slice();
+    return a.map((row, y) => [...row].map((c, x) =>
+      (c !== b[y][x] && threshold(x, y, spread, seed) < t ? b[y][x] : c)).join(""));
+  }
+
+  const lit = (f) => f.flatMap((row, y) => [...row].flatMap((c, x) => (c === "#" ? [[x, y]] : [])));
+  const nearest = (p, list) => {
+    let best = list[0], d = Infinity;
+    for (const q of list) {
+      const e = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2;
+      if (e < d) { d = e; best = q; }
+    }
+    return best;
+  };
+
+  /** A move from frame a to frame b at amount t: each lit pixel of a slides toward its nearest
+   *  lit pixel of b, and each lit pixel of b that nothing reached comes from its nearest one in a.
+   *  With no lit pixel on one side it falls back to the dissolve. */
+  function move(a, b, t, opts = {}) {
+    if (t <= 0) return a.slice();
+    if (t >= 1) return b.slice();
+    const la = lit(a), lb = lit(b);
+    if (!la.length || !lb.length) return dissolve(a, b, t, opts);
+    const pairs = la.map((p) => [p, nearest(p, lb)]);
+    const reached = new Set(pairs.map(([, q]) => q[0] + "," + q[1]));
+    for (const q of lb) if (!reached.has(q[0] + "," + q[1])) pairs.push([nearest(q, la), q]);
+    const grid = a.map((r) => Array(r.length).fill("."));
+    for (const [p, q] of pairs) grid[Math.round(p[1] + (q[1] - p[1]) * t)][Math.round(p[0] + (q[0] - p[0]) * t)] = "#";
+    return grid.map((r) => r.join(""));
+  }
+
+  /** `count` frames from a toward b at t = i / (count + 1), eased; a and b are not included. */
+  function morph(a, b, count, { method = "dissolve", ease = "linear", spread = "ordered", seed = 1 } = {}) {
+    const blend = method === "move" ? move : dissolve, curve = EASE[ease] ?? EASE.linear;
+    return Array.from({ length: count }, (_, i) => blend(a, b, curve((i + 1) / (count + 1)), { spread, seed }));
+  }
+
+  /** The frames between `from` and `to` replaced by `count` morph frames (by default as many
+   *  as there were, at least one); returns the new list. The key frames stay as they were. */
+  function tween(frames, from, to, { count = Math.max(1, to - from - 1), ...opts } = {}) {
+    return [...frames.slice(0, from + 1), ...morph(frames[from], frames[to], count, opts), ...frames.slice(to)];
+  }
+
+  /* ---- shapes: integer pixel algorithms, as hand-drawn 1-bit art ---- */
+
+  /** Bresenham's line from (x0, y0) to (x1, y1), both ends included. */
+  function line(x0, y0, x1, y1) {
+    const pts = [], dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    for (;;) {
+      pts.push([x0, y0]);
+      if (x0 === x1 && y0 === y1) return pts;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function rect(x0, y0, x1, y1, filled = false) {
+    const pts = [];
+    const [l, r] = [Math.min(x0, x1), Math.max(x0, x1)], [t, b] = [Math.min(y0, y1), Math.max(y0, y1)];
+    for (let y = t; y <= b; y++) {
+      for (let x = l; x <= r; x++) if (filled || y === t || y === b || x === l || x === r) pts.push([x, y]);
+    }
+    return pts;
+  }
+
+  /** The midpoint (Bresenham) ellipse that fits the box from (x0, y0) to (x1, y1), any size,
+   *  after A. Zingl's integer form. Filled: every row spans its outline. */
+  function ellipse(x0, y0, x1, y1, filled = false) {
+    const pts = [];
+    const put = (x, y) => pts.push([x, y]);
+    let a = Math.abs(x1 - x0), b = Math.abs(y1 - y0), b1 = b & 1;
+    let dx = 4 * (1 - a) * b * b, dy = 4 * (b1 + 1) * a * a, err = dx + dy + b1 * a * a;
+    if (x0 > x1) { x0 = x1; x1 += a; }
+    if (y0 > y1) y0 = y1;
+    y0 += (b + 1) >> 1; y1 = y0 - b1;
+    a *= 8 * a; b1 = 8 * b * b;
+    do {
+      put(x1, y0); put(x0, y0); put(x0, y1); put(x1, y1);
+      const e2 = 2 * err;
+      if (e2 <= dy) { y0++; y1--; err += dy += a; }
+      if (e2 >= dx || 2 * err > dy) { x0++; x1--; err += dx += b1; }
+    } while (x0 <= x1);
+    while (y0 - y1 <= b) {
+      put(x0 - 1, y0); put(x1 + 1, y0++); put(x0 - 1, y1); put(x1 + 1, y1--);
+    }
+    const seen = new Map();                      // one point once; and, filled, each row's span
+    for (const [x, y] of pts) {
+      const s = seen.get(y);
+      seen.set(y, s ? [Math.min(s[0], x), Math.max(s[1], x), s[2].add(x)] : [x, x, new Set([x])]);
+    }
+    const out = [];
+    for (const [y, [l, r, xs]] of [...seen].sort((p, q) => p[0] - q[0])) {
+      if (filled) for (let x = l; x <= r; x++) out.push([x, y]);
+      else for (const x of [...xs].sort((p, q) => p - q)) out.push([x, y]);
+    }
     return out;
+  }
+
+  /** Shift: a line in steps of 45 degrees, a square box for a rectangle or an ellipse. */
+  function constrain(tool, x0, y0, x1, y1) {
+    const dx = x1 - x0, dy = y1 - y0, ax = Math.abs(dx), ay = Math.abs(dy);
+    if (tool === "line") {
+      if (ay * 2 < ax) return [x1, y0];
+      if (ax * 2 < ay) return [x0, y1];
+    }
+    const d = Math.max(ax, ay);
+    return [x0 + (dx < 0 ? -d : d), y0 + (dy < 0 ? -d : d)];
+  }
+
+  /** The pixels of a shape tool dragged from (x0, y0) to (x1, y1). */
+  function shape(tool, x0, y0, x1, y1, { filled = false, shift = false } = {}) {
+    if (shift && tool !== "pencil") [x1, y1] = constrain(tool, x0, y0, x1, y1);
+    if (tool === "rect") return rect(x0, y0, x1, y1, filled);
+    if (tool === "ellipse") return ellipse(x0, y0, x1, y1, filled);
+    return line(x0, y0, x1, y1);
+  }
+
+  /** The frame with the points set lit (or dark); points off the frame are dropped. */
+  function plot(frame, points, on = true) {
+    const rows = frame.map((r) => [...r]);
+    for (const [x, y] of points) if (rows[y] && x >= 0 && x < rows[y].length) rows[y][x] = on ? "#" : ".";
+    return rows.map((r) => r.join(""));
   }
 
   /** Change the frame size, keeping the top-left pixels. */
@@ -295,7 +455,8 @@ export const ANIMS = {
   }
 
   const api = { gif, gifDelay, GIF_COLOURS, parseBlocks, fitRows, framesText, LIMITS, RANGES, knobFrame, blank, valid, serialise, parse, fromJSON, wordsPerColumn,
-    encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows };
+    encode, decode, toHex, fromHex, OPS, dissolve, tween, resize, parseStill, rowsToHex, hexToRows,
+    threshold, EASE, move, morph, line, rect, ellipse, constrain, shape, plot };
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.GlyphAnim = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

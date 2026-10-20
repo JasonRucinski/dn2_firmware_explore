@@ -19,12 +19,14 @@
   :root {
     --bg: #f6f5f2; --panel: #fff; --ink: #16181c; --ink-soft: #565b66;
     --rule: #e2e0da; --accent: #b4530a; --off: #ecebe7;
+    --cell-off: #dcdad3; --grid: rgba(255, 255, 255, .9); --grid-major: #fff;
     font-family: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0c0d0f; --panel: #141619; --ink: #e8e6e1; --ink-soft: #9aa0ab;
       --rule: #25282d; --accent: #ff9d3c; --off: #1d2024;
+      --cell-off: #1d2024; --grid: rgba(255, 255, 255, .2); --grid-major: rgba(255, 255, 255, .45);
     }
   }
   * { box-sizing: border-box; }
@@ -45,7 +47,7 @@
   .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 1.4rem; align-items: start; }
   @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
   section { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: .9rem; margin-bottom: 1rem; min-width: 0; }
-  #paint { display: block; touch-action: none; cursor: crosshair; max-width: 100%; }
+  #paint { display: block; touch-action: none; cursor: crosshair; height: auto; image-rendering: pixelated; }
   .strip { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .4rem; }
   .strip button { flex: none; display: grid; justify-items: center; gap: .15rem; padding: .3rem;
                   font-size: .7rem; font-family: ui-monospace, Consolas, monospace; }
@@ -60,6 +62,12 @@
   textarea { width: 100%; height: 7rem; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
              background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; }
   label { display: inline-flex; gap: .3rem; align-items: center; }
+  .palette button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .palette label:has(input:disabled) { opacity: .5; }
+  #curve { display: block; border: 1px solid var(--rule); border-radius: 4px; background: var(--off); }
+  .morph-preview { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .3rem; min-height: 1rem; }
+  .morph-preview figure { margin: 0; display: grid; justify-items: center; gap: .1rem;
+                          font-size: .7rem; font-family: ui-monospace, Consolas, monospace; color: var(--ink-soft); }
   textarea.rows { height: 12rem; white-space: pre; overflow: auto; line-height: 1.15; }
 </style>
 
@@ -109,10 +117,12 @@
     of this one. A glyph of a different size goes at the top left. It is not scaled.</p>
 </section>
 
-<div class="layout" id="work" hidden>
+<div id="work" hidden>
+<div class="layout">
   <div>
     <section>
       <h2 id="frame-title">Frame</h2>
+      <div class="bar" id="palette" aria-label="Drawing tools"></div>
       <canvas id="paint"></canvas>
       <div class="bar">
         <button data-op="up">Up</button><button data-op="down">Down</button>
@@ -122,20 +132,10 @@
         <button id="undo">Undo</button>
         <label><input id="onion" type="checkbox" checked> Onion skin</label>
       </div>
-      <p class="muted">Click or drag to paint. The first pixel you touch sets the colour of the stroke.
-        Onion skin shows the previous frame faintly.</p>
-      <h2>Rows</h2>
-      <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
-      <div class="bar">
-        <button id="rows-apply">Apply to this frame</button>
-        <button id="rows-add">Add as new frames</button>
-        <button id="copy-frame">Copy frame</button>
-        <button id="copy-all">Copy all frames</button>
-      </div>
-      <p class="muted">The box shows this frame: <code>#</code> is lit and <code>.</code> is dark.
-        Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
-        the top left. Rows that are larger are cut to the frame size. To add several frames, paste
-        blocks of rows with a blank line between them.</p>
+      <p class="muted">Pick a tool and drag on the frame. The pencil's first pixel sets the colour of
+        the stroke. Line, Rectangle and Ellipse draw from where you press to where you let go.
+        Hold Shift for a square, a circle or a line in steps of 45 degrees. Erase, or the right
+        mouse button, draws dark pixels. Onion skin shows the previous frame faintly.</p>
     </section>
 
     <section>
@@ -146,12 +146,41 @@
         <button id="f-del">Delete</button><button id="f-left">Move left</button>
         <button id="f-right">Move right</button><button id="f-prev">Copy previous</button>
       </div>
+    </section>
+
+    <section>
+      <h2>Morph</h2>
       <div class="bar">
-        <label>From <input id="tw-from" type="number" min="1" value="1"></label>
-        <label>to <input id="tw-to" type="number" min="1" value="2"></label>
-        <button id="tween">Dissolve between</button>
+        <label>From frame <input id="mo-a" type="number" min="1" value="1"></label>
+        <label>to frame <input id="mo-b" type="number" min="1" value="2"></label>
+        <label>In-betweens <input id="mo-n" type="number" min="1" max="126" value="4"></label>
       </div>
-      <p class="muted">Dissolve replaces the frames between the two you give with steps from one to the other.</p>
+      <div class="bar">
+        <select id="mo-method" aria-label="Morph">
+          <option value="dissolve">Dissolve</option><option value="move">Move</option>
+        </select>
+        <select id="mo-ease" aria-label="Easing">
+          <option value="linear">Linear</option>
+          <option value="quad-in">Quadratic in</option><option value="quad-out">Quadratic out</option>
+          <option value="quad-inout">Quadratic in-out</option>
+          <option value="cubic-in">Cubic in</option><option value="cubic-out">Cubic out</option>
+          <option value="cubic-inout">Cubic in-out</option>
+          <option value="sine-in">Sine in</option><option value="sine-out">Sine out</option>
+          <option value="sine-inout">Sine in-out</option>
+        </select>
+        <select id="mo-spread" aria-label="Pixel order">
+          <option value="ordered">Ordered pixels</option><option value="seeded">Seeded pixels</option>
+        </select>
+        <label>Seed <input id="mo-seed" type="number" min="1" value="1"></label>
+        <canvas id="curve" width="96" height="64" role="img" aria-label="Easing curve"></canvas>
+      </div>
+      <div class="morph-preview" id="mo-preview"></div>
+      <div class="bar"><button id="mo-insert" class="primary">Insert</button></div>
+      <p class="muted">Morph makes the frames from one key frame to another. Insert puts them
+        between the two key frames, in place of the frames that are there now. Dissolve flips
+        each pixel that differs at its own point, so the same settings always give the same
+        frames. Move slides each lit pixel toward the nearest lit pixel of the other frame.
+        The curve shows how fast the change goes, and the dots are the new frames.</p>
     </section>
   </div>
 
@@ -209,7 +238,24 @@
   </div>
 </div>
 
+  <section>
+    <h2>Rows</h2>
+    <textarea id="rows" class="rows" spellcheck="false" aria-label="Rows of the frame"></textarea>
+    <div class="bar">
+      <button id="rows-apply">Apply to this frame</button>
+      <button id="rows-add">Add as new frames</button>
+      <button id="copy-frame">Copy frame</button>
+      <button id="copy-all">Copy all frames</button>
+    </div>
+    <p class="muted">The box shows this frame: <code>#</code> is lit and <code>.</code> is dark.
+      Paste rows, for example from the Glyph Editor, and apply them. Rows that are smaller go at
+      the top left. Rows that are larger are cut to the frame size. To add several frames, paste
+      blocks of rows with a blank line between them.</p>
+  </section>
+</div>
+
 <script src="glyph_anim_core.js"></script>
+<script src="glyph_tools.js"></script>
 <script>
 const G = GlyphAnim;
 const $ = (id) => document.getElementById(id);
@@ -243,17 +289,19 @@ function drawFrame(canvas, frame, scale, ink, bg) {
   frame.forEach((row, y) => { for (let x = 0; x < w; x++) if (row[x] === "#") c.fillRect(x * scale, y * scale, scale, scale); });
 }
 
+/** The grid fills the width of its section; a cell is that width over the frame width, in
+ *  whole device pixels, and at most 24 CSS pixels so a small glyph does not grow huge. */
 function cellSize() {
-  const a = anim();
-  const room = Math.min($("paint").parentElement.clientWidth - 2, 560);
-  return Math.max(2, Math.min(22, Math.floor(room / a.width)));
+  const room = GlyphTools.contentWidth($("paint").parentElement);
+  return GlyphTools.fitCell(room, anim().width, { max: 24, dpr: devicePixelRatio || 1 });
 }
 
 function drawPaint() {
-  const a = anim(), f = frames()[cur], s = cellSize(), canvas = $("paint");
+  const a = anim(), f = frames()[cur], fit = cellSize(), s = fit.device, canvas = $("paint");
   canvas.width = a.width * s; canvas.height = a.height * s;
+  canvas.style.width = `${fit.width}px`;
   const c = canvas.getContext("2d");
-  c.fillStyle = css("--off"); c.fillRect(0, 0, canvas.width, canvas.height);
+  c.fillStyle = css("--cell-off"); c.fillRect(0, 0, canvas.width, canvas.height);
   const prev = $("onion").checked && cur > 0 ? frames()[cur - 1] : null;
   for (let y = 0; y < a.height; y++) {
     for (let x = 0; x < a.width; x++) {
@@ -264,12 +312,16 @@ function drawPaint() {
     }
   }
   c.globalAlpha = 1;
-  if (s >= 6) {
-    c.strokeStyle = css("--bg"); c.lineWidth = 1; c.beginPath();
-    for (let x = 1; x < a.width; x++) { c.moveTo(x * s + .5, 0); c.lineTo(x * s + .5, canvas.height); }
-    for (let y = 1; y < a.height; y++) { c.moveTo(0, y * s + .5); c.lineTo(canvas.width, y * s + .5); }
+  // A white grid shows each pixel: a line between every cell when a cell is 3 device pixels
+  // or more, and a brighter line every 8 cells at any size.
+  const lines = (every, colour) => {
+    c.strokeStyle = colour; c.lineWidth = 1; c.beginPath();
+    for (let x = every; x < a.width; x += every) { c.moveTo(x * s + .5, 0); c.lineTo(x * s + .5, canvas.height); }
+    for (let y = every; y < a.height; y += every) { c.moveTo(0, y * s + .5); c.lineTo(canvas.width, y * s + .5); }
     c.stroke();
-  }
+  };
+  if (s >= 3) lines(1, css("--grid"));
+  lines(8, css("--grid-major"));
   $("frame-title").textContent = `Frame ${cur + 1} of ${frames().length} (${a.width} x ${a.height})`;
   if (document.activeElement !== $("rows")) $("rows").value = f.join("\n");
   $("rows").style.height = `${Math.min(a.height, 32) * 1.15 + 1.5}em`;
@@ -310,7 +362,7 @@ function drawAll() {
   if (!name) { $("work").hidden = true; return; }
   $("work").hidden = false;
   cur = Math.min(cur, frames().length - 1);
-  drawPaint(); drawStrip();
+  drawPaint(); drawStrip(); drawMorph();
   if (!timer) drawPreview();
 }
 
@@ -321,34 +373,48 @@ function drawPick() {
 
 /* ---- painting ---- */
 
-let stroke = null;
-function cellAt(e) {
+/* The palette and the drag are shared with the still editor (glyph_tools.js). */
+const tools = GlyphTools.palette($("palette"));
+let stroke = null, lastCell = null, strokeStart = null;
+function cellAt(e, clamp = false) {
   const r = $("paint").getBoundingClientRect(), a = anim();
-  const x = Math.floor((e.clientX - r.left) / r.width * a.width);
-  const y = Math.floor((e.clientY - r.top) / r.height * a.height);
+  let x = Math.floor((e.clientX - r.left) / r.width * a.width);
+  let y = Math.floor((e.clientY - r.top) / r.height * a.height);
+  if (clamp) { x = Math.max(0, Math.min(a.width - 1, x)); y = Math.max(0, Math.min(a.height - 1, y)); }
   return x >= 0 && y >= 0 && x < a.width && y < a.height ? [x, y] : null;
 }
-function setPixel(x, y, lit) {
-  const f = frames()[cur];
-  if ((f[y][x] === "#") === lit) return false;
-  frames()[cur] = f.map((r, i) => (i === y ? r.slice(0, x) + (lit ? "#" : ".") + r.slice(x + 1) : r));
-  return true;
+function showStroke(rows) {
+  if (rows.join() === frames()[cur].join()) return;
+  frames()[cur] = rows;
+  changed();
 }
+$("paint").addEventListener("contextmenu", (e) => e.preventDefault());
 $("paint").addEventListener("pointerdown", (e) => {
   const p = cellAt(e);
-  if (!p) return;
+  if (!p || (e.button !== 0 && e.button !== 2)) return;
+  e.preventDefault();
   remember();
-  stroke = frames()[cur][p[1]][p[0]] !== "#";
-  setPixel(p[0], p[1], stroke);
-  $("paint").setPointerCapture?.(e.pointerId);
-  changed();
+  strokeStart = frames()[cur].join("\n");
+  lastCell = p;
+  stroke = GlyphTools.drag(tools, frames()[cur], p[0], p[1], { button: e.button });
+  showStroke(stroke.frame);
+  try { $("paint").setPointerCapture(e.pointerId); } catch { /* a pointer that is not active */ }
 });
-$("paint").addEventListener("pointermove", (e) => {
-  if (stroke === null) return;
-  const p = cellAt(e);
-  if (p && setPixel(p[0], p[1], stroke)) changed();
+addEventListener("pointermove", (e) => {
+  if (!stroke) return;
+  const p = cellAt(e, tools.tool !== "pencil");
+  if (p) { lastCell = p; showStroke(stroke.move(p[0], p[1], e.shiftKey)); }
 });
-addEventListener("pointerup", () => { stroke = null; });
+for (const type of ["keydown", "keyup"]) {
+  addEventListener(type, (e) => {      // Shift pressed or let go during a drag redraws the shape
+    if (stroke && e.key === "Shift" && tools.tool !== "pencil") showStroke(stroke.move(lastCell[0], lastCell[1], e.shiftKey));
+  });
+}
+addEventListener("pointerup", () => {
+  if (!stroke) return;
+  if (frames()[cur].join("\n") === strokeStart) undo.pop();         // a drag that changed nothing
+  stroke = null;
+});
 
 document.querySelectorAll("[data-op]").forEach((b) => b.addEventListener("click", () => {
   remember();
@@ -385,11 +451,71 @@ $("f-del").onclick = () => {
 $("f-left").onclick = () => cur > 0 && editFrames((fs) => { [fs[cur - 1], fs[cur]] = [fs[cur], fs[cur - 1]]; cur--; });
 $("f-right").onclick = () => cur < frames().length - 1 && editFrames((fs) => { [fs[cur + 1], fs[cur]] = [fs[cur], fs[cur + 1]]; cur++; });
 $("f-prev").onclick = () => cur > 0 && editFrames((fs) => { fs[cur] = fs[cur - 1].slice(); });
-$("tween").onclick = () => {
-  const a = +$("tw-from").value - 1, b = +$("tw-to").value - 1, n = frames().length;
-  if (!(a >= 0 && b < n && b - a >= 2)) return status("Give two frames with one frame or more between them.");
-  editFrames(() => { anim().frames = G.tween(frames(), a, b); });
-  status(`Frames ${a + 2} to ${b} are now a dissolve.`);
+
+/* ---- morph ---- */
+
+function morphSettings() {
+  return {
+    a: +$("mo-a").value - 1, b: +$("mo-b").value - 1, count: +$("mo-n").value,
+    method: $("mo-method").value, ease: $("mo-ease").value, spread: $("mo-spread").value,
+    seed: Math.max(1, +$("mo-seed").value || 1),
+  };
+}
+function morphProblem(s) {
+  const n = frames().length;
+  if (!(s.a >= 0 && s.b < n && s.b > s.a)) return `Give two key frames from 1 to ${n}, the second after the first.`;
+  if (!(s.count >= 1)) return "Give one in-between frame or more.";
+  if (n - (s.b - s.a - 1) + s.count > G.LIMITS.frames) return `At most ${G.LIMITS.frames} frames.`;
+  return null;
+}
+function drawCurve(s) {
+  const cv = $("curve"), c = cv.getContext("2d"), W = cv.width, H = cv.height, m = 6;
+  const px = (t) => m + t * (W - 2 * m), py = (v) => H - m - v * (H - 2 * m);
+  c.clearRect(0, 0, W, H);
+  c.strokeStyle = css("--rule"); c.lineWidth = 1;
+  c.strokeRect(px(0) + .5, py(1) + .5, W - 2 * m, H - 2 * m);
+  c.strokeStyle = css("--ink"); c.beginPath();
+  for (let i = 0; i <= 48; i++) { const t = i / 48; c.lineTo(px(t), py(G.EASE[s.ease](t))); }
+  c.stroke();
+  c.fillStyle = css("--accent");
+  for (let i = 1; i <= s.count; i++) {
+    const t = i / (s.count + 1);
+    c.fillRect(Math.round(px(t)) - 1.5, Math.round(py(G.EASE[s.ease](t))) - 1.5, 3, 3);
+  }
+}
+function drawMorph() {
+  if (!name) return;
+  const s = morphSettings(), problem = morphProblem(s);
+  drawCurve(s);
+  $("mo-insert").disabled = !!problem;
+  if (problem) {
+    const p = document.createElement("p");
+    p.className = "muted"; p.textContent = problem;
+    $("mo-preview").replaceChildren(p);
+    return;
+  }
+  const a = anim(), A = frames()[s.a], B = frames()[s.b];
+  const scale = Math.max(1, Math.min(3, Math.floor(48 / Math.max(a.width, a.height))));
+  const list = [["A", A], ...G.morph(A, B, s.count, s).map((f, i) => [String(i + 1), f]), ["B", B]];
+  $("mo-preview").replaceChildren(...list.map(([label, f]) => {
+    const fig = document.createElement("figure"), cv = document.createElement("canvas"), cap = document.createElement("figcaption");
+    cv.className = "px";
+    drawFrame(cv, f, scale, css("--ink"), css("--off"));
+    cap.textContent = label;
+    fig.append(cv, cap);
+    return fig;
+  }));
+}
+for (const id of ["mo-a", "mo-b", "mo-n", "mo-method", "mo-ease", "mo-spread", "mo-seed"]) $(id).addEventListener("input", drawMorph);
+$("mo-insert").onclick = () => {
+  const s = morphSettings(), problem = morphProblem(s);
+  if (problem) return status(problem);
+  const replaced = s.b - s.a - 1;
+  editFrames(() => { anim().frames = G.tween(frames(), s.a, s.b, s); });
+  $("mo-b").value = s.a + s.count + 2;
+  status(`Inserted ${s.count} frame${s.count === 1 ? "" : "s"} between frames ${s.a + 1} and ${s.a + s.count + 2}` +
+    (replaced ? `, in place of ${replaced}.` : "."));
+  drawMorph();
 };
 
 /* ---- rows as text ---- */
@@ -683,7 +809,12 @@ async function start() {
   fromHash();
 }
 
-addEventListener("resize", () => name && drawPaint());
+// the grid follows the width of its section: window resizes, and the layout changing
+let paintRoom = 0;
+new ResizeObserver(() => {
+  const room = GlyphTools.contentWidth($("paint").parentElement);
+  if (name && room !== paintRoom) { paintRoom = room; drawPaint(); }
+}).observe($("paint").parentElement);
 drawPick();
 const ready = start();
 </script>
