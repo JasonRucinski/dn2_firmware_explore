@@ -112,3 +112,10 @@ def test_a_modified_image_is_refused(dn2_111):
     content[g["va"] - BASE] ^= 0xFF
     with pytest.raises(ModError, match="not stock"):
         bloom._main_os(platform.split(bytes(content))[0])
+
+
+def test_section_7_is_bloom_dsp_section7(dn2_111):
+    from dnfw.bloom import dsp
+    result = bloom.apply(dn2_111)
+    assert result.payloads[7] == dsp.section7(dn2_111.container.find(7).unpack())
+    assert any(e.section == 7 for e in result.extents)

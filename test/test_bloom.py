@@ -279,3 +279,77 @@ def test_live_phase_carries_across_blocks():
     first, p = live.render_block(0.0, dt, inv, 32)
     second, _ = live.render_block(p, dt, inv, 32)
     assert first + second == whole
+
+
+# -- B3b: the pulse contract (live.pulse_block) ---------------------------------------------
+
+def _pulse(blocks, page=0x4000, trig_at=(1,)):
+    s = live.PulseState()
+    return [live.pulse_block(s, page, b in trig_at) for b in range(blocks)], s
+
+
+def test_pulse_is_silent_until_the_first_trig():
+    words, s = _pulse(5, trig_at=())
+    assert words == [0x4000] * 5 and s.step == 0.0
+
+
+def test_pulse_swings_depth_either_way_and_clamps():
+    words, _ = _pulse(400)
+    assert min(words) == 0x4000 - 8192                  # the trig block: phase 0, m = -1
+    assert 0x4000 + 8192 - 300 < max(words) <= 0x4000 + 8192   # a peak near m = +1
+    high, _ = _pulse(400, page=0x7800)
+    assert max(high) == live.FREQ_MAX
+    low, _ = _pulse(400, page=0x0400)
+    assert min(low) == 0
+
+
+def test_pulse_glides_from_12_to_1_hz_over_8_seconds():
+    s = live.PulseState()
+    live.pulse_block(s, 0x4000, True)
+    assert s.step == live._f(live.PULSE_STEP0 * live.PULSE_RATIO)      # stepped once in the trig block
+    block_s = live.PULSE_BLOCK / live.RATE
+    while s.n < live.PULSE_BLOCKS // 2:
+        live.pulse_block(s, 0x4000, False)
+    assert abs(s.step / block_s - 12 * (1 / 12) ** 0.5) < 0.01         # ~3.46 Hz at 4 s
+    while s.n < live.PULSE_BLOCKS - 1:
+        live.pulse_block(s, 0x4000, False)
+    assert abs(s.step / live.PULSE_STEP1 - 1) < 1e-3                    # float drift, small
+    live.pulse_block(s, 0x4000, False)
+    assert s.step == live.PULSE_STEP1 and s.n == live.PULSE_BLOCKS      # lands exactly
+    live.pulse_block(s, 0x4000, False)
+    assert s.step == live.PULSE_STEP1 and s.n == live.PULSE_BLOCKS
+
+
+def test_pulse_cycles_match_the_closed_form():
+    """Over the glide, the phase advances R0*T*(k-1)/ln k cycles (about 35.4)."""
+    import math as _m
+    s = live.PulseState()
+    live.pulse_block(s, 0x4000, True)
+    cycles, last = 0, s.phase
+    while s.n < live.PULSE_BLOCKS:
+        live.pulse_block(s, 0x4000, False)
+        cycles += s.phase < last
+        last = s.phase
+    k = live.PULSE_END_HZ / live.PULSE_START_HZ
+    want = live.PULSE_START_HZ * live.PULSE_TIME_S * (k - 1) / _m.log(k)
+    assert abs(cycles + s.phase - want) < 0.05
+
+
+def test_pulse_rides_the_coldfire_value_not_its_own():
+    s = live.PulseState()
+    live.pulse_block(s, 0x4000, True)
+    w = live.pulse_block(s, 0x4000, False)
+    live.pulse_block(s, w, False)               # the ring hands back a rewritten page
+    assert s.base == 0x4000
+    live.pulse_block(s, 0x3000, False)          # the owner turns FREQ
+    assert s.base == 0x3000
+
+
+def test_a_new_trig_restarts_the_glide():
+    s = live.PulseState()
+    live.pulse_block(s, 0x4000, True)
+    for _ in range(3000):
+        live.pulse_block(s, 0x4000, False)
+    assert s.step < live.PULSE_STEP0
+    live.pulse_block(s, 0x4000, True)
+    assert s.n == 1 and s.step == live._f(live.PULSE_STEP0 * live.PULSE_RATIO)

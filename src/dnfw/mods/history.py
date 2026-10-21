@@ -64,6 +64,10 @@ UNPUBLISHED = _first("0.1.0", "Not published on the site yet.")
 HISTORY: dict[str, tuple[Release, ...]] = {
     "arpmodes": PUBLISHED,
     "bloom": (
+        Release("0.2.0", "2026-10-21", (
+            "Bloom now sounds (milestone B3): a PolyBLEP saw at the trig note, and from each trig "
+            "the filter's FREQ pulses 32 steps either way, the pulse slowing from 12 Hz to 1 Hz "
+            "over 8 seconds. Not on the instrument yet.",)),
         Release("0.1.0", "2026-10-21", (
             "First version (milestone B2): BLOOM in MACHINE SEL, machine type 7, with WaveTone's "
             "pages. ColdFire only, not on the instrument: a Bloom track does not yet sound like "

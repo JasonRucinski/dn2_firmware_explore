@@ -1,21 +1,24 @@
 """Bloom, a VA machine built around a modulator that bends time (`docs/bloom-machine.md`).
 
-**Milestone B2, the ColdFire half only. Not on the instrument.** MACHINE SEL offers
-**BLOOM** after SWARMER, in a section of its own above MIDI's divider. A Bloom track is
-machine type 7 in the sound and in the frame, and WaveTone everywhere else in the UI:
-its SYN pages are WaveTone's until Bloom's own pages (B4).
+**Milestones B2 and B3. Not on the instrument yet.** MACHINE SEL offers **BLOOM** after
+SWARMER, in a section of its own above MIDI's divider. A Bloom track is machine type 7
+in the sound and in the frame, and WaveTone everywhere else in the UI: its SYN pages
+are WaveTone's until Bloom's own pages (B4).
 
-**It does not sound like Bloom yet.** Nothing changes on the DSP until B3, and the
-DSP's machine lookup sends type 7 to FM Tone's render, so a Bloom track plays FM Tone
-with WaveTone's parameters.
+**What it sounds like (B3):** a plain PolyBLEP saw at the trig note plus TUN1, through
+the stock filter and amp, and the Innerbloom gesture on the filter: from each trig, a
+triangle on FREQ, 32 steps either way, whose rate glides from 12 Hz to 1 Hz over 8
+seconds, then stays at 1 Hz. Fixed in v0; its controls come with the pages (B4).
 
 ## How it applies
 
-Section 3 only, from committed data: `bloom_code.json`, written by
-`scripts/gen_bloom_code.py` from `dnfw.bloom.coldfire`. Every guard and every edit's
-stock bytes are checked first. The platform's hook bus writes the machine-count bounds
-(`dnfw.mods.bus`, `MACH`); Bloom adds three types (5, 6 and 7), with FM Tone's rows for
-5 and 6, so it can be 7.
+- **Section 3**, from committed data: `bloom_code.json`, written by
+  `scripts/gen_bloom_code.py` from `dnfw.bloom.coldfire`. Every guard and every edit's
+  stock bytes are checked first. The platform's hook bus writes the machine-count bounds
+  (`dnfw.mods.bus`, `MACH`); Bloom adds three types (5, 6 and 7), with FM Tone's rows for
+  5 and 6, so it can be 7.
+- **Section 7**, the DSP boot stream: `dnfw.bloom.dsp.section7`, from the committed
+  `dnfw/bloom/sharc_code.json` (the type-7 loop, PULSE, their JUMPs, the lookup).
 
 ## A sound or project saved with a Bloom track
 
@@ -25,8 +28,8 @@ Bloom sound as **FM Tone**, the LOAD bound's own fallback.
 
 ## Combining
 
-Bloom uses Waverider's three caves and both add machines through the bus's one
-machine count, so the two exclude each other.
+Bloom uses Waverider's three caves, its L1 region and its two DSP hook sites, and both
+add machines through the bus's one machine count, so the two exclude each other.
 """
 
 from __future__ import annotations
@@ -34,21 +37,33 @@ from __future__ import annotations
 import json
 import pathlib
 
+from ..bloom import dsp
 from . import Extent, ModError, Result, bus, platform
 
 ID = "bloom"
-NAME = "Bloom, a VA machine (B2: MACHINE SEL and the UI)"
-SUMMARY = ("BLOOM in MACHINE SEL, machine type 7, WaveTone's pages for now. ColdFire only: "
-           "it does not yet sound like Bloom (that is B3).")
+NAME = "Bloom, a VA machine (B3: a saw, and the Innerbloom pulse on the filter)"
+SUMMARY = ("BLOOM in MACHINE SEL, machine type 7, WaveTone's pages for now. A PolyBLEP saw "
+           "whose filter pulses from 12 Hz down to 1 Hz over 8 s from each trig.")
 DEVICE = 0x15                      # Digitone II
-MAIN_OS = 3
+MAIN_OS, DSP_STREAM = 3, 7
 BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("bloom_code.json")).read_text())
 
 
 def extents(firmware=None, area_length: int = 0) -> list[Extent]:
-    return ([Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
-            + platform.extents(area_length))
+    out = ([Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+           + platform.extents(area_length))
+    size = None
+    if firmware is not None:
+        section = firmware.container.find(DSP_STREAM)
+        content = section.unpack() if section is not None else None
+        size = len(content) if content is not None else None
+    # The boot stream is rebuilt as a whole (blocks inserted before its final block),
+    # so the whole of it is declared: nothing else may write it too.
+    out.append(Extent(DSP_STREAM, 0, size or 836_956,
+                      "the DSP boot stream, rebuilt: Bloom's loop, PULSE, state and tables in "
+                      "L1 block 1, the entry and pulse jumps, the machine lookup"))
+    return out
 
 
 def ram() -> list[Extent]:
@@ -78,16 +93,23 @@ def _main_os(original: bytes) -> bytes:
 
 def apply(firmware) -> Result:
     cf = firmware.container.find(MAIN_OS)
-    if cf is None:
-        raise ModError("image has no MAIN OS")
-    main_os = cf.unpack()
-    if main_os is None:
-        raise ModError("MAIN OS did not depack")
+    ds = firmware.container.find(DSP_STREAM)
+    if cf is None or ds is None:
+        raise ModError("image has no MAIN OS or no DSP boot stream")
+    main_os, stream = cf.unpack(), ds.unpack()
+    if main_os is None or stream is None:
+        raise ModError("MAIN OS or the DSP boot stream did not depack")
+    try:
+        section7 = dsp.section7(stream)
+    except dsp.DspError as exc:
+        raise ModError(f"the DSP boot stream: {exc}") from exc
     main_os, others = platform.split(main_os)
     content = platform.join(_main_os(main_os), others + [bus.contribute(b"MACH", SPEC["added_machine_types"])])
     area_length = len(content) - platform.STOCK_LENGTH
-    return Result(payloads={MAIN_OS: content}, extents=extents(firmware, area_length),
+    return Result(payloads={MAIN_OS: content, DSP_STREAM: section7},
+                  extents=extents(firmware, area_length),
                   notes=[f"MACHINE SEL offers {SPEC['names'][0].upper()} after SWARMER "
                          f"(type {SPEC['new_type']}; WaveTone's pages)",
-                         "ColdFire only (B2): a Bloom track does not yet sound like Bloom",
-                         f"{len(SPEC['edits'])} edits in section 3"])
+                         "a PolyBLEP saw; FREQ pulses 12 Hz -> 1 Hz over 8 s from each trig (B3 v0)",
+                         f"{len(SPEC['edits'])} edits in section 3; section 7 "
+                         f"{len(stream):,} -> {len(section7):,} B"])
