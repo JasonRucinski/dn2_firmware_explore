@@ -412,6 +412,42 @@ at byte `0x12e`.
   same frame, at `148 + 2t`, so the hook can read it from the page it is
   rewriting.
 
+## B2: Bloom at machine type 7 (owner, 2026-10-21), the plan
+
+**Decided: type 7.** A Bloom sound is stored as 7, so on a Waverider build (type
+5) it loads as the stock fallback, not as Waverider. Types 5 and 6 are left to
+Waverider and to upstream's ONESHOT.
+
+**What type 7 costs beyond a sixth type.** It is the list in
+`docs/machine-list.md`, "What a sixth machine actually cost", rows 1-9, with the
+type number 7. Two places differ, because the stock tests are `type <= N`:
+- **The stored-sound LOAD** (`0x400dd286`, stock `moveq #6`: keeps -1..4).
+  Raising it to admit 7 also admits 5 and 6, so a Waverider sound would load
+  into a Bloom build as a half-defined type 5. Bloom's LOAD needs a shim
+  instead: **keep -1..4 and 7; send 5 and 6 to the stock fallback (FM Tone)**.
+- **The name, attribute and page accessors** (`moveq #4` bounds, 12- and
+  4-byte rows). Rows for 5 and 6 must exist if the bound is 7. They are
+  placeholders that are never offered in MACHINE SEL, with FM Tone's attributes
+  and the fallback name, so a stray 5 or 6 reads as FM Tone wherever it
+  appears.
+
+**What it builds on.** Upstream's hook bus (`src/dnfw/mods/bus.py`, upstream)
+owns the machine-count bounds as one contiguous count, `MACH`, with one
+contributor. Two consequences:
+- B2 belongs on the bus, not on this fork's pre-bus Waverider edits.
+- Type 7 needs either the LOAD shim above or a bus count that allows gaps.
+
+**That needs upstream merged into this branch first.** The merge was attempted
+2026-10-21 and is waiting on the owner's go-ahead. Its only conflict is this
+file's neighbour `ideas-backlog.md`: upstream already used §35-38, so this
+fork's §35-37 become §39-41.
+
+**Done so far:**
+- the m68k toolchain is installed (binutils, GCC 13.2);
+- `scripts/gen_waverider_code.py` regenerates `waverider_code.json` byte for
+  byte (41 edits, 490 B), so this environment reproduces the project's
+  ColdFire build.
+
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
