@@ -165,6 +165,9 @@ def main() -> int:
                         "(sound+0xDE, stored+244); repeatable")
     p.add_argument("--machine-max", type=int, default=4,
                    help="the highest machine type the build's LOAD keeps (4 stock, 5 waverider)")
+    p.add_argument("--machine-dropped", type=int, action="append", default=[],
+                   help="a type at or below --machine-max that the build's LOAD still turns "
+                        "into 0 (bloom keeps 7 and drops 5 and 6); repeatable")
     args = p.parse_args()
 
     build = os.path.join(ROOT, args.build)
@@ -351,7 +354,7 @@ def main() -> int:
         after.call(LOAD, back, stored)
         got = bytes(after.uc.mem_read(back + MACHINE_TYPE, 1))[0]
         values_same = (bytes(after.uc.mem_read(back + 20, 202)) == bytes(s[20:222]))
-        want = v if 0 <= v <= args.machine_max else 0
+        want = v if 0 <= v <= args.machine_max and v not in args.machine_dropped else 0
         ok = on_disk == v and got == want
         print(f"  {'ok  ' if ok else 'FAIL'}  machine type {v}: saved {on_disk}, loaded {got} "
               f"(want {want}); value array {'kept' if values_same else 'changed'} by the round trip")
