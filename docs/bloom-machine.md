@@ -371,12 +371,53 @@ says only that the unpack rewrote it.
 3. **The fallback stands:** the Bloom filter on IIR0 (B6) becomes the pulsed
    filter.
 
+## B1b, run (2026-10-21): yes. Rewriting the incoming frame moves the stock filter
+
+`scripts/sharc_bloom_b1b.py`: the same verified image and digikit `6f812e99` as
+B1. A hook at the unpack's entry, sw `0x1c2712`, where Bloom's own code would
+run, rewrites track 0's FREQ word in the received frame page before anything
+reads it. The frame carries it in one word, at `0x12c`, FREQ in its high half
+at byte `0x12e`.
+
+| run | what changed | RMS of the buffer after the filter, per block 4..9 |
+|---|---|---|
+| A | nothing (the control) | 0.0411, 0.0405, 0.0368, 0.0374, 0.0405, 0.0400 |
+| B | FREQ dark in the frame from block 4 (the reference) | 0.0411, **0.0685, 0.0679, 0.0651, 0.0609, 0.0572** |
+| E | the frame open, its FREQ word rewritten dark at the hook from block 4 | 0.0411, **0.0685, 0.0679, 0.0651, 0.0609, 0.0572** |
+
+**E equals B bit for bit, in every sample of every block.** The checks:
+- the hook fired once a block;
+- the word held the frame's own value before every write, and the dark value
+  after it;
+- the record at the filter's setup holds the dark value from block 5 in both B
+  and E;
+- **[E]**, digikit's runner.
+
+**What it settles:**
+- **The stock filter can be pulsed from the DSP**, by writing the incoming
+  frame's FREQ word per track before the unpack.
+- **The latency is one block,** 32 samples or 0.67 ms, the same as a value
+  arriving from the ColdFire. That is inaudible for a pulse of 32 Hz or slower.
+- **The "setup arm" design is replaced by a pre-unpack hook:** a jump at the
+  per-block driver's call (sw `0x1c9fbc`) or at the unpack's entry, into Bloom's
+  code, which writes FREQ, pan and VOL for each Bloom track's slot, then
+  continues.
+
+**Still open:**
+- **Which hook site is cleanest in the image:** the call at `0x1c9fbc`, or the
+  unpack's first instructions. Each needs its displaced instructions re-run.
+- **Whether pan (89) and VOL (90) behave like FREQ.** They are the same kind of
+  frame slot, so they very likely do, but untested.
+- **Which voice rows are Bloom tracks** at the hook. The machine type is in the
+  same frame, at `148 + 2t`, so the hook can read it from the page it is
+  rewriting.
+
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
 |---|---|---|---|
 | **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
-| **B1** ❌ answered **no** (2026-10-21) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
+| **B1** ❌ answered **no**; **B1b** ✅ passed (2026-10-21) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
 | B2 | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
 | B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |
 | **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |
