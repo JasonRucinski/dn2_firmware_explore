@@ -85,7 +85,11 @@ bl_track.:
 
       R0 = DM(0x2dde80);
       R1 = 16;
-      R9 = R1 - R0;                     // t
+      R9 = R1 - R0;                     // t (R9 holds t only until F9 = dt, below)
+      R2 = LSHIFT R9 BY 2;
+      R12 = 0x2ddf00;                   // &PHASES[0]
+      R2 = R12 + R2;
+      I2 = R2;                          // &PHASES[t], kept for the load and the store
 
       // TUN1 (param 25): the half-word at 0x25c48c + 218 + 146t, little-endian
       R10 = LSHIFT R9 BY 7;
@@ -168,11 +172,7 @@ bl_note_tuned.:
       F5 = F8 * F5;
       F10 = F4 + F5;                    // inv
 
-      // the phase, and the constants of the sample loop
-      R2 = LSHIFT R9 BY 2;
-      R12 = 0x2ddf00;                   // &PHASES[0]
-      R2 = R12 + R2;
-      I2 = R2;                          // &PHASES[t], kept for the store
+      // the phase, and the constants of the sample loop (I2 is &PHASES[t], set above)
       R8 = DM(0, I2);                   // p
       R11 = 0x3f800000;                 // 1.0
       R12 = 0x3f000000;                 // 0.5, the gain

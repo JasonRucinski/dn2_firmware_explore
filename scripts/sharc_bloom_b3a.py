@@ -103,7 +103,8 @@ def run(init, frame_of, blocks: int) -> dict:
     at the loop's exit (0x1c944c) and at the routine's end, as bits; each type-7 track's
     inputs and phase at the loop's entry; the per-type setup arm taken."""
     state = init
-    out = {"machine": [], "buffers": [], "inputs": [], "entries": 0, "setup": []}
+    out = {"machine": [], "buffers": [], "inputs": [], "entries": 0, "setup": [], "stores": []}
+    store = store_sw()
     for b in range(blocks):
         tap = {}
 
@@ -125,6 +126,7 @@ def run(init, frame_of, blocks: int) -> dict:
                               for t in range(16)]
 
         hooks = {m3.DISPATCH: at_dispatch, dsp.LOOP_SW: at_entry, dsp.RESUME_SW: at_resume,
+                 store: lambda r: out["stores"].append(m2.word_reg(r, "I2")),
                  m5.SETUP_GUARD: lambda r: out["setup"].append(("guard", b, m2.word_reg(r, "R2"))),
                  m5.SETUP_TABLE_READ: lambda r: out["setup"].append(("table", b, None)),
                  m5.SETUP_NONE: lambda r: out["setup"].append(("none-arm", b, None))}
@@ -139,6 +141,20 @@ def run(init, frame_of, blocks: int) -> dict:
         out["inputs"].append(tap.get("inputs", {}))
         state = r
     return {**out, "ok": True, "blocks": blocks}
+
+
+def arms(setup) -> bool:
+    """Every per-type setup guard that saw type 7 is followed by the no-setup arm."""
+    seen = [i for i, e in enumerate(setup) if e[0] == "guard" and e[2] == dsp.TYPE]
+    return bool(seen) and all(i + 1 < len(setup) and setup[i + 1][0] == "none-arm" for i in seen)
+
+
+def store_sw() -> int:
+    """sw of the loop's phase store, `DM(0, I2) = R8;`, from the assembler's offsets."""
+    spec = json.loads(dsp.CODE.read_text(encoding="utf-8"))["loop"]
+    text = [ln.split("//", 1)[0].strip() for ln in (ROOT / spec["source"]).read_text(encoding="utf-8").splitlines()]
+    text = [ln for ln in text if ln and not ln.startswith(".") and not ln.endswith(":")]
+    return dsp.LOOP_SW + spec["instruction_offsets"][text.index("DM(0, I2) = R8;")] // 2
 
 
 def check_track(run_, t) -> dict:
@@ -179,6 +195,8 @@ def main(argv=None) -> int:
     sound, machines = m4.init_sound(a.image)
     bloom_img, stock_img = m5.Image(dk, dsp.section7(stock)), m5.Image(dk, stock)
     n = a.blocks
+    offsets = json.loads(dsp.CODE.read_text(encoding="utf-8"))["loop"]["instruction_offsets"]
+    decode = m4.check_targets(dk, bloom_img.memory, dsp.LOOP_SW, offsets)
     with tempfile.TemporaryDirectory(dir=OUT) as tmp:
         work = pathlib.Path(tmp)
         init = init_runner(dk, stock, bloom_img, work)
@@ -200,14 +218,21 @@ def main(argv=None) -> int:
         tracks = {name: {t: check_track(runs[name], t) for t in sorted({t for i in runs[name]["inputs"] for t in i})}
                   for name in ("init", "note72", "tune12", "two")}
         num["tracks"] = tracks
-        num["setup"] = {name: sorted({s[0] for s in runs[name]["setup"]}) for name in runs}
+        num["setup_type7"] = {name: arms(runs[name]["setup"]) for name in runs}
+        num["phase_stores"] = {name: sorted({hex(a) for a in runs[name]["stores"]}) for name in runs}
+        num["decode"] = decode
         num["entries"] = {name: r["entries"] for name, r in every.items()}
         checks.update({
             "the loop is entered once in every block": all(runs[x]["entries"] == n for x in runs),
             "track 0 is machine 7 at the loop, every block (the lookup patch)":
                 all(0 in i for i in runs["init"]["inputs"]),
-            "the type-7 dispatch takes the no-setup arm, never the table":
-                all("table" not in num["setup"][x] for x in ("init", "note72", "tune12", "two")),
+            "every type-7 setup guard goes straight to the no-setup arm":
+                all(arms(runs[x]["setup"]) for x in ("init", "note72", "tune12", "two")),
+            "every phase store is to the track's own PHASES word":
+                all(set(runs[x]["stores"]) <= {dsp.PHASES_DM + 4 * t for t in range(16)} and runs[x]["stores"]
+                    for x in ("init", "note72", "tune12", "two")),
+            "digikit decodes the loop on selas's boundaries, nothing unknown":
+                decode["boundaries_match_assembler"] and not decode["unknown_or_uncertain"],
             "init, note72, tune12: track 0 bit for bit dnfw.bloom.live, every block":
                 all(tracks[x][0]["mismatched_samples"] == 0 and tracks[x][0]["blocks"] == n
                     for x in ("init", "note72", "tune12")),

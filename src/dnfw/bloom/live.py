@@ -94,3 +94,69 @@ def render(note: float, tun1_word: int, blocks: int, p: float = 0.0) -> list[flo
         b, p = render_block(p, dt, inv)
         out += b
     return out
+
+
+# -- B3b: PULSE on FREQ ---------------------------------------------------------------------
+#
+# What Bloom's pre-unpack hook computes (pulse.asm): once a block, before the stock unpack
+# reads the received frame, for every track whose machine in that frame is 7, a triangle
+# whose rate glides from PULSE_START_HZ to PULSE_END_HZ over PULSE_TIME_S (exponential,
+# restarted by the track's trig) is added to the frame's FREQ word. B1b showed the stock
+# filter follows such a rewrite exactly as it follows the ColdFire's own value, one block
+# late. v0 fixes the Innerbloom gesture; its controls come with the pages (B4).
+#
+# Per track, per block, in float32 and in this order:
+#
+#     if page word != last written:  base = page word      (a value from the ColdFire)
+#     if trig:                       step = STEP0, phase = 0, n = 0
+#     if step == 0:                  word = base           (never triggered: no pulse)
+#     else:
+#         m    = 1 - |phase - 0.5| * 4                      -1 .. +1, the triangle
+#         word = clamp(base + trunc(m * DEPTH), 0, FREQ_MAX)
+#         phase = phase + step;  if phase >= 1: phase = phase - 1
+#         if n < BLOCKS:  n = n + 1;  step = STEP1 if n == BLOCKS else step * RATIO
+#     last = word
+#
+# "base" makes the rewrite idempotent: the ring can hand the unpack a page this hook has
+# already rewritten, and the pulse must then ride on the ColdFire's value, not its own.
+
+PULSE_START_HZ = 12.0
+PULSE_END_HZ = 1.0
+PULSE_TIME_S = 8.0
+PULSE_BLOCK = 32
+PULSE_BLOCKS = round(PULSE_TIME_S * RATE / PULSE_BLOCK)              # 12000
+PULSE_STEP0 = _f(PULSE_START_HZ * PULSE_BLOCK / RATE)
+PULSE_STEP1 = _f(PULSE_END_HZ * PULSE_BLOCK / RATE)
+PULSE_RATIO = _f((PULSE_END_HZ / PULSE_START_HZ) ** (1.0 / PULSE_BLOCKS))
+PULSE_DEPTH = 8192.0                  # 32 FREQ steps either way (a step is 256 in the word)
+FREQ_MAX = 0x7F00
+
+
+class PulseState:
+    """One track's pulse, as pulse.asm keeps it (32 bytes a track, zeros at boot)."""
+
+    __slots__ = ("step", "phase", "n", "base", "last")
+
+    def __init__(self):
+        self.step, self.phase, self.n, self.base, self.last = 0.0, 0.0, 0, 0, 0
+
+
+def pulse_block(s: PulseState, page_word: int, trig: bool) -> int:
+    """One block of one track: the FREQ word to write, given the page's word and the trig."""
+    if page_word != s.last:
+        s.base = page_word
+    if trig:
+        s.step, s.phase, s.n = PULSE_STEP0, 0.0, 0
+    if s.step == 0.0:
+        word = s.base
+    else:
+        m = _f(1.0 - _f(abs(_f(s.phase - 0.5)) * 4.0))
+        word = min(max(s.base + int(_f(m * PULSE_DEPTH)), 0), FREQ_MAX)
+        s.phase = _f(s.phase + s.step)
+        if s.phase >= 1.0:
+            s.phase = _f(s.phase - 1.0)
+        if s.n < PULSE_BLOCKS:
+            s.n += 1
+            s.step = PULSE_STEP1 if s.n == PULSE_BLOCKS else _f(s.step * PULSE_RATIO)
+    s.last = word
+    return word
