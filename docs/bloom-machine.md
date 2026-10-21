@@ -447,13 +447,61 @@ input machine, drum sampler and Bloom are now **§39, §40 and §41**.
   byte (41 edits, 490 B), so this environment reproduces the project's
   ColdFire build.
 
+## B2, built (2026-10-21): BLOOM in MACHINE SEL, at machine type 7
+
+`dnfw mods apply ... --mod bloom` (mod `bloom` 0.1.0, `src/dnfw/mods/bloom.py`, data
+`bloom_code.json` from `scripts/gen_bloom_code.py`, code `dnfw.bloom.coldfire`).
+
+**What it does:**
+- MACHINE SEL lists `{0, 2, 1, 3, 7, 4}`: BLOOM after SWARMER, in a section of
+  its own above MIDI's divider.
+- A Bloom track is 7 in the sound and the frame, and WaveTone to the UI: its
+  stock pages, until B4.
+- **No DSP change.** The DSP's lookup `0x25d748[7]` is still stock 0, so a Bloom
+  track renders as FM Tone until B3.
+
+**The bus:**
+- Bloom contributes `MACH 3` (types 5, 6 and 7), so the platform writes every
+  machine bound as 7 and the stored-sound LOAD's as 9. Checked in the build:
+  all six bounds.
+- Rows 5 and 6 are FM Tone's names and attributes, never offered.
+
+**The LOAD shim:**
+- `0x400dd2c0`'s `andl %d1,%d0 ; moveb %d0,%a2@(222)` becomes `jsr load_type`,
+  which does the same and sends 5 and 6 to 0.
+- The shim, its call site and the group function are read back through objdump
+  as intended.
+
+**Gates, on `00_Resources/02_Builds/bloom-b2_DN2_1.11.syx`:**
+
+| gate | result |
+|---|---|
+| `dnfw` integrity | 21 of 21, HMAC reproduced |
+| `check_coldfire` against stock | no scale-8 addressing |
+| `emu_boot_check` from reset (digikit `6f812e99`, patched Unicorn 2.1.4) | **booted and drew its UI**: 1 frame in 450 M instructions, the stock control the same |
+| `emu_boot_engine --machine-type 7 1 4 0 5 6 --machine-max 7 --machine-dropped 5 6` | engine clean; **7 -> 7**, 0 / 1 / 4 kept, **5 -> 0, 6 -> 0**, the value array kept every time |
+| pairs | 21/21 with lfowaves, midiarp, arpmodes; **refused with waverider** (the shared caves) |
+| `test/test_bloom_mod.py` | 8 passed |
+
+`emu_boot_engine.py` gained `--machine-dropped` for this: a type at or below the
+maximum that the LOAD still sends to 0.
+
+**Not yet checked, and needed before any flash:**
+- **MACHINE SEL by driving the panel** in the emulator: BLOOM offered, YES
+  committing 7 on the first press, the marker staying on BLOOM on reopening,
+  the SYN page WaveTone's. This is what found Waverider's "double YES"
+  (`docs/machine-list.md`). It needs a `boot400M` snapshot with the build
+  patched in, and a menu harness for type 7.
+- **The build is not for flashing**, whatever the gates say: a Bloom track
+  plays FM Tone until B3.
+
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
 |---|---|---|---|
 | **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
 | **B1** ❌ answered **no**; **B1b** ✅ passed (2026-10-21) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
-| B2 | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
+| B2 ✅ built, menu check pending | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
 | B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |
 | **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |
 | B4 | the full voice, the chop, pages 1-2 | | as above, plus DSP load |

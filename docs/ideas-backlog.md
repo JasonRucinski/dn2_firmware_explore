@@ -53,7 +53,7 @@ Where they disagree, they win and this table is wrong.
 | 38 | Tags, a tag filter and search for wavetables | **queued (owner, 2026-10-14)** | — | everything: how stock stores and filters sound tags, and where a table's tags live in the store |
 | 39 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
 | 40 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
-| 41 | Bloom: a VA machine around a modulator that bends time | **B0 built; B1 no, B1b yes** (the stock filter follows a FREQ rewritten in the incoming frame) | `docs/bloom-machine.md` | B2: the ColdFire half at machine type 7, on the hook bus; then B3 and a first flash |
+| 41 | Bloom: a VA machine around a modulator that bends time | **B0 built; B1 no, B1b yes; B2 built** (`bloom` mod 0.1.0: BLOOM in MACHINE SEL at type 7; boots from reset; SAVE/LOAD keeps 7) | `docs/bloom-machine.md` | B2's MACHINE SEL panel check in the emulator; then B3 (the DSP: type 7's render, the pre-unpack FREQ hook) and a first flash |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
