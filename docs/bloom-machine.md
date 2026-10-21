@@ -486,14 +486,21 @@ input machine, drum sampler and Bloom are now **§39, §40 and §41**.
 `emu_boot_engine.py` gained `--machine-dropped` for this: a type at or below the
 maximum that the LOAD still sends to 0.
 
-**Not yet checked, and needed before any flash:**
-- **MACHINE SEL by driving the panel** in the emulator: BLOOM offered, YES
-  committing 7 on the first press, the marker staying on BLOOM on reopening,
-  the SYN page WaveTone's. This is what found Waverider's "double YES"
-  (`docs/machine-list.md`). It needs a `boot400M` snapshot with the build
-  patched in, and a menu harness for type 7.
-- **The build is not for flashing**, whatever the gates say: a Bloom track
-  plays FM Tone until B3.
+**MACHINE SEL, driven from the panel (2026-10-21): passed.**
+- **Snapshot:** `boot400M` with the build's 83 changed ranges installed by digikit's
+  `guirun --patch-ranges` (`origin/tools/guirun-memory-patches` merged over
+  `emu/weakptr-resume`), then run to 800 M. The rows are built after the install.
+- **The drive:** `scripts/emu_waverider_menu.py --watch-types`, on track 1, which starts
+  on WaveTone. FUNC+SRC, DOWN twice, **one** YES, NO, then FUNC+SRC again.
+- **What it showed:**
+  - BLOOM is listed below SWARMER, in its own section above the divider;
+  - one YES writes **7** to track 1's `sound+0xDE`. It is one write, by the stock
+    machine setter (`0x4004cc94`), and no other track changes;
+  - on reopening, the marker is still on BLOOM;
+  - the SYN page is WaveTone's (TUN1, WAV1, PD1, LEV1 ...).
+- **Not repeated:** Waverider's "double YES" did not appear.
+- **The B2 build is not for flashing**: a Bloom track plays FM Tone until B3. B3's
+  build (`bloom-b3`) has the same section 3.
 
 ## B3a, built and passed (2026-10-21): Bloom's own saw at type 7
 
@@ -590,7 +597,7 @@ form; the base rule; a new trig restarts it.
 |---|---|---|---|
 | **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
 | **B1** ❌ answered **no**; **B1b** ✅ passed (2026-10-21) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
-| B2 ✅ built, menu check pending | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
+| B2 ✅ built; MACHINE SEL checked from the panel | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
 | **B3** ✅ B3a + B3b passed offline (2026-10-21) | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, trig-anchored | SHARC runner | bit-exact against `dnfw.bloom.live` (B3a 15/15, B3b 15/15). Song-locking (`emu_seqplay` **(upstream)**: the pulse edges against the steps) moves to B7 with ANCH |
 | **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |
 | B4 | the full voice, the chop, pages 1-2 | | as above, plus DSP load |
