@@ -275,11 +275,49 @@ reply's word 0 misreads around these tracks (`docs/sharc-load.md`).
 
 ---
 
+## B0, built (2026-10-21): the reference model
+
+`src/dnfw/bloom/`, pure Python, no firmware. `dnfw bloom presets | curve NAME |
+render NAME OUT.wav [--dry]`. Tests: `test/test_bloom.py`, 32 passing.
+
+| module | what it holds |
+|---|---|
+| `clock` | the frame's position word (2^32 = 384 sixteenths) and tempo word (BPM x 120) as beats; the 18 note lengths, each checked to divide the wrap |
+| `pulse` | the glide's closed-form phase (exp, lin), `smooth` / `land` / `step`, the SHAP morph, TILT |
+| `osc` | PolyBLEP saw and pulse, a naive triangle (its corner aliases far less than a step), the WAV morph |
+| `duck` | DUCK: a 1 ms attack, so the dip never clicks, and a release; a trig continues from the level it finds |
+| `sound` | a sound's controls in their own units; LINK, one hop only, so links cannot loop |
+| `presets` | the factory sounds and their patterns, each with what it should sound like |
+| `voice` | the track: per sample the oscillators, chop and DUCK; **per 32-sample block** the cutoff, as the setup arm will write it |
+
+**Measured on the model:**
+- `innerbloom`: 35.41 cycles in the glide. The cutoff trace has 10 pulses in its
+  first second, 5 at 2-3 s, 3 at 4-5 s and 1 a second from 6 s, each over FREQ
+  5..95.
+- `riser` with `land`: exactly 87 cycles, with the last ending on beat 16.
+- `step-roll`: every pulse begins on a grid line, through quarters, eighths,
+  sixteenths and thirty-seconds.
+
+**A bug the tests found in the model itself:** a voice's gate is 0 at its first
+sample, and the loop took that for "finished" and dropped the voice. Every chord
+after the first was lost. `test_every_chord_of_a_pattern_sounds` holds the fix.
+
+**What B0 does not cover yet:**
+- hard sync and XMOD (a sync reset needs its own BLEP);
+- SWNG, PAN, PDEP, PULSE 2, the Bloom filter, STAK, VEL, TIME = note length;
+- the float32 order of operations the DSP will use. That is fixed at B3,
+  against selas' output.
+
+**The preview is not the instrument.** `render` runs the dry signal through a
+stand-in two-pole filter, with FREQ mapped 20 Hz .. 20 kHz. It shows the shape
+of the motion and nothing about Elektron's filter. `--dry` writes the machine's
+own signal, which is what the DSP gate will compare.
+
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
 |---|---|---|---|
-| **B0** | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
+| **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
 | **B1** | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
 | B2 | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
 | B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |

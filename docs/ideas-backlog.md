@@ -51,7 +51,7 @@ Where they disagree, they win and this table is wrong.
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
 | 35 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
 | 36 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
-| 37 | Bloom: a VA machine around a modulator that bends time | **designed, not started** | `docs/bloom-machine.md` | B0 (the reference model) and B1 (does a setup-arm write move the stock filter within the block?), then the machine type and a first flash |
+| 37 | Bloom: a VA machine around a modulator that bends time | **B0 built (the reference model)** | `docs/bloom-machine.md` | B0 (the reference model) and B1 (does a setup-arm write move the stock filter within the block?), then the machine type and a first flash |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -4089,7 +4089,8 @@ Part B.
 **2026-10-18:** a new machine of its own, not part of Waverider, and *"go
 crazy"*.
 
-**State: designed, not started.** The plan is `docs/bloom-machine.md`.
+**State: designed; B0, the reference model, built 2026-10-21** (`src/dnfw/bloom/`).
+The plan is `docs/bloom-machine.md`.
 - **The voice:** two PolyBLEP oscillators (saw / pulse / triangle, pulse width,
   hard sync, FM or ring), a sub and noise.
 - **PULSE:** its phase is computed from the song position the frame carries

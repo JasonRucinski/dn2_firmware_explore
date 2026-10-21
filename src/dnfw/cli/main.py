@@ -9,6 +9,7 @@ import argparse
 import sys
 
 from . import (
+    bloom,
     build,
     cave,
     diff,
@@ -28,7 +29,7 @@ from . import (
 
 COMMANDS = (
     inspect, extract, build, patch, diff, symbols, symbolmap, params, disasm, validate_disasm,
-    cave, fn, ldr, mods, waverider,
+    cave, fn, ldr, mods, waverider, bloom,
 )
 
 
