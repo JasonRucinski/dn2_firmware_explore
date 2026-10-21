@@ -313,12 +313,43 @@ stand-in two-pole filter, with FREQ mapped 20 Hz .. 20 kHz. It shows the shape
 of the motion and nothing about Elektron's filter. `--dry` writes the machine's
 own signal, which is what the DSP gate will compare.
 
+## B1: the harness (2026-10-21), waiting for a run
+
+`scripts/sharc_bloom_b1.py`. The runner itself writes FREQ into the track record
+at the PC the arm would occupy, sw `0x1c91ad`. So it measures the firmware's
+behaviour, not Bloom's code.
+
+The signal is Waverider M4's type-5 voice on track 0, the filter is Multimode,
+and the tap is the buffer after the filter, at the amp's input. Four runs:
+
+| run | what it does |
+|---|---|
+| A | FREQ open: the control |
+| B | FREQ dark in the frame from block K: the stock-LFO path, the reference |
+| C | the frame open, the record written dark at the setup from block K: **the question** |
+| D | the same write after the setup: the timing |
+
+**PASS needs all of these:**
+- the hook is reached in every block;
+- the record holds the frame's own value before the write;
+- B is clearly darker than A;
+- C follows B within 1 % RMS, in block K itself and after it.
+
+D's reading is reported. The harness imports, its names resolve against the M4
+harness, and `test/test_bloom_b1.py` checks its field and scaling.
+
+**Not run yet:** this session could not get the OS 1.11 file. Elektron's site now
+serves 1.12, its 1.11 link answers 404, and fetching it from a third-party
+archive was refused. digikit's `work/sharc-emulator` (`1d841b64`) was cloned
+beside the checkout. The M4 harness was written against `6f812e9`, so a failure
+to start under `1d841b64` is about the runner, not about B1.
+
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
 |---|---|---|---|
 | **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
-| **B1** | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
+| **B1** (harness written, not yet run) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
 | B2 | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
 | B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |
 | **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |
