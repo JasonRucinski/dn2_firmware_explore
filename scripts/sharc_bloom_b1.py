@@ -81,11 +81,23 @@ def record_bits(word: int) -> int:
     return struct.unpack("<I", struct.pack("<f", word / 32768.0))[0]
 
 
+def frame_words(sound, word: int) -> dict[int, int]:
+    """The 32-bit words of the frame that carry track 0's FREQ = WORD: every word where a
+    frame with WORD differs from one with OPEN (B1b writes exactly these)."""
+    a = m4.make_frame(sound, 5, trig=False, overrides={FREQ_INDEX: OPEN})
+    b = m4.make_frame(sound, 5, trig=False, overrides={FREQ_INDEX: word})
+    return {k: struct.unpack_from("<I", b, k)[0] for k in range(0, len(a), 4) if a[k:k + 4] != b[k:k + 4]}
+
+
 def run(init, sound, blocks, k, freq, *, frame_freq, write_at=None):
     """BLOCKS calls of the per-block routine, as m4.run_blocks, with track 0's FREQ in the
-    frame from FRAME_FREQ(b), and from block K a write of DARK into the record at WRITE_AT.
+    frame from FRAME_FREQ(b), and from block K a write of DARK at WRITE_AT: into the record
+    ("setup", "late") or into the received frame page at the unpack's entry ("frame", B1b).
     Taps the buffer after the filter, the record at each hook, and the hook count."""
     rec = V.track_record(0) + FREQ_OFFSET
+    dark_words = frame_words(sound, DARK)
+    open_frame = m4.make_frame(sound, 5, trig=False, overrides={FREQ_INDEX: OPEN})
+    open_words = {o: struct.unpack_from("<I", open_frame, o)[0] for o in dark_words}
     positions = [render.sweep(len(testtable.table()), 2)[0]] * blocks     # one timbre, held
     prep = m4.voice_prep(freq, positions)
     state, out = init, {"pre_amp": [], "per_block": []}
@@ -118,8 +130,21 @@ def run(init, sound, blocks, k, freq, *, frame_freq, write_at=None):
             if write_at == "setup" and b >= k:
                 write(runner)
 
+        def at_unpack(runner):
+            # where Bloom's code would run: before the unpack reads the received page
+            seen["unpack_hits"] = seen.get("unpack_hits", 0) + 1
+            if write_at != "frame" or b < k or seen.get("frame_done"):
+                return
+            rx = m4.RX_BASE + ((m2.word(runner.state, m4.RX_INDEX) or 0) << 8)
+            seen["frame_before"] = {o: m2.word(runner.state, rx + o) for o in dark_words}
+            for o, w in dark_words.items():
+                m2.poke(runner.state, rx + o, w)
+            seen["frame_after"] = {o: m2.word(runner.state, rx + o) for o in dark_words}
+            seen["frame_done"] = True
+            seen["hits"] += 1
+
         hooks = {m3.DISPATCH: at_dispatch, m3.AMP_STAGE: amp, m3.TYPE5_ENTRY: enter5,
-                 FILTER_SETUP: at_setup}
+                 FILTER_SETUP: at_setup, m4.UNPACK: at_unpack}
         r = m4.unpack_call(state, m4.make_frame(sound, 5, trig=(b == 1),
                                                 overrides={FREQ_INDEX: frame_freq(b)}))
         res = fx.run(r, 8_000_000, m4.fixups(hooks))
@@ -131,6 +156,11 @@ def run(init, sound, blocks, k, freq, *, frame_freq, write_at=None):
         out["per_block"].append({"block": b, "rms": V.rms(block),
                                  "setup_hits": seen.get("setup_hits", 0), "writes": seen["hits"],
                                  "record_before": seen["record_before"],
+                                 "unpack_hits": seen.get("unpack_hits", 0),
+                                 "frame_before_ok": (seen["frame_before"] == open_words
+                                                     if "frame_before" in seen else None),
+                                 "frame_written_ok": (seen["frame_after"] == dark_words
+                                                      if "frame_after" in seen else None),
                                  "frame_freq": hex(frame_freq(b))})
         state = r
     return {"ok": True, **out}
@@ -144,6 +174,21 @@ def rel(a, b):
     """RMS of the difference over the RMS of B."""
     d = V.rms([x - y for x, y in zip(a, b)])
     return d / (V.rms(b) or 1e-30)
+
+
+def load(image: pathlib.Path, digikit: pathlib.Path, work: pathlib.Path):
+    """The runner, the image with Waverider M4's loop in it, and the engine-init state
+    (about 12 minutes), as sharc_waverider_m4.main builds them."""
+    m4.IMAGE = image
+    dk = m1.Digikit(digikit)
+    fx.bind(str(digikit / "tools"))
+    stream = m1.dn2_section7(image)
+    sound, _ = m4.init_sound(image)
+    reader, _, _ = m1.reader_code(False, work)
+    m5, _, _ = m3.load_json(m3.MACHINE5, m3.MACHINE5_SRC, False, work)
+    m5d, _, _ = m4.load_code(m4.MACHINE5D, m4.MACHINE5D_SRC, False, work, m4.MACHINE5D_SW)
+    mach = m4.M4Machine(dk, stream, reader, m5, m5d, work)
+    return dk, mach, m4.load_init(dk, mach, stream, reader), sound
 
 
 def main(argv=None) -> int:
@@ -162,18 +207,8 @@ def main(argv=None) -> int:
     if not a.image.exists():
         raise SystemExit(f"{a.image}: the Digitone II OS 1.11 file is needed (bring your own)")
     OUT.mkdir(parents=True, exist_ok=True)
-    m4.IMAGE = a.image
-    dk = m1.Digikit(a.digikit)
-    fx.bind(str(a.digikit / "tools"))
-    stream = m1.dn2_section7(a.image)
-    sound, _ = m4.init_sound(a.image)
     with tempfile.TemporaryDirectory(dir=OUT) as tmp:
-        work = pathlib.Path(tmp)
-        reader, _, _ = m1.reader_code(False, work)
-        m5, _, _ = m3.load_json(m3.MACHINE5, m3.MACHINE5_SRC, False, work)
-        m5d, _, _ = m4.load_code(m4.MACHINE5D, m4.MACHINE5D_SRC, False, work, m4.MACHINE5D_SW)
-        mach = m4.M4Machine(dk, stream, reader, m5, m5d, work)
-        init = m4.load_init(dk, mach, stream, reader)
+        dk, mach, init, sound = load(a.image, a.digikit, pathlib.Path(tmp))
         k, n = a.k, a.blocks
         dark_from_k = lambda b: DARK if b >= k else OPEN          # noqa: E731
         runs = {
