@@ -495,6 +495,95 @@ maximum that the LOAD still sends to 0.
 - **The build is not for flashing**, whatever the gates say: a Bloom track
   plays FM Tone until B3.
 
+## B3a, built and passed (2026-10-21): Bloom's own saw at type 7
+
+`csrc/bloom/sharc/bloom_loop.asm`, applied by `dnfw.bloom.dsp.section7` from the
+committed `src/dnfw/bloom/sharc_code.json` (`scripts/gen_bloom_sharc.py --assemble`,
+selache `2b26d3b`). Contract: `dnfw.bloom.live` (float32, the loop's own order).
+
+**What the section 7 gets:**
+- the loop at byte `0x2dd600` (sw `0x16eb00`), 848 B, padded with NOPs to `0x2dde00`;
+  its state (save area, track counter, 16 phases) to `0x2de000`; the tables DT and
+  INV (129 floats each) to `0x2de800`. That is Waverider's proven L1 region, written
+  end to end;
+- `JUMP 0x16eb00` + NOP over the two instructions at sw `0x1c9448`, which the loop
+  re-runs before it resumes at `0x1c944c`;
+- the lookup `0x25d748[7]` = 7.
+
+**Per block, for each type-7 track:** the note cell plus TUN1, clamped to 0..127; dt
+and 1/dt interpolated from the tables; a PolyBLEP saw at gain 0.5 into the track's
+buffer; the phase kept per track.
+
+**The gate, `scripts/sharc_bloom_b3a.py`** (digikit `6f812e99`, the Python runner,
+the image byte for byte, every input through a real frame): **15 of 15.**
+
+| check | result |
+|---|---|
+| the loop is entered once a block; track 0's record reads 7 there | yes, every block |
+| each type-7 setup guard takes the no-setup arm | yes |
+| digikit decodes the loop on selas's boundaries | yes, nothing unknown |
+| the machine tap, bit for bit `dnfw.bloom.live`: note 60, note 72, TUN1 +12, two tracks | 0 mismatched samples, 8 blocks each |
+| the DSP's phase at each entry is the reference's, carried from 0 | yes |
+| TUN1 +12 equals note 72 | bit for bit |
+| audible at the machine tap | RMS 0.297 |
+| control: no type-7 track, all 16 buffers against stock | identical |
+| control: a type-7 run's tracks 1-15 against stock | identical |
+
+**A bug the first run hid, and the check that caught it.** The first build computed
+the phase pointer from R9 after `F9 = dt` had overwritten the track index in it. The
+samples were still bit-exact, because the load and the store agreed on the wrong
+address (`0xeef84888` for note 60). On silicon that store would have landed outside
+L1. The gate now checks the DSP's phase at each entry against the reference and the
+address of every phase store, and both caught it. The fix computes the pointer right
+after `t`.
+
+## B3b, built and passed (2026-10-21): the Innerbloom pulse on FREQ
+
+`csrc/bloom/sharc/pulse.asm`, in the same section 7 (`dnfw.bloom.dsp.section7`, with
+`pulse=False` giving B3a's image alone). Contract: `dnfw.bloom.live.pulse_block`.
+
+**Where it runs:**
+- the handler's `r4 = 0x268438` at sw `0x1c9fb9`, just before it calls the per-block
+  routine at `0x1c9fbc`, becomes `JUMP 0x16f400`. That is the site Waverider's
+  `entry_mark.asm` proved on the instrument;
+- `pulse.asm` (780 B at byte `0x2de800`, state to `0x2def00`) rewrites the received
+  page, re-runs the displaced load, and jumps back to the call. **This is B1b's
+  mechanism**, now in Bloom's own code;
+- the page is R12, the routine's third argument and its frame source, which the
+  handler has loaded by then. It is not recomputed from the receive ring.
+
+**What it does, v0 (fixed, no controls until B4):**
+- for each track whose machine in the page is 7, from that track's note trig, a
+  triangle on FREQ, ±8192 in the word (±32 FREQ steps), clamped to 0..127;
+- its rate glides exponentially from **12 Hz to 1 Hz over 8 s** (12,000 blocks),
+  then holds 1 Hz;
+- the phase and rate run per track, restarted by the trig. **v0 is trig-anchored, not
+  song-locked.** The song-position writer is not needed yet;
+- **it rides the ColdFire's value:** it keeps the last word it wrote and takes a
+  new base only from a word that differs. So a page the ring hands back already
+  rewritten does not move the centre, and turning FREQ does.
+
+**The gate, `scripts/sharc_bloom_b3b.py`: 15 of 15.** Each block runs the image's
+hook (as its own call, with the handler's arguments and the frame in the page)
+and then the routine.
+
+| check | result |
+|---|---|
+| the hook returns to `0x1c9fbc` with R4 = `0x268438`, every other register restored | every block |
+| digikit decodes `pulse.asm` on selas's boundaries | yes |
+| track 0's FREQ in the frame copy against `pulse_block` | equal, all 12 blocks (`0x4000`, then `0x2000` at the trig, rising) |
+| track 3 (machine 7, never trigged) and track 5 (WaveTone) | FREQ untouched |
+| every other byte of the frame copy | as sent |
+| a re-delivered, already-rewritten page (block 6) | the base holds |
+| all 16 buffers against the plain image fed the same words | **bit for bit** |
+| heard | track 0 differs from block 2, one block after the trig (B1b's latency) |
+| tracks 1-15 against the plain frames | identical |
+| the glide's end (state set 3 blocks short) | words match; n stops at 12000; the step is exactly 1 Hz |
+
+**Unit tests** (`test/test_bloom.py`): silent until the first trig; the depth and
+clamps; about 3.46 Hz at 4 s; it lands exactly; 35.4 cycles over the glide, the closed
+form; the base rule; a new trig restarts it.
+
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
@@ -502,7 +591,7 @@ maximum that the LOAD still sends to 0.
 | **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
 | **B1** ❌ answered **no**; **B1b** ✅ passed (2026-10-21) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
 | B2 ✅ built, menu check pending | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
-| B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |
+| **B3** ✅ B3a + B3b passed offline (2026-10-21) | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, trig-anchored | SHARC runner | bit-exact against `dnfw.bloom.live` (B3a 15/15, B3b 15/15). Song-locking (`emu_seqplay` **(upstream)**: the pulse edges against the steps) moves to B7 with ANCH |
 | **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |
 | B4 | the full voice, the chop, pages 1-2 | | as above, plus DSP load |
 | B5 | DUCK and LINK | | DUCK against a kick trig in the runner, with a control |
@@ -512,22 +601,28 @@ maximum that the LOAD still sends to 0.
 
 ### The first flash's test, written so it cannot be missed
 
+Build: `00_Resources/02_Builds/bloom-b3_DN2_1.11.syx` (mod `bloom` 0.2.0),
+sha256 `0d743dd7d5f884ddd12a3e577c78c61c4ef3d46eb59ebe0d846055db78c28ac2`.
+**Not to be flashed without the owner's go-ahead.**
+
 1. Turn the volume down first.
-2. Track 1: MACHINE SEL → BLOOM. The init sound is Innerbloom.
-3. Filter Lowpass 4, RESO high.
-4. Hold a chord, live or as one long trig.
+2. Track 1: MACHINE SEL → BLOOM, **one** YES.
+3. FLTR page: lowpass, **FREQ at about 64** (the init sound's 127 is fully open, which
+   clamps the upper half of the pulse), RESO about halfway.
+4. Play **one long note** on track 1: hold its trig key, or one trig with a long LEN.
+   The pulse restarts at every trig, so a pattern of short steps restarts it every step.
 
 | result | means |
 |---|---|
-| **pass:** the filter **flutters fast at once**, about 12 a second, and **slows smoothly** to one pulse a second over eight seconds; a new trig starts it fast again | the arm runs, the phase is right, the filter follows |
-| a steady flutter that never slows | the glide's time base is not advancing: the song-position writer, or TIME's units |
-| it slows in jumps, or clicks | Φ is being restarted, or the rate is stepping |
-| a saw, but no flutter | the arm did not run, or wrote the wrong record field: check `+0x1cc` against the build |
-| other tracks flutter too | the row-to-track gate is wrong |
+| **pass:** a bright saw whose filter **flutters fast at once**, about 12 a second, and **slows smoothly** to one a second over 8 s, then keeps pulsing once a second while held; a new note starts it fast again; FREQ moves the centre of the pulse | the loop, the hook and the stock filter all work as the gates say |
+| a saw, steady filter, no flutter | the hook did not run, or it wrote the wrong word: check the build against `dnfw.bloom.dsp.placements()` |
+| an FM sound, not a saw | the DSP did not take type 7 (lookup `0x25d748[7]`), or section 7 is not this build's |
+| silence on the Bloom track only | the loop does not write the track's buffer |
+| a flutter that never slows | the step is not decaying |
+| it slows in jumps, or clicks | the glide restarts, or the rate steps |
+| a WaveTone or FM track flutters too | the machine test in `pulse.asm` is wrong |
 | every track goes silent at the first trig | a DSP trap, as Waverider M5's (`docs/waverider-dsp-silence.md`); power off |
 | a stuck 750 Hz buzz | a task-level stall; power off |
-
-This goes into the test plan with the image's sha256 before it is flashed.
 
 ## What is unverified
 

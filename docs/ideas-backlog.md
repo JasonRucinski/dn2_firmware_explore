@@ -4137,8 +4137,18 @@ Part B.
 **2026-10-18:** a new machine of its own, not part of Waverider, and *"go
 crazy"*.
 
-**State: designed; B0, the reference model, built 2026-10-21** (`src/dnfw/bloom/`).
-The plan is `docs/bloom-machine.md`.
+**State (2026-10-21): B0-B3 built and gated offline; awaiting a first flash.** The
+plan and every gate are in `docs/bloom-machine.md`.
+- **B0:** the reference model (`src/dnfw/bloom/`).
+- **B1 / B1b:** a record write does not move the stock filter; rewriting the
+  incoming frame's FREQ word before the unpack does.
+- **B2:** BLOOM in MACHINE SEL at machine type 7.
+- **B3a:** Bloom's own saw on the DSP, bit for bit the reference.
+- **B3b:** the Innerbloom pulse on FREQ (12 → 1 Hz over 8 s from each trig, fixed
+  in v0), bit-identical to the ColdFire sending the same words.
+- **Build:** `bloom-b3`, mod `bloom` 0.2.0.
+
+What follows is the full design.
 - **The voice:** two PolyBLEP oscillators (saw / pulse / triangle, pulse width,
   hard sync, FM or ring), a sub and noise.
 - **PULSE:** its phase is computed from the song position the frame carries
