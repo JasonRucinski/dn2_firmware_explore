@@ -24,6 +24,7 @@ table.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from itertools import combinations
 
@@ -36,6 +37,18 @@ NOTES: dict[frozenset, str] = {
         "(0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks "
         "DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone "
         "(scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.",
+    frozenset(("arpmodes", "arpscale")):
+        "emulator, 2026-10-13, one build with arpscale, arpmodes and reloadconfirm: four of "
+        "scripts/emu_arpscale.py's runs pass as with arpscale alone (C major and a per-track "
+        "Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). "
+        "arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at "
+        "0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.",
+    frozenset(("arpscale", "reloadconfirm")):
+        "emulator, 2026-10-13: each appends a PERSONALIZE item from its own site in the "
+        "constructor (arpscale after the last stock item, 0x40098630; reloadconfirm at the "
+        "epilogue, 0x4009863e), both built from scripts/build_personalize_toggle.py. With "
+        "both, the menu ends ARP OFS IN SCALE, RELOAD CONFIRM, and pressing each flips only "
+        "its own byte (0x405cd8af, 0x405cd8ae).",
     frozenset(("arpmodes", "midiarp")):
         "a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; "
         "not run.",
@@ -45,16 +58,21 @@ NOTES: dict[frozenset, str] = {
         "track plays over MIDI; the boot check from reset passed for the tunnel, ascii and spin "
         "animations each combined with it. With layermidi on the platform (2026-10-03): the "
         "boot check from reset passes with a static tunnel mark, and the loader puts both "
-        "chunks where the platform predicts (scripts/emu_platform_check.py); not yet flashed.",
+        "chunks where the platform predicts (scripts/emu_platform_check.py), and on the "
+        "instrument, 2026-10-03, flashed with usbprobe as well: works.",
     frozenset(("layermidi", "midiarp")):
         "refused by hand, not by bytes (both run from the platform, at 0x467d8000 and "
         "0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook "
         "on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, "
         "from the inline note fields a sequencer trig never fills (random notes and lengths "
         "on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own "
-        "track's arp is on and playing it, so the overlap is smaller, but layermidi would "
-        "still send those notes again. Kept refused at the maintainer's request until they "
-        "re-check the pair.",
+        "track's arp is on and playing it. Checked in the emulator with the refusal bypassed "
+        "(the maintainer, 2026-10-03, on emu_midiarp_layered.py's rig): a layered copy that is "
+        "an arp step, on a MIDI track with its arp on, is sent twice -- midiarp sends the "
+        "arp's note and layermidi sends it again; an arp step that is not a copy is sent once; "
+        "with the arp off, or the arp without layering, the pair behaves. So the one clash is "
+        "layering onto a MIDI track whose arp is on, and the pair stays refused until "
+        "layermidi leaves those copies to midiarp.",
     frozenset(("fxmod", "lfo4")):
         "emulator, 2026-09-26: the LFO4 slot harness and a turn of all eight LFO4 dials match "
         "lfo4 alone; fxmod's DEST checks and names match fxmod alone; every LFO page, LFO4's "
@@ -171,6 +189,10 @@ def _short(pair: Pair) -> str:
         return "moddest must be applied first"
     if "parameter table has been moved" in why:
         return "fxmod must be applied first"
+    m = re.match(r"(\w+) refuses after (\w+)", why)
+    if m:  # the full refusal, with its addresses, stays in the table cell's title
+        return (f"{m.group(1)} must be applied first" if pair.order_only
+                else f"{m.group(1)} cannot be applied after {m.group(2)}")
     return why
 
 
@@ -183,14 +205,22 @@ def combines_text(mod_id: str, found: list[Pair], names: dict[str, str]) -> str:
         other = p.b if p.a == mod_id else p.a
         kind = cell(p)
         (ok if kind == "yes" else ordered if kind == "order" else no).append((names[other], _short(p)))
+    # Full sentences, no semicolons: the pages follow ASD-STE100 structure (the ste check).
     parts = []
     if ok:
-        parts.append("With " + ", ".join(n for n, _ in ok))
+        parts.append("This mod combines with " + _and([n for n, _ in ok]) + ".")
     if ordered:
-        parts.append("in one order only with " + "; ".join(f"{n} ({why})" for n, why in ordered))
+        parts.append("This mod combines in one order only with "
+                     + _and([f"{n} ({why})" for n, why in ordered]) + ".")
     if no:
-        parts.append("<strong>not</strong> with " + "; ".join(f"{n} ({why})" for n, why in no))
-    return "; ".join(parts) + ". See the compatibility table"
+        parts.append("This mod does <strong>not</strong> combine with "
+                     + _and([f"{n} ({why})" for n, why in no], "or") + ".")
+    return " ".join(parts) + " See the compatibility table"
+
+
+def _and(items: list[str], last: str = "and") -> str:
+    """A, B and C."""
+    return items[0] if len(items) == 1 else ", ".join(items[:-1]) + f" {last} " + items[-1]
 
 
 def table_html(ids: list[str], found: list[Pair], names: dict[str, str],

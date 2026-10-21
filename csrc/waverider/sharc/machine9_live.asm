@@ -1,7 +1,17 @@
 // machine9_live.asm -- Waverider Milestone 9: machine5_live.asm with two oscillators.
 //
+// Page 3: once both oscillators are done (osc 2 run, or skipped at LEV2 0) the loop goes
+// to sub.asm, the sub-oscillator, which goes on to wr_t5v_next. Page 5: both ways to the sub
+// go through page5.asm (the shaper, then FOLD), and the way to osc 2 through its wr_p5_mid.
+// A voice starts at page5.asm's wr_p5_voice (FM plays osc 2 first), and each reader call goes
+// through its wr_p5_phase (WARP and FM write each sample's phase).
+//
 // M10a: after POS and LEV are read, each oscillator's pass jumps to modulator.asm
 // (MOVE) and comes back at wr_t5v_modded.
+//
+// M10b-2: the reader block's pos is stored by smooth.asm (SMTH, the glide), which comes
+// back at wr_t5v_smoothed; the reader is called through dclk.asm's wr_dclk_pre (DCLK,
+// the crossfade at a jump).
 //
 // M9b: each type-5 track runs the per-oscillator body twice. Osc 2's parameters are
 // osc 1's, 12 bytes later in the frame copy (TUN2/WAV2/TBL2 = params 31/32/33,
@@ -36,7 +46,8 @@
 //   SLOT  WaveTone's TBL1 (param 27), read from the frame image the unpack copied to
 //         0x25c48c (offset 222 + 146t): 0x0000 or 0x0100, the sound's own value
 //         (read on the instrument through the USB probe, 2026-09-30); >> 8 is the
-//         slot, resolved through the baked directory; at or above its count plays 0.
+//         slot, resolved through the baked directory; at or above its count, through
+//         the load area's pool (pool.asm), and slot 0 when the pool has no such table.
 //   POS   WaveTone's WAV1 (param 26), from the same copy (offset 220 + 146t): the
 //         sound's coarse << 8 | fine, 0..0x7800 (probe: 0x7800 at the knob's top).
 //         min(WAV1, 0x7800) << 5 is Q16 frames: 0x7800 << 5 = 15 << 16, frame 15.
@@ -132,17 +143,18 @@ wr_t5v_loop.:
       R3 = DM(I5, M6);                  // this track's buffer; I5 -> next
       R4 = 5;
       COMP(R2, R4);
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next.
+      IF NE JUMP 0x16eeb3;              // -> wr_t5v_next.
       R4 = DM(0x2de600);                // the baked directory's magic
       R2 = 0x57525431;
       COMP(R4, R2);
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next. (no directory: render nothing)
+      IF NE JUMP 0x16eeb3;              // -> wr_t5v_next. (no directory: render nothing)
       DM(0x2dde88) = R3;                // M9b: the buffer, for both oscillators
       R0 = R0 - R0;
       DM(0x2de6c4) = R0;                // osc 1: replace
       DM(0x2dde90) = R0;
       DM(0x2dde94) = R0;
       DM(0x2dde98) = R0;                // osc 1 adds no tune base (+0.0)
+      JUMP 0x172cdf;                         // -> wr_p5_voice. (page 5: FM plays osc 2 first, page5.asm)
 
 .GLOBAL wr_t5v_osc.;
 wr_t5v_osc.:
@@ -194,10 +206,10 @@ wr_t5v_osc.:
       // the firmware's own `IF cond JUMP abs` and unconditional shifts instead
       R7 = -16;
       R1 = PASS R1;
-      IF NE JUMP 0x16edd8;                   // -> wr_t5v_odd.
+      IF NE JUMP 0x16eddb;                   // -> wr_t5v_odd.
       R5 = LSHIFT R4 BY R7;             // t even: WAV1 low, TBL1 high half of word 0
       R13 = LSHIFT R13 BY R7;           //         TUN1 high half of the word before
-      JUMP 0x16edde;                         // -> wr_t5v_halves.
+      JUMP 0x16ede1;                         // -> wr_t5v_halves.
 .GLOBAL wr_t5v_odd.;
 wr_t5v_odd.:
       R13 = R13 - R13;                  // t odd:  TUN1 low half of word 0
@@ -213,22 +225,26 @@ wr_t5v_halves.:
       R14 = R14 AND R6;                 // LEV1, the sound's value, 0..0x7f00
       // M9b: osc 2 at level 0 is not run (osc 1 always is: it writes the buffer)
       R14 = PASS R14;
-      IF NE JUMP 0x16edf0;              // -> wr_t5v_lev_on.
+      IF NE JUMP 0x16edfc;              // -> wr_t5v_lev_on.
+      R0 = DM(0x2e6004);                // page 5's FM state: 1 is osc 2 playing first for FM, which runs at LEV2 0 too (0.3.6)
+      R1 = 1;
+      COMP(R0, R1);
+      IF EQ JUMP 0x16edfc;              // -> wr_t5v_lev_on.
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next.
+      IF NE JUMP 0x172ba4;              // -> wr_p5_skip. (page 5: the shaper and FOLD, page5.asm, then the sub)
 .GLOBAL wr_t5v_lev_on.;
 wr_t5v_lev_on.:
       // M10a: MOVE, the modulator (modulator.asm, sw 0x16f700), which offsets R4 (POS)
       // and scales R14 (LEV) for this voice and oscillator, then jumps back here
-      JUMP 0x16f700;                    // -> wr_mod.
+      JUMP 0x170100;                    // -> wr_trim. (the level trim's factor, trim.asm, then the modulator)
 .GLOBAL wr_t5v_modded.;
 wr_t5v_modded.:
 
       // M9a: the gain, LEV1 / 100, for reader_m9.asm
       R12 = R12 - R12;
       F14 = FLOAT R14 BY R12;
-      R12 = 0x3823d70a;                 // f32(1 / 25600)
+      R12 = DM(0x2de6c8);               // f32(10^(dB/20) / 25600): the trim's factor for this voice (trim.asm)
       F14 = F14 * F12;
       DM(0x2de6c0) = R14;
 
@@ -236,8 +252,8 @@ wr_t5v_modded.:
       R1 = LSHIFT R5 BY -8;
       R2 = DM(0x2de604);                // the directory's count
       COMPU(R1, R2);
-      IF LT JUMP 0x16ee09;                   // -> wr_t5v_slot_ok.
-      R1 = R1 - R1;                     // out of range -> slot 0
+      IF LT JUMP 0x16ee17;                   // -> wr_t5v_slot_ok.
+      JUMP 0x16fe00;                    // -> wr_pool. (past the baked tables: the load area's pool)
 .GLOBAL wr_t5v_slot_ok.;
 wr_t5v_slot_ok.:
       R1 = LSHIFT R1 BY 2;
@@ -245,13 +261,18 @@ wr_t5v_slot_ok.:
       R1 = R12 + R1;
       I1 = R1;
       R2 = DM(0, I1);                   // directory.table[slot]
+.GLOBAL wr_t5v_pooled.;
+wr_t5v_pooled.:
       DM(0, I4) = R2;                   // the reader block's table pointer
 
       // POS = min(WAV1, 0x7800) << 5: Q16 frames, 0x7800 << 5 = 15 << 16
       R2 = 0x7800;
       R4 = MIN(R4, R2);
       R4 = LSHIFT R4 BY 5;
-      DM(3, I4) = R4;                   // pos
+      // M10b-2: SMTH (smooth.asm) glides it, then stores the reader block's pos
+      JUMP 0x170300;                    // -> wr_smooth. (smooth.asm)
+.GLOBAL wr_t5v_smoothed.;
+wr_t5v_smoothed.:
 
       // pitch: this track's note cell, 0x254b14 + 4t
       R2 = LSHIFT R9 BY 2;
@@ -265,10 +286,10 @@ wr_t5v_slot_ok.:
       R12 = 0xff;
       R2 = R2 AND R12;                  // the exponent field
       COMP(R2, R12);
-      IF EQ JUMP 0x16ee3d;                   // -> wr_t5v_note0.
+      IF EQ JUMP 0x16ee4c;                   // -> wr_t5v_note0.
       R8 = PASS R8;
-      IF LT JUMP 0x16ee3d;                   // -> wr_t5v_note0.
-      JUMP 0x16ee3e;                         // -> wr_t5v_note_ok.
+      IF LT JUMP 0x16ee4c;                   // -> wr_t5v_note0.
+      JUMP 0x16ee4d;                         // -> wr_t5v_note_ok.
 .GLOBAL wr_t5v_note0.;
 wr_t5v_note0.:
       R8 = R8 - R8;                     // +0.0
@@ -289,8 +310,8 @@ wr_t5v_note_ok.:
       DM(0x2dde98) = R13;
       F8 = F8 + F13;                    // note + TUN1 (osc 2: + TUN2 + TUN1)
       R8 = PASS R8;
-      IF LT JUMP 0x16ee55;                   // -> wr_t5v_tune_low.
-      JUMP 0x16ee56;                         // -> wr_t5v_tuned.
+      IF LT JUMP 0x16ee64;                   // -> wr_t5v_tune_low.
+      JUMP 0x16ee65;                         // -> wr_t5v_tuned.
 .GLOBAL wr_t5v_tune_low.;
 wr_t5v_tune_low.:
       R8 = R8 - R8;                     // below note 0 -> +0.0
@@ -319,22 +340,22 @@ wr_t5v_tuned.:
       R3 = DM(0x2dde88);
       DM(5, I4) = R3;                   // out: the track buffer
       R4 = DM(0x2dde84);                // wr_render5's argument: the reader block
-      CJUMP 0x16eb00 (DB);              // wr_render5(R4 = reader block)
+      CJUMP 0x172de0 (DB);                   // -> wr_p5_phase. (page 5's WARP and FM, page5.asm, then wr_dclk_pre (M10b-2) and wr_render5(R4 = reader block))
       DM(I7, M7) = R2;
-      DM(I7, M7) = 0x16ee8a;            // return address - 1: wr_t5v_osc_next. - 1
+      DM(I7, M7) = 0x16ee99;            // return address - 1: wr_t5v_osc_next. - 1
 
 .GLOBAL wr_t5v_osc_next.;
 wr_t5v_osc_next.:
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF NE JUMP 0x16eea4;              // -> wr_t5v_next. (osc 2 done)
+      IF NE JUMP 0x172b93;              // -> wr_p5_ran. (osc 2 done: page 5, page5.asm, then the sub)
       R0 = 1;
       DM(0x2de6c4) = R0;                // osc 2: add
       R0 = 0x900;
       DM(0x2dde90) = R0;
       R0 = 12;
       DM(0x2dde94) = R0;
-      JUMP 0x16ed83;                    // -> wr_t5v_osc.
+      JUMP 0x172b00;                    // -> wr_p5_mid. (page5.asm keeps osc 1 for the shaper, then wr_t5v_osc)
 
 .GLOBAL wr_t5v_next.;
 wr_t5v_next.:
@@ -346,6 +367,6 @@ wr_t5v_next.:
 
       // M9b: the restore and the way back live after wr_render5 (reader_m9.asm), in
       // the reader's code span: this one has no room left for them
-      JUMP 0x16ebbd;                    // -> wr_t5v_exit.
+      JUMP 0x173aba;                    // -> wr_fm_end. (formant.asm: the last voice on IIR0, then wr_t5v_exit)
 .wr_type5v..end:
       .type wr_type5v.,STT_FUNC;

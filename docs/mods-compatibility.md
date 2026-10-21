@@ -86,7 +86,7 @@ What moved to get there:
   assembled to run. Its 46-byte copy stub at `0x402cf52c` is gone, and that cave
   is free again.
 - **arpplocks (2026-10-02):** its code, seven caves until then (two shared with
-  usbprobe and fxmod), is a 1,944-byte `CODE` chunk at `0x467c8000`, past its shadow
+  usbprobe and fxmod), is a 1,984-byte `CODE` chunk at `0x467c8000`, past its shadow
   sounds. The hooks and patches are the same, pointing at the chunk. It now combines
   with every mod. `scripts/emu_arp_plocks.py` passes 42/42 on the chunk build and on
   the cave build alike.
@@ -128,34 +128,59 @@ Two checks came out of the failure:
   after the engine has run. It fails on `platform-trio` at `0x46700000`, and
   passes on `platform-trio2`.
 
+## The hook bus (since 2026-10-15)
+
+Until 2026-10-15, two mods that hooked the same instruction could not combine. fxmod
+and Waverider both hooked `0x400dc02a`. lfo4 and Waverider each moved a bound that
+the other one's hook covers. The platform now owns those places (`src/dnfw/mods/bus.py`):
+
+- **An event**, `ev_param_slot` at `0x400dc02a`. The platform writes one jump to its
+  dispatcher, and each mod adds a handler (an `EVNT` chunk). fxmod answers the FX slots
+  and Waverider answers its own.
+- **Two counts**: the parameter records (53 bounds) and the machine types (six bounds).
+  lfo4 adds 10 records and Waverider adds 1 machine (an `ADDS` chunk). The platform
+  writes every bound, also in a hook's copy (`DISP`).
+- **`split` puts all of it back to stock**, so each mod checks and edits a stock image.
+  `join` writes it again. Thus fxmod with Waverider and lfo4 with Waverider combine in
+  either order, and both orders give the same image.
+
+The bus does not remove an order that comes from a copy. lfo4 copies the parameter
+table, so fxmod, lfowaves and moddest must come before it, as before.
+`scripts/emu_bus_slots.py` checks the slot lookup: 12,838 direct calls give the answers
+of the old builds. The 41 pairs with fxmod, lfo4 or Waverider booted again from reset
+with the Rust boot gate (`scripts/boot_gate_pairs.py`).
+
 ## The table
 
 <!-- dnfw:matrix -->
-| | `arpmodes` | `arpplocks` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfowaves` | `midiarp` | `moddest` | `songguard` | `transients` | `usbprobe` | `waverider` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `bootscreen` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
-| `fxmod` | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | **NO** |
-| `layermidi` | yes | yes | yes | yes | - | yes | yes | **NO** | yes | yes | yes | yes | yes |
-| `lfo4` | yes | yes | yes | order | yes | - | order | yes | order | yes | yes | yes | **NO** |
-| `lfowaves` | yes | yes | yes | yes | yes | order | - | yes | yes | yes | yes | yes | yes |
-| `midiarp` | yes | yes | yes | yes | **NO** | yes | yes | - | yes | yes | yes | yes | yes |
-| `moddest` | yes | yes | yes | yes | yes | order | yes | yes | - | yes | yes | yes | yes |
-| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
-| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
-| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
-| `waverider` | yes | yes | yes | **NO** | yes | **NO** | yes | yes | yes | yes | **NO** | yes | - |
+| | `arpmodes` | `arpplocks` | `arpscale` | `bootscreen` | `fxmod` | `layermidi` | `lfo4` | `lfolength` | `lfowaves` | `midiarp` | `moddest` | `reloadconfirm` | `songguard` | `transients` | `usbprobe` | `waverider` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `arpmodes` | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `arpplocks` | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `arpscale` | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `bootscreen` | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `fxmod` | yes | yes | yes | yes | - | yes | order | yes | yes | yes | yes | yes | yes | yes | yes | yes |
+| `layermidi` | yes | yes | yes | yes | yes | - | yes | yes | yes | **NO** | yes | yes | yes | yes | yes | yes |
+| `lfo4` | yes | yes | yes | yes | order | yes | - | yes | order | yes | order | yes | yes | yes | yes | yes |
+| `lfolength` | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes | yes | yes | yes | yes |
+| `lfowaves` | yes | yes | yes | yes | yes | yes | order | yes | - | yes | yes | yes | yes | yes | yes | yes |
+| `midiarp` | yes | yes | yes | yes | yes | **NO** | yes | yes | yes | - | yes | yes | yes | yes | yes | yes |
+| `moddest` | yes | yes | yes | yes | yes | yes | order | yes | yes | yes | - | yes | yes | yes | yes | yes |
+| `reloadconfirm` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes | yes |
+| `songguard` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | yes | yes |
+| `transients` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes | **NO** |
+| `usbprobe` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | - | yes |
+| `waverider` | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | **NO** | yes | - |
 
 - **arpmodes + arpplocks: yes**: disjoint bytes. *Note:* emulator, 2026-09-26: arpplocks' MODE lock takes its ceiling from setMode's clamp (0x4004bf01), which arpmodes widens to 6. Turning MODE with every step held locks DOWN CYCL SHUF RAND RAND RAND with both, and DOWN CYCL CYCL ... with arpplocks alone (scripts/emu_arp_modes.py). A locked SHUF or RAND playing from a trig was not run.
+- **arpmodes + arpscale: yes**: disjoint bytes. *Note:* emulator, 2026-10-13, one build with arpscale, arpmodes and reloadconfirm: four of scripts/emu_arpscale.py's runs pass as with arpscale alone (C major and a per-track Pentatonic Minor from a trig, the toggle off equal to stock, C major held live). arpmodes enters the arp step's tail at 0x4002a376, before arpscale's hook at 0x4002a390, so SHUF and RAND offsets should move by degrees too; not run.
 - **arpmodes + midiarp: yes**: disjoint bytes. *Note:* a MIDI track's arp runs the same step, so SHUF and RAND should reach MIDI tracks; not run.
-- **bootscreen + layermidi: yes**: disjoint bytes. *Note:* on the instrument, 2026-10-02, with layermidi's cave build (layer-midi6): flashed together (a static tunnel mark), the intro plays the mark and layering onto a MIDI track plays over MIDI; the boot check from reset passed for the tunnel, ascii and spin animations each combined with it. With layermidi on the platform (2026-10-03): the boot check from reset passes with a static tunnel mark, and the loader puts both chunks where the platform predicts (scripts/emu_platform_check.py); not yet flashed.
+- **arpscale + reloadconfirm: yes**: disjoint bytes. *Note:* emulator, 2026-10-13: each appends a PERSONALIZE item from its own site in the constructor (arpscale after the last stock item, 0x40098630; reloadconfirm at the epilogue, 0x4009863e), both built from scripts/build_personalize_toggle.py. With both, the menu ends ARP OFS IN SCALE, RELOAD CONFIRM, and pressing each flips only its own byte (0x405cd8af, 0x405cd8ae).
+- **bootscreen + layermidi: yes**: disjoint bytes. *Note:* on the instrument, 2026-10-02, with layermidi's cave build (layer-midi6): flashed together (a static tunnel mark), the intro plays the mark and layering onto a MIDI track plays over MIDI; the boot check from reset passed for the tunnel, ascii and spin animations each combined with it. With layermidi on the platform (2026-10-03): the boot check from reset passes with a static tunnel mark, and the loader puts both chunks where the platform predicts (scripts/emu_platform_check.py), and on the instrument, 2026-10-03, flashed with usbprobe as well: works.
 - **fxmod + lfo4: order**: fxmod refuses after lfo4: the parameter table has been moved (expected 53 site(s) holding 0x401f7f94 (table - 60 + 8), found 0); lfo4 does that, and fxmod opens records in the stock table, which nothing reads once it has moved: apply fxmod first, then lfo4. *Note:* emulator, 2026-09-26: the LFO4 slot harness and a turn of all eight LFO4 dials match lfo4 alone; fxmod's DEST checks and names match fxmod alone; every LFO page, LFO4's included, gains the same 24 FX destinations. The hooks are on different paths (fxmod's slot lookup at 0x400dc02a is asked above slot 100 only while the DEST list is built). Not exercised: LFO4 aimed at an FX destination. fxmod's own helper at 0x4028ea02 keeps the stock table bounds, so it would answer LFO4's own entries with -1; it is only ever called with destination entries.
-- **fxmod + waverider: NO**: waverider refuses after fxmod: 0x400dc02a (slot_to_id: saves d2, d1 = 100, a0 = slot) is not stock; this mod is for unmodified Digitone II 1.11.
-- **layermidi + midiarp: NO**: refused by hand: they fight over one feature (see the note). *Note:* refused by hand, not by bytes (both run from the platform, at 0x467d8000 and 0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, from the inline note fields a sequencer trig never fills (random notes and lengths on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own track's arp is on and playing it, so the overlap is smaller, but layermidi would still send those notes again. Kept refused at the maintainer's request until they re-check the pair.
-- **lfo4 + lfowaves: order**: lfowaves refuses after lfo4: 0x400372da is not stock (202f00080c800000014b...); lfo4 widens this bound: apply lfowaves first, then lfo4.
+- **layermidi + midiarp: NO**: refused by hand: they fight over one feature (see the note). *Note:* refused by hand, not by bytes (both run from the platform, at 0x467d8000 and 0x467d0000): both turn layered copies on MIDI tracks into MIDI notes. midiarp's hook on the voice trigger (0x400268f8) used to play every layered copy on a MIDI track, from the inline note fields a sequencer trig never fills (random notes and lengths on the bench, 2026-10-01). Since 2026-10-03 (#179) it plays a copy only when its own track's arp is on and playing it. Checked in the emulator with the refusal bypassed (the maintainer, 2026-10-03, on emu_midiarp_layered.py's rig): a layered copy that is an arp step, on a MIDI track with its arp on, is sent twice -- midiarp sends the arp's note and layermidi sends it again; an arp step that is not a copy is sent once; with the arp off, or the arp without layering, the pair behaves. So the one clash is layering onto a MIDI track whose arp is on, and the pair stays refused until layermidi leaves those copies to midiarp.
+- **lfo4 + lfowaves: order**: lfowaves refuses after lfo4: the parameter table has been moved (expected 53 site(s) holding 0x401f7f94 (table - 60 + 8), found 0); lfo4 does that, and lfowaves edits records in the stock table, which nothing reads once it has moved: apply lfowaves first, then lfo4.
 - **lfo4 + moddest: order**: moddest refuses after lfo4: found 2 candidate parameter tables, expected 1; this image's layout is not the one this mod was measured against. *Note:* measured: with moddest applied first, all 13 masks it opens are in lfo4's relocated table (test/test_lfo4_mod.py).
-- **lfo4 + waverider: NO**: lfo4 and waverider both write section 3 0x000dce86..0x000dce88 (2 bytes).
 - **transients + waverider: NO**: transients and waverider both write section 7 0x000795d4..0x00084f24 (47,440 bytes).
 <!-- /dnfw:matrix -->
 
@@ -165,28 +190,45 @@ Written from `out/mod-pairs/*/boot.txt` (`--boots out/mod-pairs`). A boot runs t
 the init, so only pairs that include a loader mod are booted; the rest say why they were skipped.
 
 <!-- dnfw:boots -->
-- `arpmodes` + `bootscreen`: booted and drew its UI (1 frame(s), control 1).
-- `arpmodes` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
-- `arpmodes` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
-- `arpplocks` + `bootscreen`: booted and drew its UI (1 frame(s), control 1).
-- `arpplocks` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
-- `arpplocks` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `fxmod`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `moddest`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `songguard`: booted and drew its UI (1 frame(s), control 1).
-- `bootscreen` + `waverider`: booted and drew its UI (1 frame(s), control 1).
-- `fxmod` + `lfo4`: booted and drew its UI (1 frame(s), control 1).
-- `fxmod` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
-- `lfo4` + `lfowaves`: booted and drew its UI (1 frame(s), control 1).
-- `lfo4` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
-- `lfo4` + `moddest`: booted and drew its UI (1 frame(s), control 1).
-- `lfo4` + `songguard`: booted and drew its UI (1 frame(s), control 1).
-- `lfowaves` + `midiarp`: booted and drew its UI (1 frame(s), control 1).
-- `lfowaves` + `moddest`: booted and drew its UI (1 frame(s), control 1).
-- `lfowaves` + `songguard`: booted and drew its UI (1 frame(s), control 1).
-- `lfowaves` + `waverider`: booted and drew its UI (1 frame(s), control 1).
-- `midiarp` + `usbprobe`: booted and drew its UI (1 frame(s), control 1).
+- `arpmodes` + `fxmod`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpmodes` + `lfo4`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpmodes` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpplocks` + `fxmod`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpplocks` + `lfo4`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpplocks` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpscale` + `fxmod`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpscale` + `lfo4`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `arpscale` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `bootscreen` + `fxmod`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `bootscreen` + `lfo4`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `bootscreen` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `layermidi`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `lfo4`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `lfolength`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `lfowaves`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `midiarp`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `moddest`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `reloadconfirm`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `songguard`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `transients`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `usbprobe`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `fxmod` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `layermidi` + `lfo4`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `layermidi` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `lfolength`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `lfowaves`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `midiarp`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `moddest`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `reloadconfirm`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `songguard`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `transients`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `usbprobe`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfo4` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfolength` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `lfowaves` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `midiarp` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `moddest` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `reloadconfirm` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `songguard` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
+- `usbprobe` + `waverider`: booted, 0 hits on both watches (boot_gate from reset, 2026-10-18)
 <!-- /dnfw:boots -->

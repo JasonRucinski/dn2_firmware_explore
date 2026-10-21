@@ -43,7 +43,7 @@ from __future__ import annotations
 import math
 import struct
 
-from . import render
+from . import formant, mip, render
 
 RATE = 48000.0
 A4_NOTE, A4_HZ = 69, 440.0
@@ -118,13 +118,176 @@ PRST_OFF, PRST_ON, PRST_RANDOM = 0x0000, 0x0100, 0x0200   # RSET: the oscillator
 MOVE_RATE = tuple(round(2 ** 32 / 1500 * 2 ** (j / 10) / 32) for j in range(10))
 MPOS_SCALE = 0x7800 / (0x3200 * 0xFFFF)
 MLEV_SCALE, SHAPE_SCALE = 1 / 0x7F00, 1 / 0xFFFF
-ONE_SHOTS = 3                      # shapes 0..2 stop at their end; 3 and 4 loop
-MOVE_SHAPES = ("Ramp Down", "Ramp Up", "Tri Once", "Tri Loop", "Square")   # MOVE 0..4 (M10b)
+# MOVE 0..10 (M10b-4), sorted by nature: the one-shots, which stop at their end; the
+# loops; the random shapes, which draw a value each cycle. (M10b-1 had five: Ramp Down,
+# Ramp Up, Tri Once, Tri Loop, Square; a sound saved with those reads the new order.)
+MOVE_SHAPES = ("Ramp Up", "Ramp Down", "Exp Up", "Exp Down", "Tri Once",
+               "Up Loop", "Down Loop", "Tri Loop", "Square",
+               "Rnd Hold", "Rnd Glide")
+ONE_SHOTS = 5                      # shapes 0..4 stop at their end; 5.. loop
+RND_HOLD, RND_GLIDE = 9, 10
+# the random shapes' generator (shapes.asm): x = rotate(x, 7) + RND_ADD, one state
+# for every voice, drawn on a cycle's wrap and on a note's restart; the value is x >> 16
+RND_ADD = 0x6D2B79F5
+EXP_SCALE = 2.0 ** -32             # Exp: x^3 / 2^32, in float32
+GLIDE_IN, GLIDE_TWO, GLIDE_THREE = 2.0 ** -16, 2.0, 3.0
+
+
+# -- M10b-2: SYNC, MOVE locked to the tempo (sync.asm; the ColdFire's csrc/waverider/sync.c) --
+# Per oscillator, Off (0) or On: WaveTone's MOD (slot 37) for osc 1 and CHAR (47) for
+# osc 2, the two spare records whose default is 0, so every sound saved before SYNC
+# reads Off. The modulator reads it as the seventh word of its offset row.
+SYNC_SLOTS = (37, 47)
+# The note lengths SYNC steps through, slowest first, in sixteenths: each is
+# SYNC_LOOP / (a << k) for a whole a in (1, 3, 9), so a phase is the position times
+# (a << k), exactly, in 32 bits. (name, a, k)
+SYNC_LOOP = 384                    # sixteenths in 2^32 of the frame's position: 24 bars
+SYNC_NOTES = (("4 bars D", 1, 2), ("4 bars", 3, 1), ("2 bars D", 1, 3), ("4 bars T", 9, 0),
+              ("2 bars", 3, 2), ("1 bar D", 1, 4), ("2 bars T", 9, 1), ("1 bar", 3, 3),
+              ("1/2 D", 1, 5), ("1 bar T", 9, 2), ("1/2", 3, 4), ("1/4 D", 1, 6),
+              ("1/2 T", 9, 3), ("1/4", 3, 5), ("1/8 D", 1, 7), ("1/4 T", 9, 4),
+              ("1/8", 3, 6), ("1/16 D", 1, 8), ("1/8 T", 9, 5), ("1/16", 3, 7),
+              ("1/32 D", 1, 9), ("1/16 T", 9, 6), ("1/32", 3, 8), ("1/32 T", 9, 7))
+# The song position (sync.c) is a u32 split over two frame words the stock ColdFire copies
+# from parameters and the stock DSP never reads (docs/waverider-frame-words.md): the low
+# half at 0xa18 (FX setup k 40), the high half at 0x2a (the header after the trig masks: no
+# voice's slot, stock never writes it). Until 0.3.4 it was 0x9a8, voice 16's noise DEC (word 57).
+SYNC_POSITION_LO = 0xA18          # frame bytes 0xa18..0xa19
+SYNC_POSITION_HI = 0x2A           # frame bytes 0x2a..0x2b
+SYNC_TEMPO = 0xD8                  # frame bytes: BPM x 120
+# a block's phase step per unit of tempo x multiplier: 2^32 / (SYNC_LOOP x 2,700,000),
+# where a sixteenth is 2,700,000 / tempo blocks (1500 a second)
+SYNC_K = 2.0 ** 32 / (SYNC_LOOP * 2_700_000)
+
+
+def sync_multiplier(note: int) -> int:
+    _, a, k = SYNC_NOTES[note]
+    return a << k
+
+
+def sync_note_for(rate: int) -> int:
+    """RATE (0..100) -> the note length SYNC plays: the one nearest, on a log scale, to
+    the cycle RATE gives free-running at 120 BPM (2^(8 - r/10) sixteenths), so a sound
+    keeps about its speed when SYNC turns on (RATE 50: 1 s free, a half note synced)."""
+    cycle = 2.0 ** (8 - rate / 10)
+    return min(range(len(SYNC_NOTES)),
+               key=lambda i: abs(math.log2(SYNC_LOOP / sync_multiplier(i) / cycle)))
+
+
+SYNC_INDEX = tuple(sync_note_for(r) for r in range(101))
+
+
+def sync_table() -> tuple[int, ...]:
+    """The DSP's table (sync.asm), one word per RATE 0..100: k | s << 8, where the
+    multiplier is 1 << k for s = 0 and (1 + (1 << s)) << k otherwise (a = 3: s 1; 9: 3)."""
+    s_of = {1: 0, 3: 1, 9: 3}
+    out = []
+    for r in range(101):
+        _, a, k = SYNC_NOTES[SYNC_INDEX[r]]
+        out.append(k | s_of[a] << 8)
+    return tuple(out)
+
+
+# -- M10b-2: SMTH, a glide on POS (smooth.asm), and DCLK, the crossfade (dclk.asm) --
+# SMTH per oscillator on WaveTone's DEC (slot 42) and WDTH (45): 0 is no glide, and the
+# glide grows with the knob, 127 the longest (since 0.3.1: a user found Off at the right
+# inverted; until then 127, the record's stock default, was Off). A new Waverider sound gets
+# 0 at MACHINE SEL (pages.RANGES); a sound saved before 0.3.1 reads its value the other way. DCLK, shared, on HOLD (41): 0 Off, 1..127 a crossfade of 1..100 ms; a new
+# Waverider sound starts at 3 ms (owner, 2026-10-06; sounds saved before read 127, 100 ms).
+SMTH_SLOTS = (42, 45)
+DCLK_SLOT = 41
+SMTH_OFF = 0
+SMTH_MAX = 127
+SMTH_RATE = 1500.0                 # the glide steps once a block
+
+
+def smth_tau(v: int) -> float:
+    """SMTH v (1..127) -> the glide's time constant in seconds: 2 ms at 1, doubling every
+    14 steps, 1 s at 127."""
+    return 2.0 ** (-(SMTH_MAX - v) / 14)
+
+
+def smth_table() -> tuple[float, ...]:
+    """The glide's coefficient per SMTH 0..127, float32: exactly 1.0 at 0 (Off), where
+    POS + (target - POS) x 1 is the target exactly, then 1 - e^(-1 / (1500 tau))."""
+    return (1.0,) + tuple(_f32(1.0 - math.exp(-1.0 / (SMTH_RATE * smth_tau(v)))) for v in range(1, SMTH_MAX + 1))
+
+
+def smth_names() -> tuple[str, ...]:
+    """What the header shows for SMTH 0..127: Off at 0, then the time constant."""
+    out = ["Off"]
+    for v in range(1, SMTH_MAX + 1):
+        ms = smth_tau(v) * 1000
+        out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
+    return tuple(out)
+
+
+def smooth(s: float, target: int, smth: int, note: bool) -> float:
+    """One block of the glide, in smooth.asm's float32 order: a note snaps to the target."""
+    if note:
+        return _f32(float(target))
+    k = smth_table()[min((smth & 0xFFFF) >> 8, SMTH_MAX)]
+    d = _f32(_f32(float(target)) - s)
+    return _f32(s + _f32(d * k))
+
+
+# DCLK's crossfade: on a jump between two blocks -- POS by more than 2 frames, another
+# table, or the gain by more than 0.1 (LEV 10) -- the last block's settings keep playing
+# at the same phase and fade out over the DCLK time while the new ones fade in. Smaller
+# moves pass straight through. The owner chose it over the 1 ms offset declick after the
+# measurement in docs/waverider-m10-move.md (2026-10-06).
+DCLK_JUMP_POS = 2 << 16            # Q16 frames
+DCLK_JUMP_GAIN = 0.1
+DCLK_DEFAULT = 0x1F00              # 31: 3.0 ms, the default a new sound gets
+
+
+def dclk_ms(v: int) -> float:
+    """DCLK v (1..127) -> the crossfade in ms: 1 at 1, x10 every 63 steps, 100 at 127."""
+    return 100.0 ** ((v - 1) / 126)
+
+
+def dclk_lengths() -> tuple[int, ...]:
+    """The crossfade in samples per DCLK 0..127; 0 is Off."""
+    return (0,) + tuple(round(48 * dclk_ms(v)) for v in range(1, 128))
+
+
+def dclk_inverses() -> tuple[float, ...]:
+    """1 / length, float32, per DCLK 0..127 (0 for Off): the DSP has no divide."""
+    return (0.0,) + tuple(_f32(1.0 / n) for n in dclk_lengths()[1:])
+
+
+def dclk_names() -> tuple[str, ...]:
+    out = ["Off"]
+    for v in range(1, 128):
+        ms = dclk_ms(v)
+        out.append(f"{ms:.0f} ms" if ms >= 10 else f"{ms:.1f} ms")
+    return tuple(out)
+
+
+def dclk_jump(last, cur) -> bool:
+    """last, cur: (table, pos, gain): a jump DCLK fades, as dclk.asm tests it"""
+    if last[0] is not cur[0] or abs(cur[1] - last[1]) > DCLK_JUMP_POS:
+        return True
+    d = _f32(cur[2] - last[2])
+    return d > _f32(DCLK_JUMP_GAIN) or d < -_f32(DCLK_JUMP_GAIN)
+
+
+def crossfade(new: list[float], old: list[float], rem: int, inv: float) -> list[float]:
+    """y = n + (o - n) x a, a = (rem - i) / length while rem - i > 0, float32; n after it"""
+    out = []
+    for i, (n, o) in enumerate(zip(new, old)):
+        k = rem - i
+        if k > 0:
+            a = _f32(_f32(float(k)) * inv)
+            n = _f32(n + _f32(_f32(o - n) * a))
+        out.append(n)
+    return out
 
 
 def move_offsets() -> tuple[tuple[int, ...], ...]:
-    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads."""
-    return tuple(tuple(168 + 2 * s for s in slots) for slots in MOVE_SLOTS)
+    """Per oscillator, the frame byte offsets (168 + 2 s) the modulator reads: RATE,
+    MPOS, MLEV, MOVE, TRIG, PRST, then SYNC (M10b-2)."""
+    return tuple(tuple(168 + 2 * s for s in (*slots, sync)) for slots, sync in zip(MOVE_SLOTS, SYNC_SLOTS))
 
 
 def move_band(move: int) -> int:
@@ -132,27 +295,91 @@ def move_band(move: int) -> int:
     return min(b, len(MOVE_SHAPES) - 1)
 
 
-def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool) -> int:
-    """The phase after one block, as the modulator steps it."""
-    if not (trig_mode & 0xFFFF) >> 8 and triggered:
+def move_restarts(trig_mode: int, triggered: bool) -> bool:
+    """TRIG Retrig and a note on this voice: the shape starts again."""
+    return not (trig_mode & 0xFFFF) >> 8 and triggered
+
+
+def move_step(phase: int, rate: int, move: int, trig_mode: int, triggered: bool,
+              sync: int = 0, position: int = 0, tempo: int = 0) -> int:
+    """The phase after one block, as the modulator steps it. With SYNC on (M10b-2),
+    RATE is a note length (`SYNC_INDEX`): on Free the phase IS the frame's song
+    position times the length's multiplier, so the cycle starts on step 1; on Retrig
+    the step comes from the tempo (BPM x 120), so the length holds from each note."""
+    if move_restarts(trig_mode, triggered):
         phase = 0
     r = min((rate & 0xFFFF) >> 8, 100)
-    inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
+    if sync & 0xFFFF:
+        m = sync_multiplier(SYNC_INDEX[r])
+        if (trig_mode & 0xFFFF) >> 8:
+            inc = (position * m - phase) & 0xFFFFFFFF
+        else:
+            inc = trunc(_f32(_f32(_f32(float(tempo & 0xFFFF)) * _f32(float(m))) * _f32(SYNC_K)))
+    else:
+        inc = (MOVE_RATE[r % 10] << (r // 10)) & 0xFFFFFFFF
     new = (phase + inc) & 0xFFFFFFFF
     if move_band(move) < ONE_SHOTS and new < phase:
         new = 0xFFFFFFFF
     return new
 
 
-def move_shape(phase: int, move: int) -> int:
-    """The shape's value, 0..0xffff, at this phase."""
+def rnd_next(x: int) -> int:
+    """The random shapes' generator step."""
+    return ((((x << 7) | (x >> 25)) & 0xFFFFFFFF) + RND_ADD) & 0xFFFFFFFF
+
+
+class MoveRandom:
+    """The random shapes' state: the generator, and per voice and oscillator the value
+    before (a) and the value now (b), 16 bits each; all zero at boot."""
+
+    def __init__(self) -> None:
+        self.x = 0
+        self.held: dict[int, list[int]] = {}
+
+    def values(self, key: int) -> list[int]:
+        return self.held.setdefault(key, [0, 0])
+
+    def step(self, key: int, start: int, new: int, move: int, restarted: bool) -> None:
+        """After one block of a random shape: a new value on a wrap or a restart."""
+        if move_band(move) < RND_HOLD:
+            return
+        if restarted or new < start:
+            ab = self.values(key)
+            self.x = rnd_next(self.x)
+            ab[0], ab[1] = ab[1], self.x >> 16
+
+
+def _exp(x: int) -> int:
+    f = _f32(float(x))
+    return trunc(_f32(_f32(_f32(f * f) * f) * _f32(EXP_SCALE)))
+
+
+def _glide(x: int, a: int, b: int) -> int:
+    """a to b over the cycle on a smoothstep, u^2 (3 - 2u), in float32."""
+    u = _f32(_f32(float(x)) * _f32(GLIDE_IN))
+    s = _f32(_f32(u * u) * _f32(GLIDE_THREE - _f32(u * GLIDE_TWO)))
+    fa = _f32(float(a))
+    return trunc(_f32(_f32(_f32(_f32(float(b)) - fa) * s) + fa))
+
+
+def move_shape(phase: int, move: int, held: tuple[int, int] = (0, 0)) -> int:
+    """The shape's value, 0..0xffff, at this phase; HELD is (a, b) for the random
+    shapes."""
     x, band = phase >> 16, move_band(move)
-    if band == 0:
-        return 0xFFFF - x
-    if band == 1:
+    if band in (0, 5):
         return x
-    if band == 4:
+    if band in (1, 6):
+        return 0xFFFF - x
+    if band == 2:
+        return _exp(x)
+    if band == 3:
+        return _exp(0xFFFF - x)
+    if band == 8:
         return 0xFFFF if x < 0x8000 else 0
+    if band == RND_HOLD:
+        return held[1]
+    if band == RND_GLIDE:
+        return _glide(x, *held)
     return (x if x < 0x8000 else 0xFFFF - x) << 1
 
 
@@ -195,10 +422,357 @@ def slot(tbl1: int, count: int) -> int:
     return s if s < count else 0
 
 
-def gain(lev1: int) -> float:
-    """The reader's gain for the frame's 16-bit LEV1 word (Milestone 9a): LEV1 x
-    f32(1/25600) in float32, as the loop computes it; exactly 1.0 at 100."""
-    return _f32(_f32(float(lev1 & 0xFFFF)) * _f32(GAIN_STEP))
+# The level trim (docs/waverider-trim.md): WaveTone's FINE record (parameter 49), a knob on page
+# 4. Its coarse byte >> 1 picks one of 64 factors, f32(10^(dB/20) / 25600): -15 dB at 0, -11 dB
+# at the centre 32 (the record's stock default 0x4000, so a sound that never had the knob lands
+# there), 0 dB at 63.
+TRIM_PARAM = 49
+TRIM_DEFAULT_WORD = 0x4000
+TRIM_MIN_DB, TRIM_CENTRE_DB, TRIM_MAX_DB = -15.0, -11.0, 0.0
+TRIM_STEPS = 64
+
+
+def trim_db(index: int) -> float:
+    """The trim's gain in dB at table INDEX 0..63: linear in dB, 4 dB over the lower 32
+    steps, 11 dB over the upper 31."""
+    i = max(0, min(TRIM_STEPS - 1, index))
+    if i <= 32:
+        return TRIM_MIN_DB + (TRIM_CENTRE_DB - TRIM_MIN_DB) * i / 32
+    return TRIM_CENTRE_DB + (TRIM_MAX_DB - TRIM_CENTRE_DB) * (i - 32) / 31
+
+
+def trim_table() -> list[float]:
+    """The 64 factors the DSP carries at TRIM_TABLE_DM, float32."""
+    return [_f32(10 ** (trim_db(i) / 20) / 25600) for i in range(TRIM_STEPS)]
+
+
+def trim_factor(word: int = TRIM_DEFAULT_WORD) -> float:
+    """The factor for the frame's 16-bit TRIM word (coarse << 8 | fine)."""
+    return trim_table()[min((word & 0xFFFF) >> 9, TRIM_STEPS - 1)]
+
+
+def gain(lev1: int, trim: int = TRIM_DEFAULT_WORD, factor: float | None = None) -> float:
+    """A source's gain for its 16-bit level word (LEV1 in Milestone 9a, SUB and NOIS the same
+    way) and the sound's TRIM word: the level x the trim's factor in float32, as the loop
+    computes it. At LEV 100 and the default trim, 10^(-11/20) = 0.282. FACTOR, when given,
+    is the factor itself (the slewed one, `trim_slew`)."""
+    return _f32(_f32(float(lev1 & 0xFFFF)) * (trim_factor(trim) if factor is None else factor))
+
+
+# 0.1.2 (2026-10-17: a fast turn of TRIM popped, the gain jumping between two blocks): the
+# factor a voice and oscillator use slews toward the knob's by at most 0.1 dB a block, so the
+# full 15 dB takes about 100 ms (trim.asm, wr_trim_set). A note on the voice, or no factor
+# kept yet (0 at boot), takes the knob's as it is.
+TRIM_SLEW_UP = _f32(10 ** (0.1 / 20))
+TRIM_SLEW_DOWN = _f32(10 ** (-0.1 / 20))
+
+
+def trim_slew(last: float, target: float, note_on: bool) -> float:
+    """The factor for this block from the one used last block, in trim.asm's float32 order."""
+    if last <= 0 or note_on:
+        return target
+    return max(min(target, _f32(last * TRIM_SLEW_UP)), _f32(last * TRIM_SLEW_DOWN))
+
+
+# Page 3 (docs/waverider-pages34.md): the sub-oscillator, on FM Tone's records in slots
+# 50..53, which a WaveTone-type sound doesn't have. Its own phase steps at the followed
+# oscillator's increment >> (1 + OCT): OCT 0 is an octave down, 1 two, 2 three (owner,
+# 2026-10-07: a -3 was asked for). Its shapes need
+# no table, and each is the float32 arithmetic sub.asm does, in its order.
+SUB_SLOTS = (50, 51, 52, 53)           # SUB (level), OCT, WAVE, SRC
+SUB_OCTAVES = ("-1", "-2", "-3")      # OCT's values, as the page names them
+SUB_WAVES = ("SIN", "TRI", "SQR", "PLS")
+SUB_THIRD = -1.0 / 3.0                 # PLS's low level: a 25 % pulse with no DC
+
+
+def sub_value(phase: int, wave: int) -> float:
+    """The sub-oscillator's sample at u32 PHASE for WAVE (0 SIN, 1 TRI, 2 SQR, 3 PLS)."""
+    top = phase >> 31
+    h = _f32(float(((phase << 1) & 0xFFFFFFFF) >> 8) * 2.0 ** -25)     # x mod 0.5, exact
+    if wave == 0:                     # two parabolas: 16 h (0.5 - h), the second half negated
+        y = _f32(_f32(h * _f32(0.5 - h)) * 16.0)
+        return _f32(0.0 - y) if top else y
+    if wave == 1:                     # 4 |x - 0.5| - 1
+        a = h if top else _f32(0.5 - h)
+        return _f32(_f32(a * 4.0) - 1.0)
+    if wave == 2:
+        return -1.0 if top else 1.0
+    return 1.0 if phase < 0x40000000 else _f32(SUB_THIRD)
+
+
+def render_sub(phase: int, inc: int, sub: tuple, block: int,
+               factor: float | None = None) -> tuple[list[float], int]:
+    """One block of the sub-oscillator at gain SUB from PHASE: (its samples x gain, the
+    next phase). INC is the followed oscillator's own. FACTOR: the trim's, as `gain`."""
+    lev, octave, wave = sub[0], sub[1], sub[2]
+    g = gain(lev, factor=factor)
+    step = inc >> (1 + min((octave & 0xFFFF) >> 8, len(SUB_OCTAVES) - 1))
+    w = min((wave & 0xFFFF) >> 8, 3)
+    out = []
+    for _ in range(block):
+        out.append(_f32(g * sub_value(phase, w)))
+        phase = (phase + step) & 0xFFFFFFFF
+    return out, phase
+
+
+# Page 3's noise, on slots 54..57 (NOIS, TYPE, COLR, DEC), after the sub (noise.asm).
+# Per voice: a xorshift32 generator, the pink and brown filters' state, the tilt's
+# one-pole low-pass, and the decay envelope; each step is float32 in noise.asm's order.
+NOISE_SLOTS = (54, 55, 56, 57)         # NOIS (level), TYPE, COLR, DEC
+NOISE_TYPES = ("WHT", "PNK", "BRN", "DIG")
+NOISE_INF = 127                        # DEC Inf: no envelope
+NOISE_PINK = ((0.99765, 0.0990460), (0.96300, 0.2965164), (0.57000, 1.0526913))   # P. Kellet's economy pink
+NOISE_PINK_DIRECT, NOISE_PINK_SCALE = 0.1848, 0.25
+NOISE_BROWN = (0.98, 0.15)             # a leaky integrator
+NOISE_DIG = 0.5                        # DIG: the generator's top bit, +-0.5 (about WHT's loudness)
+NOISE_TILT = 0.125                     # the tilt's low-pass coefficient (about 1 kHz)
+NOISE_COLR_STEP = 1.0 / 64             # COLR -64..+63 -> -1 .. +0.98: out = n - c x lp
+
+
+def noise_tau(v: int) -> float:
+    """DEC v (0..126) -> the envelope's time constant in seconds: 5 ms at 0, 10 s at 126."""
+    return 0.005 * 2000.0 ** (v / 126)
+
+
+def noise_decay_table() -> tuple[float, ...]:
+    """The envelope's factor per sample for DEC 0..127, float32: e^(-1 / (48000 tau)),
+    1.0 at Inf (unused there: Inf skips the envelope)."""
+    return tuple(_f32(math.exp(-1.0 / (RATE * noise_tau(v)))) for v in range(NOISE_INF)) + (1.0,)
+
+
+def noise_seeds() -> tuple[int, ...]:
+    """Each voice's generator at boot: odd, distinct, never 0 (xorshift's fixed point)."""
+    return tuple(((0x9E3779B9 * (t + 1)) & 0xFFFFFFFF) | 1 for t in range(16))
+
+
+def xorshift32(x: int) -> int:
+    x ^= (x << 13) & 0xFFFFFFFF
+    x ^= x >> 17
+    x ^= (x << 5) & 0xFFFFFFFF
+    return x
+
+
+class NoiseVoice:
+    """One voice's noise state, as noise.asm keeps it at 0x2e2e00 + 32t: x, the three pink
+    filters, brown, the tilt's low-pass, the envelope (0 at boot: silent until a note,
+    unless DEC is Inf)."""
+
+    def __init__(self, seed: int):
+        self.x, self.pink, self.brown, self.lp, self.env = seed, [0.0, 0.0, 0.0], 0.0, 0.0, 0.0
+
+    def render(self, noise: tuple, triggered: bool, block: int,
+               factor: float | None = None) -> list[float] | None:
+        """One block at (NOIS, TYPE, COLR, DEC), the frame's words: the samples to add,
+        or None at NOIS 0. A note restarts the envelope, whatever NOIS is. FACTOR: the
+        trim's, as `gain`."""
+        nois, typ, colr, dec = (w & 0xFFFF for w in noise)
+        if triggered:
+            self.env = 1.0
+        if not nois:
+            return None
+        g = gain(nois, factor=factor)
+        typ = min(typ >> 8, 3)
+        c = _f32(_f32(float((colr >> 8) - 64)) * NOISE_COLR_STEP)
+        dec = min(dec >> 8, NOISE_INF)
+        k = noise_decay_table()[dec]
+        out = []
+        for _ in range(block):
+            self.x = xorshift32(self.x)
+            sx = self.x - (1 << 32) if self.x >> 31 else self.x
+            w = _f32(float(sx) * 2.0 ** -31)
+            if typ == 0:
+                n = w
+            elif typ == 1:
+                for i, (a, d) in enumerate(NOISE_PINK):
+                    self.pink[i] = _f32(_f32(self.pink[i] * _f32(a)) + _f32(w * _f32(d)))
+                n = _f32(_f32(_f32(self.pink[0] + self.pink[1]) + self.pink[2]) + _f32(w * _f32(NOISE_PINK_DIRECT)))
+                n = _f32(n * NOISE_PINK_SCALE)
+            elif typ == 2:
+                self.brown = _f32(_f32(self.brown * _f32(NOISE_BROWN[0])) + _f32(w * _f32(NOISE_BROWN[1])))
+                n = self.brown
+            else:
+                n = -NOISE_DIG if self.x >> 31 else NOISE_DIG
+            self.lp = _f32(self.lp + _f32(_f32(n - self.lp) * NOISE_TILT))
+            y = _f32(n - _f32(c * self.lp))
+            if dec < NOISE_INF:
+                y = _f32(y * self.env)
+                self.env = _f32(self.env * k)
+            out.append(_f32(g * y))
+        return out
+
+
+# Page 5, the shape (docs/waverider-shape.md): FOLD, TYPE, AMT, WARP and FM, frame words like the
+# others (sound slots 58, 62, 48, 59 and 60: records 208, 235, 261, 209 and 210). page5.asm runs
+# them. NPOS (slot 61) is kept in the tuple and changes nothing yet (branch wip/waverider-npos has
+# it, owner 2026-10-16).
+SHAPE_SLOTS = (58, 61, 62, 48, 59, 60, 64, 63)  # FOLD, NPOS, TYPE, AMT, WARP, FM, P1, P2
+SHAPE_MAX = 0x7F00                       # 127 << 8: the knobs' top
+SHAPE_TYPES = ("Off", "Ring", "AM", "Formant")   # TYPE's values; more types grow the list
+TYPE_FORMANT = 3                          # dnfw.waverider.formant on IIR0, one voice late (formant.asm)
+SHAPE_PEAK = 10 ** (-11 / 20)            # one oscillator's peak at LEV 100 and TRIM -11 dB: the fold point
+FOLD_DRIVE = 7.0                         # FOLD 127 drives the mix 8 times past the fold point
+
+
+def _trunc_by(v: float, scale: int) -> int:
+    """TRUNC Fx BY scale: v x 2^scale toward zero, saturated to an int32."""
+    return max(-(1 << 31), min((1 << 31) - 1, trunc(v * 2.0 ** scale)))
+
+
+def fold(xs: list[float], word: int) -> list[float]:
+    """FOLD's frame WORD on the mix: a triangle fold at +-SHAPE_PEAK of the mix driven by
+    1 + 7 x FOLD/127. In page5.asm's order: u = x g/T + 1 becomes a 32-bit phase (TRUNC BY 24,
+    then << 6: (u + 1)/4 mod 1), its magnitude (ABS, >> 1, FLOAT BY -29) is |w| in 0..2, and
+    y = T |w| - T."""
+    t = _f32(SHAPE_PEAK)
+    g = _f32(_f32(1.0 + _f32(float(word & 0xFFFF) * _f32(FOLD_DRIVE / SHAPE_MAX))) * _f32(1 / SHAPE_PEAK))
+    out = []
+    for x in xs:
+        v = _f32(_f32(x * g) + 1.0)
+        ph = (_trunc_by(v, 24) << 6) & 0xFFFFFFFF
+        s = ph - (1 << 32) if ph >> 31 else ph
+        a = (abs(s) & 0xFFFFFFFF) >> 1
+        out.append(_f32(_f32(_f32(a * 2.0 ** -29) * t) - t))
+    return out
+
+
+def shaper(mix: list[float], osc1: list[float], kind: int, word: int) -> list[float]:
+    """TYPE 1 Ring or 2 AM, mixed in by AMT's frame WORD: o2 = mix - osc1 (as the DSP subtracts),
+    Ring o1 o2 / T, AM o1 (1 + o2 / T) / 2, and y = mix + a (shaped - mix)."""
+    a = _f32(float(word & 0xFFFF) * _f32(1 / SHAPE_MAX))
+    inv = _f32(1 / SHAPE_PEAK)
+    out = []
+    for b, o1 in zip(mix, osc1):
+        o2 = _f32(b - o1)
+        if kind == 1:
+            s = _f32(_f32(o1 * o2) * inv)
+        else:
+            s = _f32(_f32(o1 * _f32(_f32(o2 * inv) + 1.0)) * 0.5)
+        out.append(_f32(b + _f32(a * _f32(s - b))))
+    return out
+
+
+# WARP (knob B): each oscillator reads its wave at a bent phase, p' = min(k1 p, 1 - k2 (1 - p)),
+# two straight lines that meet at (d, 1/2): the wave's first half plays in the first d of the
+# cycle. WARP v = 0 .. 127 (the frame word >> 8) sets k1 = 1 + 9 v / 127, so d = 1/(2 k1) goes
+# from 1/2 (no bend) to 1/20, and k2 = 1/(2 (1 - d)). The DSP has no divide: the pairs are a table.
+WARP_K1_TOP = 10.0
+# FM (knob C): osc 2's samples move osc 1's phase, sample by sample, by o2 x FM / 127 / T cycles:
+# at FM 127 and LEV2 100 (osc 2's peak T), one whole cycle each way. Osc 2 then plays first.
+FM_SCALE = 1 / (SHAPE_MAX * SHAPE_PEAK)  # cycles per unit of o2, per FM word
+FM_SEL = 2 * math.pi / SHAPE_MAX              # the level's increment: + 2 pi FM/127 x osc 2's
+# 0.3.6 (a user, relayed by the owner 2026-10-20: "modulator level and fm amount as 2 totally
+# independent parameters"): under FM, osc 2 plays into FMB at a fixed gain, LEV 100 at the default
+# TRIM, so FM alone sets the depth, and it plays even at LEV2 0. Its own gain, LEV2 x TRIM (and
+# MOVE's), becomes the ratio it is mixed in at, r, which glides toward it by 1/32 a sample (about
+# 3 ms) so a LEV2 step does not click: y = o1 + r x FMB (phase.asm's wr_ph_fmmix).
+FM_GLIDE = _f32(1 / 32)
+FM_SETTLED = 2.0 ** -34    # (target - r)^2 below this, r takes the target: the mix is then one multiply, or none at 0
+PHASE_MAX = 128                           # longer blocks play without WARP and FM (the buffer's size)
+
+
+def warp_table() -> list[tuple[float, float]]:
+    """(k1, k2) for WARP 0 .. 127, float32; 0 is (1, 1) and is never read (WARP 0 skips the bend)."""
+    out = []
+    for v in range(128):
+        k1 = 1 + (WARP_K1_TOP - 1) * v / 127
+        d = 0.5 / k1
+        out.append((_f32(k1), _f32(0.5 / (1 - d))))
+    return out
+
+
+def warp_value(word: int) -> int:
+    return min((word & 0xFFFF) >> 8, 127)
+
+
+def warp_phase(ph: int, k1: float, k2: float) -> int:
+    """One phase through the bend, in page5.asm's order: p = (ph >> 1) x 2^-31 (FLOAT, rounded),
+    min(p k1, 1 - (1 - p) k2), TRUNC BY 31, << 1."""
+    p = _f32((ph >> 1) * 2.0 ** -31)
+    a = _f32(p * k1)
+    b = _f32(1.0 - _f32(_f32(1.0 - p) * k2))
+    return (_trunc_by(min(a, b), 31) << 1) & 0xFFFFFFFF
+
+
+def fm_offsets(o2: list[float], word: int, t: float = 1.0) -> list[int]:
+    """Osc 2's samples as phase offsets for osc 1: TRUNC (o2 x c) BY 24, << 8 (cycles, mod 1).
+    T is taming's factor (`tame`), applied to c as phase.asm's wr_ph_tame does."""
+    c = _f32(float(word & 0xFFFF) * _f32(FM_SCALE))
+    if t != 1.0:
+        c = _f32(c * t)
+    return [(_trunc_by(_f32(m * c), 24) << 8) & 0xFFFFFFFF for m in o2]
+
+
+# Taming (owner, 2026-10-19: "go with taming"): WARP and FM scale down at high notes, where they
+# would alias, once a block (the eurorack reference's Tame, MIT; our own code). With f the
+# oscillator's increment in cycles and h how much the effect speeds the wave up (WARP: k1; FM:
+# 1 + 2 pi FM/127), t = clamp(A - B f h, 0, 1)^3, A = 0.5 / (0.5 - m), B = 1 / (0.5 - m),
+# m = 0.5 / TAME_ORDER: 1 below f h = m, 0 from f h = 1/2. WARP plays at v t, between two entries
+# of its table (blending the slopes to 1 instead dulled the sound: at t = 0.9 harmonics 5 and up
+# fell 3 to 10 dB, where WARP 100 keeps them); FM's depth c goes to t c, with f from the faster of
+# the two oscillators. At t = 1 nothing changes. The mip level is still chosen from the untamed WARP
+# and FM (phase_sel): with less bend it would pick a brighter level, and alias more (the model
+# study, 2026-10-19).
+TAME_ORDER = 8.0
+TAME_A = _f32(0.5 / (0.5 - 0.5 / TAME_ORDER))
+TAME_B = _f32(1 / (0.5 - 0.5 / TAME_ORDER))
+
+
+def fm_gain() -> float:
+    """Osc 2's gain into FMB under FM (0.3.6): LEV 100 at the default TRIM, as the loop forms it."""
+    return gain(0x6400)
+
+
+def fm_inv_g() -> float:
+    """f32(1 / fm_gain()): osc 2's own gain times this is its mix ratio."""
+    return _f32(1.0 / fm_gain())
+
+
+def tame(inc: int, h: float) -> float:
+    """Taming's factor for increment INC (u32) and speed-up H, in wr_ph_tame's float32 order."""
+    f = _f32((inc & 0xFFFFFFFF) * 2.0 ** -32)
+    a = _f32(TAME_A - _f32(_f32(f * h) * TAME_B))
+    a = min(max(a, 0.0), 1.0)
+    return _f32(_f32(a * a) * a)
+
+
+def tame_warp(v: int, inc: int) -> tuple[float, float]:
+    """WARP v's (k1, k2) tamed for INC, in wr_ph_tame's order: t = tame(inc, k1); below 1,
+    x = v t, i = TRUNC x, f = x - i, each of k1, k2 as e_i + (e_i+1 - e_i) f."""
+    tab = warp_table()
+    t = tame(inc, tab[v][0])
+    if t >= 1.0:
+        return tab[v]
+    x = _f32(float(v) * t)
+    i = trunc(x)
+    f = _f32(x - float(i))
+    return tuple(_f32(a + _f32(_f32(b - a) * f)) for a, b in zip(tab[i], tab[i + 1]))
+
+
+def tame_fm(word: int, inc: int, inc2: int) -> float:
+    """FM's taming factor: h = 1 + FM x 2 pi / 0x7f00, f from the faster oscillator."""
+    h = _f32(_f32(float(word & 0xFFFF) * _f32(FM_SEL)) + 1.0)
+    return tame(max(inc, inc2), h)
+
+
+def read_phases(phase: int, inc: int, count: int, warp=None, offsets=None) -> list[int]:
+    """Each sample's read phase: the running phase, + the FM offset, then the WARP bend (k1, k2)."""
+    out = []
+    for n in range(count):
+        p = phase if offsets is None else (phase + offsets[n]) & 0xFFFFFFFF
+        out.append(p if warp is None else warp_phase(p, *warp))
+        phase = (phase + inc) & 0xFFFFFFFF
+    return out
+
+
+def phase_sel(inc: int, warp=None, inc2: int | None = None, fm_word: int = 0) -> int:
+    """The increment that chooses the mip level under WARP and FM: (inc + 2 pi FM/127 inc2) x k1,
+    in float32, TRUNC (saturated)."""
+    f = _f32(float(inc))
+    if inc2 is not None:
+        f = _f32(f + _f32(_f32(float(inc2)) * _f32(float(fm_word & 0xFFFF) * _f32(FM_SEL))))
+    if warp is not None:
+        f = _f32(f * warp[0])
+    return _trunc_by(f, 0) & 0xFFFFFFFF
 
 
 def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
@@ -213,53 +787,151 @@ def render_blocks(tables, blocks, block: int = 32, phase: int = 0,
         tun1 = rest[0] if rest else TUN1_ZERO
         g = gain(rest[1] if len(rest) > 1 else LEV1_UNITY)
         tab = tables[slot(tbl1, len(tables))]
-        samples, phase = render.render(tab, phase, increment(tuned(note, tun1), table_t),
+        samples, phase = mip.read(tab, phase, increment(tuned(note, tun1), table_t),
                                        position(wav1),
                                        block, precision)
         out += [_f32(g * y) for y in samples] if precision == "float32" else [g * y for y in samples]
     return out, phase
 
 
-def render_two(tables, blocks, block: int = 32, precision: str = "float32") -> list[float]:
+def render_two(tables, blocks, block: int = 32, precision: str = "float32", subs=None,
+               noises=None, trims=None, shapes=None) -> list[float]:
     """The loop's output with both oscillators (Milestone 9b), each block
-    (note, osc1, osc2[, (TRIG, triggered)]) with each osc (WAV, TBL, TUN, LEV[, RATE,
-    MPOS, MLEV, MOVE]), the frame's 16-bit words. With the M10a fields the modulator
+    (note, osc1, osc2[, (TRIG, triggered[, PRST[, position, tempo[, DCLK]]])]) with each
+    osc (WAV, TBL, TUN, LEV[, RATE, MPOS, MLEV, MOVE[, SYNC[, SMTH]]]), the frame's 16-bit
+    words (the position is the frame's u32 at SYNC_POSITION). SMTH glides POS (`smooth`);
+    DCLK crossfades a jump (`crossfade`); either left out is off. With the M10a fields the modulator
     (move_step / move_shape / move_apply) moves POS and LEV first, per oscillator.
     Osc 1 writes y1 x gain1; osc 2, unless its LEV is 0 (the loop then skips it), adds
     y2 x gain2 to that, both rounded to float32 as reader_m9.asm does. Osc 2's TUN is
     a detune from osc 1 (`tuned2`). Each oscillator keeps its own phase from block to
-    block."""
+    block. SUBS (page 3), one (SUB, OCT, WAVE, SRC) per block or None: the
+    sub-oscillator (`render_sub`) adds into the mix after osc 2 while SUB is above 0. It
+    follows osc 2's increment when SRC is 1 and osc 2 ran this block, else osc 1's (a
+    skipped osc 2 has none). NOISES, one (NOIS, TYPE, COLR, DEC) per block or None: the
+    noise (`NoiseVoice`, voice 0's seed) adds in after the sub. TRIMS, one TRIM word per
+    block or None (the default word): each oscillator's factor slews (`trim_slew`), and the
+    sub and the noise take the factor of the last oscillator that ran, as trim.asm leaves it."""
     out: list[float] = []
     phase = [0, 0]
     mphase = [0, 0]
+    smoothed = [0.0, 0.0]                       # SMTH's state: zeros at boot, as the DSP's
+    last: list = [None, None]                   # DCLK: each oscillator's last (table, pos, gain)
+    fade: list = [None, None]                   # and its fade: [old (table, pos, gain), samples left]
+    rnd = MoveRandom()
     table_t = increment_table()
-    for blk in blocks:
+    sub_phase = 0
+    noise = NoiseVoice(noise_seeds()[0])
+    trimmed = [0.0, 0.0]                        # each oscillator's last factor: zeros at boot
+    osc1: list[float] = []
+    vox = formant.Voice()                       # TYPE Formant: the cascade's states and vowel glide
+    fm_r = 0.0                                  # 0.3.6: osc 2's mix ratio under FM, 0 at boot as the DSP's
+    fm_target = 0.0
+    for b, blk in enumerate(blocks):
+        shp = (tuple(shapes[b]) + (0,) * 8)[:8] if shapes else (0,) * 8   # page 5: FOLD, NPOS (no effect yet), TYPE, AMT, WARP, FM, P1, P2
+        incs = [None, None]
         note, oscs = blk[0], blk[1:3]
+        wv = warp_value(shp[4]) if block <= PHASE_MAX else 0
+        bend = warp_table()[wv] if wv else None
+        fm = shp[5] & 0xFFFF if block <= PHASE_MAX else 0          # 0.3.6: also at LEV2 0
+        ys: list = [None, None]
         trig_mode, triggered, *rest = blk[3] if len(blk) > 3 else (TRIG_RESTART, False)
         prst = rest[0] if rest else PRST_OFF
+        song, tempo = (rest[1], rest[2]) if len(rest) > 2 else (0, 0)
+        dclk = rest[3] & 0xFFFF if len(rest) > 3 else 0
         mixed: list[float] = []
-        for k, osc in enumerate(oscs):
+        for k in ((1, 0) if fm else (0, 1)):    # FM: osc 2 plays first, into its own buffer
+            osc = oscs[k]
             wav, tbl, tun, lev = osc[:4]
-            if k and not lev & 0xFFFF:
+            if k and not lev & 0xFFFF and not fm:
                 continue
             if len(osc) > 4:                    # M10a: RATE, MPOS, MLEV, MOVE
                 rate, mpos, mlev, move = osc[4:8]
-                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered)
-                wav, lev = move_apply(wav, lev, mpos, mlev, move_shape(mphase[k], move))
+                sync = osc[8] if len(osc) > 8 else 0
+                restarted = move_restarts(trig_mode, triggered)
+                start = 0 if restarted else mphase[k]
+                mphase[k] = move_step(mphase[k], rate, move, trig_mode, triggered, sync, song, tempo)
+                rnd.step(k, start, mphase[k], move, restarted)
+                wav, lev = move_apply(wav, lev, mpos, mlev,
+                                      move_shape(mphase[k], move, tuple(rnd.values(k))))
             if len(osc) > 4 and triggered and (prst & 0xFFFF) >> 8:
                 if (prst & 0xFFFF) >> 8 != 1:
                     raise ValueError("PRST Random starts from the DSP's cycle counter: no reference")
                 phase[k] = 0                    # PRST On: the oscillator restarts
-            g = gain(lev)
-            samples, phase[k] = render.render(tables[slot(tbl, len(tables))], phase[k],
-                                              increment(tuned(note, tun) if k == 0 else
-                                                        tuned2(note, tun, oscs[0][2]), table_t),
-                                              position(wav), block, precision)
+            target = trim_factor(trims[b] if trims else TRIM_DEFAULT_WORD)
+            factor = trimmed[k] = trim_slew(trimmed[k], target, triggered)
+            g = gain(lev, factor=factor)
+            if k and fm:                        # 0.3.6: FMB at the fixed gain, osc 2's own as the mix ratio
+                fm_target = _f32(g * fm_inv_g())
+                g = fm_gain()
+            pos = position(wav)
+            if len(osc) > 9:                    # M10b-2: SMTH, the glide on POS
+                smoothed[k] = smooth(smoothed[k], pos, osc[9], triggered)
+                pos = trunc(smoothed[k])
+            tab = tables[slot(tbl, len(tables))]
+            cur = (tab, pos, g)
+            n_fade = dclk_lengths()[min(dclk >> 8, 127)] if precision == "float32" else 0
+            if triggered or not n_fade:
+                fade[k] = None
+            elif fade[k] is not None:           # a jump waits for the running fade: hold its target
+                tab, pos, g = cur = last[k]
+            elif last[k] is not None and dclk_jump(last[k], cur):
+                fade[k] = [last[k], n_fade]
+            last[k] = cur
+            inc = increment(tuned(note, tun) if k == 0 else tuned2(note, tun, oscs[0][2]), table_t)
+            incs[k] = inc
+            phase0 = phase[k]
+            ph = sel = None
+            if bend or (fm and k == 0):         # page 5: WARP on both oscillators, FM on osc 1
+                offs = fm_offsets(ys[1], fm, tame_fm(fm, inc, incs[1])) if fm and k == 0 else None
+                ph = read_phases(phase0, inc, block, tame_warp(wv, inc) if bend else None, offs)
+                sel = phase_sel(inc, bend, incs[1] if offs else None, fm)
+            samples, phase[k] = mip.read(tab, phase0, inc, pos, block, precision, ph, sel)
             y = [_f32(g * v) for v in samples] if precision == "float32" else [g * v for v in samples]
-            if k == 0:
-                mixed = y
+            if fade[k] is not None:             # M10b-2: DCLK, the old settings fading out
+                (otab, opos, og), rem = fade[k]
+                old, _ = mip.read(otab, phase0, inc, opos, block, precision, ph, sel)
+                y = crossfade(y, [_f32(og * v) for v in old], rem, dclk_inverses()[min(dclk >> 8, 127)])
+                fade[k][1] = rem - block
+                if fade[k][1] <= 0:
+                    fade[k] = None
+            ys[k] = y
+        mixed = osc1 = ys[0]
+        if ys[1] is not None and fm:           # 0.3.6: o1 + r FMB, r gliding to osc 2's own gain
+            d = _f32(fm_target - fm_r)
+            if _f32(d * d) < FM_SETTLED:        # settled (page5.asm): r is the target, one multiply or none
+                fm_r = fm_target
+                if fm_r != 0.0:
+                    mixed = [_f32(o1 + _f32(o2 * fm_r)) for o1, o2 in zip(mixed, ys[1])]
             else:
-                mixed = ([_f32(a + b) for a, b in zip(mixed, y)] if precision == "float32"
-                         else [a + b for a, b in zip(mixed, y)])
+                out_mix = []
+                for o1, o2 in zip(mixed, ys[1]):
+                    fm_r = _f32(fm_r + _f32(_f32(fm_target - fm_r) * FM_GLIDE))
+                    out_mix.append(_f32(o1 + _f32(o2 * fm_r)))
+                mixed = out_mix
+        elif ys[1] is not None:
+            mixed = ([_f32(a + b) for a, b in zip(mixed, ys[1])] if precision == "float32"
+                     else [a + b for a, b in zip(mixed, ys[1])])
+        kind = (shp[2] & 0xFFFF) >> 8
+        if kind in (1, 2) and shp[3] & 0xFFFF:  # page 5: TYPE Ring or AM, by AMT
+            mixed = shaper(mixed, osc1, kind, shp[3])
+        if shp[0] & 0xFFFF:                     # page 5: FOLD, on the oscillators' mix
+            mixed = fold(mixed, shp[0])
+        wet = None
+        if kind == TYPE_FORMANT:                # page 5: the Formant, after FOLD: AMT the vowel, P1 the shift, P2 the dry part
+            wet, d, e = vox.filter(mixed, shp[3], shp[6], shp[7], triggered)
+            mixed = [_f32(d * m) for m in mixed]
+        sub = subs[b] if subs else None
+        if sub and sub[0] & 0xFFFF:
+            src = 1 if (sub[3] & 0xFFFF) >> 8 and incs[1] is not None else 0
+            ys, sub_phase = render_sub(sub_phase, incs[src], sub, block, factor)
+            mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
+        if noises:
+            ys = noise.render(noises[b], triggered, block, factor)
+            if ys is not None:
+                mixed = [_f32(a + v) for a, v in zip(mixed, ys)]
+        if wet is not None:                     # IIR0's output, mixed in after the sub and the noise (at the
+            mixed = [_f32(_f32(e * w) + r) for w, r in zip(wet, mixed)]   # next voice's FOLD or the loop's end)
         out += mixed
     return out
+

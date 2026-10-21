@@ -52,7 +52,7 @@
 // reader counts `count` down to 0 (machine5_live.asm rewrites it every block) and
 // keeps the two frame-row addresses in words 6 and 7.
 //
-// Clobbers R0-R15, I0, I2, I4, ASTAT. Uses M6 = 1, M7 = -1, M14 = 1 as fixed by the
+// Clobbers R0-R15, I0, I1 (opt1; dclk.asm reloads it after each call), I2, I4, ASTAT. Uses M6 = 1, M7 = -1, M14 = 1 as fixed by the
 // SHARC C ABI. Not ABI-clean: machine5_live.asm saves what it needs. I3 and I5 are
 // the loop's own pointers and are not touched.
 //
@@ -64,6 +64,13 @@
 
 .GLOBAL wr_render5.;
 wr_render5.:
+      // mip-maps (2026-10-08): the reader is the mip reader at sw 0x171a00 now
+      // (reader_miph2.asm); every caller still enters here. What follows is opt2's reader:
+      // reader_miph2.asm jumps back to wr5_plain for a table without the mip flag (a pool
+      // table, until stage 3 gives pool tables their levels), so those play as on opt2.
+      JUMP 0x173480;                         // -> wr_ph_read. (phase.asm: page 5's WARP and FM, else the mip reader)
+.GLOBAL wr5_plain.;
+wr5_plain.:
       I4 = R4;                          // I4 -> parameter block
       R8 = DM(0, I4);                   // table (a byte address)
       R9 = DM(1, I4);                   // phase
@@ -98,40 +105,39 @@ wr_render5.:
       R15 = -23;                        // sample fraction scale, 2^-23
       R8 = -15;                         // int16 -> float full scale, 2^-15
       R12 = PASS R12;
-      IF EQ JUMP 0x16ebb5;              // -> wr5_done. (count 0: write nothing)
+      IF EQ JUMP 0x16ebde;              // -> wr5_done. (count 0: write nothing)
+      R0 = PASS R12;                    // opt2 O4: the count, for LCNTR
       R12 = -16;
+      LCNTR = R0, DO wr5_last. UNTIL LCE;   // opt2 O4: E2-active (the mix branch is in the body)
 
 .GLOBAL wr5_loop.;
 wr5_loop.:
+      // opt1 O1: each tap's address goes into I0 or I1 at least four instructions before
+      // the read through it (SHARC+ PRM table 4-38: a DAG register's load-to-use stall);
+      // R4..R7 hold the addresses until the samples replace them
       R0 = LSHIFT R9 BY -24;            // w0 = k >> 1
       R0 = LSHIFT R0 BY 2;              // its byte offset in a row
-      R1 = R9 + R13;
+      R1 = R9 + R13, R2 = DM(6, I4);    // opt2 O5: with frame f0's row
       R1 = LSHIFT R1 BY -24;            // w1 = (k + 1) >> 1, mod 256
       R1 = LSHIFT R1 BY 2;
-      R2 = DM(6, I4);                   // frame f0's row
-      R3 = R2 + R0;
-      I0 = R3;
-      R4 = DM(0, I0);                   // frame f0, word w0
-      R3 = R2 + R1;
-      I0 = R3;
-      R5 = DM(0, I0);                   // frame f0, word w1
-      R2 = DM(7, I4);                   // frame f1's row
-      R3 = R2 + R0;
-      I0 = R3;
-      R6 = DM(0, I0);                   // frame f1, word w0
-      R3 = R2 + R1;
-      I0 = R3;
-      R7 = DM(0, I0);                   // frame f1, word w1
+      R4 = R2 + R0;                     // frame f0, word w0's address
+      R5 = R2 + R1, R2 = DM(7, I4);     // frame f0, word w1's; opt2 O5: with frame f1's row (the add reads the old R2)
+      I0 = R4;
+      I1 = R5;
+      R6 = R2 + R0;                     // frame f1, word w0's address
+      R7 = R2 + R1;                     // frame f1, word w1's
       R2 = 16;
       R3 = LSHIFT R9 BY -19;
       R3 = R3 AND R2;                   // shB = 16 * (k & 1)
-      R2 = R2 - R3;                     // shA = 16 - shB (M5d: SUB, a stock shape; XOR was not)
-      R4 = LSHIFT R4 BY R2;
+      R2 = R2 - R3, R4 = DM(0, I0);     // shA = 16 - shB; opt2 O5: with frame f0, word w0
+      R4 = LSHIFT R4 BY R2, R5 = DM(0, I1);   // opt2 O5: with frame f0, word w1
+      I0 = R6;
+      I1 = R7;
       R4 = ASHIFT R4 BY R12;            // s00 = sample k
       R5 = LSHIFT R5 BY R3;
       R5 = ASHIFT R5 BY R12;            // s01 = sample k + 1
-      F4 = FLOAT R4 BY R8;
-      F5 = FLOAT R5 BY R8;
+      F4 = FLOAT R4 BY R8, R6 = DM(0, I0);    // opt2 O5: with frame f1, word w0
+      F5 = FLOAT R5 BY R8, R7 = DM(0, I1);    // opt2 O5: with frame f1, word w1
       R6 = LSHIFT R6 BY R2;
       R6 = ASHIFT R6 BY R12;            // s10
       R7 = LSHIFT R7 BY R3;
@@ -146,27 +152,28 @@ wr5_loop.:
       F7 = F7 - F6;
       F7 = F0 * F7;
       F6 = F6 + F7;                     // b = s10 + fr * (s11 - s10)
+.NOCOMPRESS;                            // opt2 O4: a hardware loop's last 11 instructions are 48-bit (PRM 4-42)
       F6 = F6 - F4;
       F6 = F11 * F6;
       F4 = F4 + F6;                     // y = a + ff * (b - a)
       R0 = DM(0x2de6c0);                // M9a: the gain, LEV / 100
       F4 = F0 * F4;                     // y * gain
-      R9 = R9 + R10;                    // phase += inc, mod 2^32
       // M9b: osc 2 adds into the buffer osc 1 wrote (DM 0x2de6c4 = 1); osc 1 never
       // reads it, since the dispatch may leave anything there (NaN included)
       R0 = DM(0x2de6c4);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ebaa;              // -> wr5_store.
+      IF EQ JUMP 0x16ebd5;              // -> wr5_store.
       R1 = DM(0, I2);                   // what osc 1 wrote
       F4 = F4 + F1;
 .GLOBAL wr5_store.;
 wr5_store.:
       DM(I2, M6) = F4;
-      R0 = DM(4, I4);
-      R1 = 1;
-      R0 = R0 - R1;
-      DM(4, I4) = R0;                   // samples left
-      IF NE JUMP 0x16eb41;              // -> wr5_loop.
+.GLOBAL wr5_last.;
+wr5_last.:
+      R9 = R9 + R10;                    // phase += inc, mod 2^32 (opt2 O4: the loop's last instruction)
+.COMPRESS;
+      R0 = R0 - R0;
+      DM(4, I4) = R0;                   // 0: the count word as the software loop left it
 
 .GLOBAL wr5_done.;
 wr5_done.:
@@ -228,47 +235,15 @@ wr_t5v_exit.:
 wr_mod_b.:
       DM(0, I1) = R15;
 
-      // the shape's value, 0..0xffff, in R1, from x = phase >> 16
-      R1 = LSHIFT R15 BY -16;
-      R11 = PASS R11;
-      IF EQ JUMP 0x16ec50;              // -> wr_mod_down.
-      R2 = 1;
-      COMP(R11, R2);
-      IF EQ JUMP 0x16ec55;              // -> wr_mod_have. (ramp up: x)
-      R2 = 4;
-      COMP(R11, R2);
-      IF EQ JUMP 0x16ec3f;              // -> wr_mod_sq.
-      R2 = 0x8000;                      // the triangles
-      COMP(R1, R2);
-      IF LT JUMP 0x16ec39;              // -> wr_mod_tri.
-      R2 = 0xffff;
-      R1 = R2 - R1;
-.GLOBAL wr_mod_tri.;
-wr_mod_tri.:
-      R1 = LSHIFT R1 BY 1;
-      JUMP 0x16ec55;                    // -> wr_mod_have.
-.GLOBAL wr_mod_sq.;
-wr_mod_sq.:
-      R2 = 0x8000;
-      COMP(R1, R2);
-      IF LT JUMP 0x16ec4a;              // -> wr_mod_sqhi.
-      R1 = R1 - R1;
-      JUMP 0x16ec55;                    // -> wr_mod_have.
-.GLOBAL wr_mod_sqhi.;
-wr_mod_sqhi.:
-      R1 = 0xffff;
-      JUMP 0x16ec55;                    // -> wr_mod_have.
-.GLOBAL wr_mod_down.;
-wr_mod_down.:
-      R2 = 0xffff;
-      R1 = R2 - R1;
+      // the shape's value, 0..0xffff, in R1: shapes.asm (M10b-4), which comes back
+      JUMP 0x16f800;                    // -> wr_shape. (shapes.asm)
 .GLOBAL wr_mod_have.;
 wr_mod_have.:
       // MPOS: POS += (MPOS - 0x3200) x shape x 0x7800 / (0x3200 x 0xffff)
       R0 = DM(0x2de7c4);
       R2 = 0x3200;
       R0 = R0 - R2;
-      IF EQ JUMP 0x16ec72;              // -> wr_mod_lev. (no depth: POS untouched)
+      IF EQ JUMP 0x16ec63;              // -> wr_mod_lev. (no depth: POS untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       F2 = FLOAT R1 BY R12;
@@ -279,14 +254,14 @@ wr_mod_have.:
       R12 = PASS R0;
       R4 = R12 + R4;
       R4 = PASS R4;
-      IF GE JUMP 0x16ec72;              // -> wr_mod_lev.
+      IF GE JUMP 0x16ec63;              // -> wr_mod_lev.
       R4 = R4 - R4;
 .GLOBAL wr_mod_lev.;
 wr_mod_lev.:
       // MLEV: LEV x (1 - MLEV/0x7f00 x (1 - shape/0xffff))
       R0 = DM(0x2de7c8);
       R0 = PASS R0;
-      IF EQ JUMP 0x16ec95;              // -> wr_mod_done. (no depth: LEV untouched)
+      IF EQ JUMP 0x16ec86;              // -> wr_mod_done. (no depth: LEV untouched)
       R12 = R12 - R12;
       F0 = FLOAT R0 BY R12;
       R12 = 0x38010204;                 // f32(1 / 0x7f00)
@@ -343,6 +318,6 @@ wr_mod_done.:
       R8 = R8 OR R7;
       DM(0, I0) = R8;
       // PRST, moved to idle_load.asm's span in M10b-3 for the room; it returns to the loop
-      JUMP 0x16f58a;                    // -> wr_prst. (idle_load.asm)
+      JUMP 0x16f599;                    // -> wr_prst. (idle_load.asm)
 .wr_mod_b..end:
       .type wr_mod_b.,STT_FUNC;

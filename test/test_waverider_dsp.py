@@ -16,7 +16,8 @@ import struct
 import pytest
 
 from dnfw.image import bootstream, sharc_object
-from dnfw.waverider import dsp, harmonics, live, reduce, render, testtable
+from dnfw.waverider import dsp, harmonics, live, mip, reduce, render, table3, testtable
+from dnfw.waverider import render as reference
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 IMAGE = ROOT / "00_Resources" / "00_Firmware" / "Digitone_II_OS1.11_dist.zip"
@@ -88,9 +89,12 @@ def test_every_added_span_is_in_block_1s_free_tail_and_outside_every_stock_block
     # Milestone 5c: M5's L1 block 2 silenced the instrument (docs/waverider-dsp-silence.md)
     stock_blocks = [b for b in bootstream.walk(stock7).blocks if b.count]
     for what, at, payload in dsp.spans():
-        lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
-        assert 0x2DD52C <= lo and hi <= 0x2E8000, what          # above stock, below a 32 KB DM cache
-        assert not (0x300000 <= lo < 0x320000), what            # nothing left in block 2
+        if at >= 0x80000000:                                    # the tables, in DDR above the image
+            assert 0x8052FBE0 <= at and at + len(payload) <= 0x80A00000, what
+        else:
+            lo, hi = at - dsp.LOAD_ALIAS, at - dsp.LOAD_ALIAS + len(payload)
+            assert 0x2DD52C <= lo and hi <= 0x2E8000, what      # above stock, below a 32 KB DM cache
+            assert not (0x300000 <= lo < 0x320000), what        # nothing left in block 2
         for b in stock_blocks:
             assert not (b.target < at + len(payload) and at < b.target + b.count), what
 
@@ -100,15 +104,21 @@ def test_loaded_image_holds_our_bytes(built):
         assert bootstream.read_span(built, at, len(payload)) == payload, what
 
 
-def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
+def test_the_six_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     entry = bootstream.read_span(built, dsp.sw_to_load(dsp.ENTRY_SW), 8)
     assert entry == bytes.fromhex("3e06160000f60100")          # jump 0x16f600 (the block counter) ; nop
     lookup = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.LOOKUP_DM), 32))
     assert lookup == (0, 1, 2, 3, 4, 5, 0, 0)
-    # the idle loop's back edge, jump (pc,-0x10) at sw 0xb88abb in L2, becomes JUMP 0x16f500
+    # the idle loop's back edge, jump (pc,-0x10) at sw 0xb88abb in L2, becomes the idle
+    # chain's first stub: JUMP 0x16f500 (idle_load.asm) up to stage 2, JUMP 0x172580
+    # (build3.asm, which then runs idle_load's) from stage 3
     site = dsp.l2_sw_to_load(dsp.IDLE_SITE_SW)
     assert bootstream.read_span(stock7, site, 6) == bytes.fromhex("3e07ff00f0ff")
-    assert bootstream.read_span(built, site, 6) == bytes.fromhex("3e061600" "00f5")
+    jump = bootstream.read_span(built, site, 6)
+    assert jump == (dsp.build3_jump() if dsp.STAGE3 else dsp.objects()["idle_jump"])
+    assert jump[:2] == bytes.fromhex("3e06")
+    hi, lo = struct.unpack("<HH", jump[2:])
+    assert hi << 16 | lo == (dsp.BUILD3_SW if dsp.STAGE3 else dsp.IDLE_SW)
     # the handler's call of the per-block routine: r4 = 0x268438 becomes JUMP 0x16f680
     call = dsp.sw_to_load(dsp.CALL_SITE_SW)
     assert bootstream.read_span(stock7, call, 6) == dsp.CALL_SITE_STOCK
@@ -127,14 +137,122 @@ def test_the_four_patches_and_nothing_else_in_the_stock_blocks(stock7, built):
     look_off = bootstream.spans(stock7, dsp.dm_to_load(dsp.LOOKUP_DM + 20), 4)[0][0]
     idle_off = bootstream.spans(stock7, dsp.l2_sw_to_load(dsp.IDLE_SITE_SW), 6)[0][0]
     call_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.CALL_SITE_SW), 6)[0][0]
+    table_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.TABLE_SITE_SW), 6)[0][0]
+    bound_off = bootstream.spans(stock7, dsp.sw_to_load(dsp.BOUND_SITE_SW), 6)[0][0]
     allowed = (set(range(entry_off, entry_off + 8)) | set(range(look_off, look_off + 4))
-               | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6)))
+               | set(range(idle_off, idle_off + 6)) | set(range(call_off, call_off + 6))
+               | set(range(table_off, table_off + 6)) | set(range(bound_off, bound_off + 6)))
     assert diff and set(diff) <= allowed
+
+
+def test_the_command_dispatch_takes_eight_commands_from_the_moved_table(stock7, built):
+    """`i4 = 0x268a68` -> `i4 = 0x2dfa00` and `lshift by -2` -> `-3`, each one field of a
+    48-bit instruction (16-bit little-endian parcels); the moved table keeps the stock
+    four, puts load.asm at 4 and case 0's code at 5..7, as stock does for 4 and up."""
+    for sw, old, new in ((dsp.TABLE_SITE_SW, dsp.TABLE_SITE_STOCK, dsp.TABLE_SITE_NEW),
+                         (dsp.BOUND_SITE_SW, dsp.BOUND_SITE_STOCK, dsp.BOUND_SITE_NEW)):
+        assert bootstream.read_span(stock7, dsp.sw_to_load(sw), 6) == old
+        assert bootstream.read_span(built, dsp.sw_to_load(sw), 6) == new
+    # the immediate: parcels 2 and 3 hold 0x00268a68 / 0x002dfa00
+    assert struct.unpack("<HH", dsp.TABLE_SITE_NEW[2:]) == (0x002D, 0xFA00) == (dsp.CMD_TABLE_DM >> 16,
+                                                                                dsp.CMD_TABLE_DM & 0xFFFF)
+    # the shift: the immediate byte -2 -> -3, the sign bits (0x78) stock's
+    assert dsp.BOUND_SITE_NEW[:5] == dsp.BOUND_SITE_STOCK[:5] and dsp.BOUND_SITE_NEW[5] == 0xFD
+    assert struct.unpack("<4I", bootstream.read_span(stock7, dsp.dm_to_load(0x268A68), 16)) == dsp.CMD_STOCK
+    table = struct.unpack("<8I", bootstream.read_span(built, dsp.dm_to_load(dsp.CMD_TABLE_DM), 32))
+    assert table == (*dsp.CMD_STOCK, dsp.LOAD_SW, dsp.CMD_STOCK[0], dsp.CMD_STOCK[0], dsp.CMD_STOCK[0])
+
+
+def test_the_loader_renders_through_case_3_from_the_frame_copy():
+    spec = json.loads((SHARC / "load.json").read_text(encoding="utf-8"))
+    assert int(spec["load_sw"], 16) == dsp.LOAD_SW == 0x16FB00
+    be = bytes.fromhex(spec["object_parcels_be"])
+    assert be[spec["instruction_offsets"][-1]:].hex() == "063e001c9f0f"      # JUMP 0x1c9f0f, case 3
+    src = [ln.split("//", 1)[0].strip() for ln in (SHARC / "load.asm").read_text().splitlines()]
+    assert {c for c in src if c.startswith("DM(0x")} == {
+        "DM(0x2dfa20) = R10;", "DM(0x2dfa24) = R10;",                       # its state words
+        "DM(0x2c49e8) = R10;", "DM(0x2c59e8) = R10;"}                       # reply word 6, both pages
+    assert "I3 = 0x25c48c;" in src                                          # the frame copy, case 3's argument
+    # what the dispatch set for case 3, restored before the jump (sw 0x1c9da2..0x1c9dbd)
+    tail = src[src.index("I3 = 0x25c48c;") - 4:src.index("I3 = 0x25c48c;")]
+    assert tail == ["R0 = 8;", "R11 = 8;", "R12 = 2;", "R13 = 4;"]
+    # the bounds it checks are the build's own
+    assert "R0 = 668;" in src and dsp.LOAD_MAX_WORDS == 668 == (2688 - 16) // 4
+    assert "R0 = 0x807ff000;" in src and dsp.LOAD_AREA[0] == 0x807FF000
+    span = dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0]
+    assert span == 0x4001000 == 0x1000 + dsp.POOL_SLOTS * dsp.POOL_RAW_BYTES      # the directory, then 128 x 512 KiB
+    assert f"R0 = {span:#x};" in src
+    assert "R0 = 3;" in src and "COMPU(R12, R0);" in src                   # 4-aligned; the start tested alone
+    # the load area is DDR the stock image does not use, above both baked tables; build3's
+    # arrays and the levels' regions (runtime DDR, never in the boot stream) follow it
+    assert dsp.DDR_REGION[0] <= dsp.TABLES_AT[-1] + dsp.MIP_TABLE_BYTES <= dsp.LOAD_AREA[0]
+    assert dsp.LOAD_AREA[1] <= dsp.BUILD_SCRATCH < dsp.LEVELS_AT
+    assert dsp.LEVELS_REGIONS_END <= dsp.DDR_END
+    assert dsp.LOAD_STATE_DM >= dsp.CMD_TABLE_DM + 32
 
 
 def test_directory_names_both_tables():
     d = dsp.directory()
-    assert struct.unpack_from("<4I", d) == (0x57525431, 2, 0x2DF000, 0x2E3000)
+    assert struct.unpack_from("<4I", d) == (0x57525431, 2, dsp.TABLES_AT[0] | 1, dsp.TABLES_AT[1] | 1)   # bit 0: mip-mapped
+    assert dsp.TABLES_AT == ((0x80600000, 0x80611000) if mip.guarded() else (0x80600000, 0x80610000))
+
+
+def test_the_tables_load_into_ddr_above_the_stock_image(stock7, built):
+    # the stock stream's last DDR byte is 0x8052fbe0; the tables sit above it, below
+    # the Digitakt II's pool at 0x80a00000, at their own addresses (no load alias)
+    last = max(b.target + b.count for b in bootstream.walk(stock7).blocks
+               if b.count and b.target >= 0x80000000)
+    assert last == dsp.STOCK_DDR_END
+    for k, at in enumerate(dsp.TABLES_AT):
+        assert dsp.TABLES_DM[k] == at | dsp.MIP_FLAG
+        assert last < at and at + dsp.MIP_TABLE_BYTES <= 0x80A00000
+        if mip.guarded():                                        # table3's layout: a header, then guarded rows
+            stride = table3.row_bytes(mip.POINTS, 0)
+            lead = table3.level_offset(16, mip.POINTS, 0) + 2 * mip.GUARD_BEFORE
+        else:
+            stride, lead = 2 * mip.row_points(0), 0
+        for f, frame in enumerate(dsp.tables()[k]):              # level 0: the frames as today
+            assert bootstream.read_span(built, at + f * stride + lead, 1024) == reference.dsp_bytes([frame])
+        assert bootstream.read_span(built, at, len(dsp.tables()[k].dsp_bytes())) == \
+            dsp.tables()[k].dsp_bytes()
+    # L1 keeps only code and state: MOVE's shapes and their random state (M10b-4) sit
+    # where table 0 began; after them the loader, its command table and its state, the
+    # pool lookup, then SYNC, SMTH and DCLK (M10b-2), their tables, and their state, which
+    # runs to the region's end
+    sp = {what: (at, p) for what, at, p in dsp.spans()}
+    assert sp["shapes.asm (wr_shape)"][0] == dsp.dm_to_load(0x2DF000)
+    at, p = sp["MOVE's random state (zeros)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.LOAD_DM) and not any(p)
+    at, p = sp["load state (zeros)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.POOL_DM) and not any(p)
+    at, p = sp["pool.asm (wr_pool)"]
+    assert at + len(p) == dsp.dm_to_load(dsp.SYNC_DM)
+    at, p = sp["SYNC's note table, a word per RATE"]
+    assert at == dsp.dm_to_load(dsp.SYNC_TABLE_DM) and at + len(p) == dsp.dm_to_load(dsp.SMOOTH_DM)
+    assert struct.unpack_from("<101I", p) == live.sync_table()
+    at, p = sp["SMTH's and DCLK's state (zeros)"]
+    assert at == dsp.dm_to_load(dsp.SMOOTH_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.SUB_DM) and not any(p)
+    at, p = sp["the noise's state (seeds, then zeros)"]           # page 3: the last span runs to the region's end
+    assert at == dsp.dm_to_load(dsp.NOISE_STATE_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_LEVELS_DM)
+    # then the mip level records and the mip reader (L1 block 1), which runs to the region's end
+    at, p = sp["reader_mip.asm's level records"]
+    assert at == dsp.dm_to_load(dsp.MIP_LEVELS_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_DM)
+    at, p = sp[{"hermite": "reader_miph.asm (wr_miph, Hermite)",
+                 "hermite2": "reader_miph2.asm (wr_miph2, Hermite, 16-bit taps)"}.get(mip.INTERP, "reader_mip.asm (wr_mip)")]
+    assert at == dsp.dm_to_load(dsp.MIP_DM) and at + len(p) == dsp.dm_to_load(dsp.MIP_END)   # stage 3: fft3 follows
+    assert struct.unpack_from("<128f", sp["the noise's decay factors, 128 float32"][1]) == live.noise_decay_table()
+    assert struct.unpack_from("<128f", sp["SMTH's coefficients, 128 float32"][1]) == live.smth_table()
+
+
+def test_the_pool_directory_starts_empty_inside_the_load_area(built):
+    # the ColdFire writes the pool's directory last; until then the boot stream's zeros
+    # make pool.asm fall back to slot 0, and its tables fit below the directory
+    assert dsp.POOL_DIR == dsp.LOAD_AREA[0] and dsp.POOL_RAW == dsp.POOL_DIR + 0x1000 == 0x80800000
+    assert dsp.POOL_RAW + dsp.POOL_SLOTS * dsp.POOL_RAW_BYTES == dsp.LOAD_AREA[1]
+    assert dsp.POOL_SLOTS == 128
+    # stage 3: entry j's levels are built into a region of their own, past the load area
+    assert dsp.LEVELS_AT > dsp.LOAD_AREA[1] and dsp.LEVELS_REGIONS == dsp.POOL_SLOTS + 1
+    assert bootstream.read_span(built, dsp.POOL_DIR, dsp.POOL_ZEROS) == bytes(dsp.POOL_ZEROS)
 
 
 # -- the contract -------------------------------------------------------------------------------
@@ -238,16 +356,25 @@ def test_tables_are_original_and_distinct():
 
 
 def test_the_region_is_written_end_to_end_and_code_is_nop_padded():
-    sp = dsp.spans()
+    sp = [x for x in dsp.spans() if x[1] < 0x80000000]       # L1 (the tables are in DDR)
     at = [a - dsp.LOAD_ALIAS for _, a, _ in sp]
     ends = [a - dsp.LOAD_ALIAS + len(p) for _, a, p in sp]
     assert at[0] == dsp.REGION[0] and ends[-1] == dsp.REGION[1]
     assert all(e == a for e, a in zip(ends, at[1:]))           # no unwritten gap
     obj = dsp.objects()
-    code_spans = [x for x in sp if "asm" in x[0]]
-    assert len(code_spans) == 6                               # + modulator.asm (M10a)
+    code_spans = [x for x in sp if "asm (" in x[0]]
+    s3 = dsp.stage3_objects() if dsp.STAGE3 else {}
+    # + modulator.asm (M10a), shapes.asm (M10b-4), load.asm, pool.asm, sync/smooth/dclk.asm (M10b-2),
+    # trim.asm, sub/noise.asm (page 3), the mip reader, stage 3's fft3, spec3, mipb3 and build3, page5.asm, phase.asm
+    # and formant.asm
+    assert len(code_spans) == 19 + len(s3)
     for (what, _, payload), code in zip(code_spans, (obj["reader"], obj["machine5_live"], obj["idle_load"],
-                                                     obj["block_count"], obj["entry_mark"])):
+                                                     obj["block_count"], obj["entry_mark"], obj["modulator"],
+                                                     obj["shapes"], obj["load"], obj["pool"], obj["sync"], obj["trim"],
+                                                     obj["smooth"], obj["dclk"], obj["sub"], obj["noise"],
+                                                     obj[{"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip")],
+                                                     *(s3[k] for k in ("fft3", "spec3", "mipb3", "build3") if k in s3),
+                                                     obj["page5"], obj["phase"], obj["formant"])):
         assert payload[:len(code)] == code
         assert len(payload) - len(code) >= 64 and not any(payload[len(code):]), what
 
@@ -287,10 +414,12 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
     src = [ln.split("//", 1)[0].strip() for ln in text.splitlines()]
     src = [c for c in src if c and not c.startswith(".") and not c.endswith(":")]
     at = {c: dsp.IDLE_SW + o // 2 for c, o in zip(src, offs)}
-    assert at["R8 = DM(0x2de100);"] == 0x16F57B                   # wr_idle_out.
-    assert at["R8 = DM(0x2de10c);"] == 0x16F55A                   # wr_idle_after.
+    assert at["R8 = DM(0x2de100);"] == 0x16F58A                  # wr_idle_out.
     assert be[offs[src.index("IF GE JUMP 0x16f53d;")]:][:6].hex() == "06220016f53d"
-    assert at["R11 = DM(0x2de13c);"] == 0x16F53D                  # wr_idle_busy.
+    assert at["R11 = 666667;"] == 0x16F53D                        # wr_idle_busy.
+    assert dsp.IDLE_SW + offs[src.index("R9 = DM(0x2de144);")] // 2 == 0x16F55B                   # wr_idle_max.
+    assert at["R9 = DM(0x2de148);"] == 0x16F566                   # wr_idle_count.
+    assert at["DM(0x2de148) = R9;"] == 0x16F587                   # wr_idle_keep.
     last = offs[len(src) - 1]
     assert be[last:last + 6].hex() == "063e00b88aab" and dsp.IDLE_RETURN_SW == 0xB88AAB
     # its DM: 0x2de100..0x2de117, after the 16 reader blocks (to 0x2de100) and inside the state block
@@ -301,7 +430,10 @@ def test_the_idle_stub_is_placed_and_returns_where_its_source_says():
                       "DM(0x2de114) = R9;", "DM(0x2de10c) = R8;", "DM(0x2de110) = R9;",
                       "DM(0x2de128) = R9;", "DM(0x2de12c) = R9;",
                       "DM(0x2c49d4) = R9;", "DM(0x2c59d4) = R9;", "DM(0x2c49dc) = R9;", "DM(0x2c59dc) = R9;",
-                      "DM(0x2c49e0) = R9;", "DM(0x2c59e0) = R9;"}
+                      "DM(0x2c49e0) = R9;", "DM(0x2c59e0) = R9;",
+                      "DM(0x2de140) = R9;", "DM(0x2de144) = R10;", "DM(0x2de144) = R9;", "DM(0x2de148) = R9;"}
+    # frame-max's counters (0x2de140..0x2de14b) are past IDLE_STATE but inside the zeroed state block
+    assert 0x2de14c <= dsp.STATE_DM + dsp.STATE_BYTES
 
 
 def test_the_block_counter_goes_on_to_the_loop():
@@ -351,24 +483,80 @@ def test_move_rate_is_one_second_at_50_and_doubles_every_10():
 
 
 def test_move_shapes():
-    up, down, tri, sq = 0x0100, 0x0000, 0x0300, 0x0400
-    assert live.move_shape(0, down) == 0xFFFF and live.move_shape(0xFFFFFFFF, down) == 0
-    assert live.move_shape(0x40000000, up) == 0x4000
-    assert live.move_shape(0x40000000, tri) == 0x8000 and live.move_shape(0xC0000000, tri) == 0x7FFE
+    up, down, tri, upl, downl, tril, sq = 0x0000, 0x0100, 0x0400, 0x0500, 0x0600, 0x0700, 0x0800
+    for d in (down, downl):
+        assert live.move_shape(0, d) == 0xFFFF and live.move_shape(0xFFFFFFFF, d) == 0
+    for u in (up, upl):
+        assert live.move_shape(0x40000000, u) == 0x4000
+    for t in (tri, tril):
+        assert live.move_shape(0x40000000, t) == 0x8000 and live.move_shape(0xC0000000, t) == 0x7FFE
     assert live.move_shape(0x10000000, sq) == 0xFFFF and live.move_shape(0x90000000, sq) == 0
+
+
+def test_exp_shapes_curve_from_end_to_end():
+    up, down = 0x0200, 0x0300
+    assert live.move_shape(0, up) == 0 and live.move_shape(0xFFFFFFFF, up) >= 0xFFFC
+    assert live.move_shape(0x80000000, up) == 0x2000               # half way: an eighth
+    assert live.move_shape(0, down) >= 0xFFFC and live.move_shape(0xFFFFFFFF, down) == 0
+    assert live.move_shape(0x80000000, down) == 0x1FFF
+    xs = [live.move_shape(p << 24, up) for p in range(256)]
+    assert all(b >= a for a, b in zip(xs, xs[1:]))
+
+
+def test_names_sort_the_shapes_by_nature_and_a_value_past_the_last_is_the_last():
+    assert live.MOVE_SHAPES[:live.ONE_SHOTS] == ("Ramp Up", "Ramp Down", "Exp Up", "Exp Down", "Tri Once")
+    assert live.MOVE_SHAPES[live.RND_HOLD:] == ("Rnd Hold", "Rnd Glide")
+    assert live.move_band(0x7F00) == live.RND_GLIDE
+    assert all(len(n) <= 9 and "&" not in n for n in live.MOVE_SHAPES)   # the header, the font
 
 
 def test_one_shots_hold_their_end_and_loops_wrap():
     near = 0xFFFF0000
-    assert live.move_step(near, 0x6400, 0x0100, 0, False) == 0xFFFFFFFF    # ramp up: holds
-    assert live.move_step(near, 0x6400, 0x0300, 0, False) < near           # looping triangle: wraps
+    for one in range(live.ONE_SHOTS):
+        assert live.move_step(near, 0x6400, one << 8, 0, False) == 0xFFFFFFFF   # holds
+    for loop in range(live.ONE_SHOTS, len(live.MOVE_SHAPES)):
+        assert live.move_step(near, 0x6400, loop << 8, 0, False) < near         # wraps
+
+
+def test_random_shapes_draw_on_a_wrap_and_on_a_restart_only():
+    r = live.MoveRandom()
+    hold = live.RND_HOLD << 8
+    r.step(0, 0x1000, 0x2000, hold, False)                       # moving on: no draw
+    assert r.values(0) == [0, 0] and r.x == 0
+    r.step(0, 0xFFFF0000, 0x10, hold, False)                     # a wrap: a new value
+    first = live.rnd_next(0) >> 16
+    assert r.values(0) == [0, first]
+    r.step(0, 0, 0x10, hold, True)                               # a restart: another
+    assert r.values(0) == [first, live.rnd_next(live.rnd_next(0)) >> 16]
+    r.step(1, 0xFFFF0000, 0x10, 0x0700, False)                   # not a random shape
+    assert r.values(1) == [0, 0]
+    assert live.move_shape(0x12345678, hold, (5, 9)) == 9
+
+
+def test_glide_runs_from_the_value_before_to_the_new_one_smoothly():
+    g = live.RND_GLIDE << 8
+    assert live.move_shape(0, g, (1000, 5000)) == 1000
+    assert live.move_shape(0x80000000, g, (1000, 5000)) == 3000
+    assert live.move_shape(0xFFFFFFFF, g, (1000, 5000)) in (4999, 5000)
+    assert live.move_shape(0x80000000, g, (5000, 1000)) == 3000
+    ys = [live.move_shape(p << 24, g, (0, 0xFFFF)) for p in range(256)]
+    assert all(b >= a for a, b in zip(ys, ys[1:]))
+    assert ys[1] - ys[0] < ys[128] - ys[127]                     # slow at the ends
+
+
+def test_the_random_generator_does_not_repeat_soon():
+    x, seen = 0, set()
+    for _ in range(100_000):
+        x = live.rnd_next(x)
+        assert x not in seen
+        seen.add(x)
 
 
 def test_trig_restarts_only_when_on():
     p = 0x12345678
-    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
-    assert live.move_step(p, 0, 0x0300, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
-    assert live.move_step(p, 0, 0x0300, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0700, live.TRIG_RESTART, True) == live.MOVE_RATE[0]
+    assert live.move_step(p, 0, 0x0700, 0x100, True) == p + live.MOVE_RATE[0]    # TRIG 1: free
+    assert live.move_step(p, 0, 0x0700, live.TRIG_RESTART, False) == p + live.MOVE_RATE[0]
 
 
 def test_mpos_and_mlev_full_depth():
@@ -409,7 +597,7 @@ def test_prst_moved_to_the_idle_span_and_returns_into_the_loop():
     rbe, roffs, rsrc = _code("reader_m9")
     jump = rsrc.index(f"JUMP {prst_sw:#x};")
     assert rbe[roffs[jump]:roffs[jump] + 6].hex() == f"063e00{prst_sw:06x}"
-    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edf3"   # -> wr_t5v_modded
+    assert be[offs[-1]:offs[-1] + 6].hex() == "063e0016edff"   # -> wr_t5v_modded (0.3.6: machine9_live.asm's FM-state test before it)
     assert dsp.IDLE_DM + len(be) + 64 <= dsp.COUNT_DM
     assert dsp.READER_DM + len(rbe) + 64 <= dsp.LOOP_DM
 
@@ -422,3 +610,181 @@ def test_the_report_writes_the_live_reply_tail():
     assert 0x2C49D0 + 0xA9C == 0x2C546C
     assert "DM(0, I0) = R8;" in src
     assert not any("XOR" in c or "NOT " in c for c in src)
+
+
+def test_the_boot_stream_stays_under_the_coldfire_loaders_1_mib(built):
+    assert len(built) <= dsp.STREAM_LIMIT
+    print(f"section 7: {len(built):,} B, {dsp.STREAM_LIMIT - len(built):,} B of headroom")
+
+
+def test_only_load_asm_writes_the_answer_word():
+    # load.asm answers in reply word 6 (both pages). idle_load.asm's timing totals in
+    # words 3 and 4 overwrote the answers there on the instrument (2026-10-05), which no
+    # runner gate saw: the runner never runs the idle task. So no other source of ours
+    # may store to word 6, and load.asm stores nowhere else in the reply's first words.
+    import pathlib
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent / "csrc" / "waverider" / "sharc"
+    store = re.compile(r"DM\((0x2c[45]9[0-9a-f]{2})\)\s*=", re.I)
+    writers = {}
+    for src in root.glob("*.asm"):
+        for line in src.read_text(encoding="utf-8").splitlines():
+            m = store.search(line.split("//", 1)[0])
+            if m:
+                writers.setdefault(int(m.group(1), 16) & 0xFFF, set()).add(src.stem)
+    assert writers.get(0x9E8) == {"load"}, writers.get(0x9E8)
+    assert all("load" not in names for off, names in writers.items() if off != 0x9E8 and off < 0x9EC)
+
+
+def test_the_coldfire_loader_and_pool_share_the_load_area():
+    """loader.c refuses an extent past AREA_BYTES, and pool.c puts the request directory at
+    the area's start and entry j's table at TABLE_OFFSET + j x RAW_BYTES: all of them must be
+    dsp.LOAD_AREA's and dsp.POOL_*'s, or the 128th table (the area's last 512 KiB) is never
+    loaded and a full pool never reads ready (found 2026-10-06: AREA_BYTES was the old 2 MB)."""
+    import re
+    root = pathlib.Path(__file__).resolve().parent.parent / "csrc/waverider"
+
+    def define(name: str, text: str) -> int:
+        m = re.search(rf"#define {name}\s+(0x[0-9a-fA-F]+|\d+)u", text)
+        assert m, f"{name} is not defined in the form `#define {name} <number>u`"
+        return int(m.group(1), 0)
+
+    loader, pool = (root / "loader.c").read_text(), (root / "pool.c").read_text()
+    assert define("AREA_BYTES", loader) == dsp.LOAD_AREA[1] - dsp.LOAD_AREA[0]
+    assert define("DIR_OFFSET", pool) == dsp.POOL_DIR - dsp.LOAD_AREA[0] == 0
+    assert define("TABLE_OFFSET", pool) == dsp.POOL_RAW - dsp.LOAD_AREA[0]
+    assert define("RAW_BYTES", pool) == dsp.POOL_RAW_BYTES
+    slots = re.search(r"#define POOL_SLOTS\s+(\d+)", (root / "pool.h").read_text())
+    assert slots and int(slots.group(1)) == dsp.POOL_SLOTS
+    # the last table ends at the area's end: the loader accepts the 128th table whole
+    assert define("TABLE_OFFSET", pool) + dsp.POOL_SLOTS * define("RAW_BYTES", pool) == define("AREA_BYTES", loader)
+
+
+def test_the_sub_oscillators_shapes():
+    """live.sub_value, the arithmetic sub.asm does (page 3): SIN two parabolas, TRI,
+    SQR, PLS a 25 % pulse at +1 / -1/3, so no DC"""
+    q = 1 << 30
+    assert [live.sub_value(p, 0) for p in (0, q, 2 * q, 3 * q)] == [0.0, 1.0, 0.0, -1.0]
+    assert [live.sub_value(p, 1) for p in (0, q, 2 * q, 3 * q)] == [1.0, 0.0, -1.0, 0.0]
+    assert [live.sub_value(p, 2) for p in (0, 2 * q - 1, 2 * q)] == [1.0, 1.0, -1.0]
+    pls = [live.sub_value(p, 3) for p in range(0, 1 << 32, 1 << 24)]
+    assert abs(sum(pls)) < 1e-4                       # no DC over a cycle
+
+
+def test_the_sub_steps_an_octave_or_two_below():
+    one, p1 = live.render_sub(0, 1 << 24, (0x6400, 0x0000, 0x0000, 0), 32)
+    two, p2 = live.render_sub(0, 1 << 24, (0x6400, 0x0100, 0x0000, 0), 32)
+    assert p1 == 32 << 23 and p2 == 32 << 22
+    assert one[0] == two[0] == 0.0 and one[1] != two[1]
+
+
+def test_render_two_with_the_sub_at_zero_is_render_two():
+    t = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
+    assert live.render_two(t, blocks, 32, subs=[(0, 0, 0, 0)] * 3) == live.render_two(t, blocks, 32)
+
+
+def test_render_two_with_the_noise_at_zero_is_render_two():
+    t = dsp.tables()
+    blocks = [(60.0, (0x4000, 0, 0x4000, 0x6400), (0, 0, 0x4000, 0))] * 3
+    assert live.render_two(t, blocks, 32, noises=[(0, 0, 0x4000, 0x7F00)] * 3) == live.render_two(t, blocks, 32)
+
+
+def test_the_noises_decay_and_seeds():
+    """noise.asm's tables (page 3): a factor per DEC that slows with DEC, 1.0 at Inf; the
+    seeds odd and distinct, so no voice's xorshift starts at its fixed point 0"""
+    k = live.noise_decay_table()
+    assert len(k) == 128 and k[-1] == 1.0
+    assert all(0 < a < b < 1 for a, b in zip(k, k[1:-1]))
+    seeds = live.noise_seeds()
+    assert len(set(seeds)) == 16 and all(s & 1 for s in seeds)
+    state = dsp.noise_state()
+    assert len(state) == dsp.NOISE_STATE_BYTES
+    assert struct.unpack_from("<I", state, 32 * 5)[0] == seeds[5]
+
+
+def test_the_noise_waits_for_a_note_unless_dec_is_inf():
+    v = live.NoiseVoice(live.noise_seeds()[0])
+    assert v.render((0x6400, 0, 0x4000, 0x2800), False, 32) == [0.0] * 32     # env 0 at boot
+    loud = v.render((0x6400, 0, 0x4000, 0x2800), True, 32)
+    later = [v.render((0x6400, 0, 0x4000, 0x2800), False, 32) for _ in range(200)][-1]
+    assert max(map(abs, loud)) > 10 * max(map(abs, later)) > 0
+    w = live.NoiseVoice(live.noise_seeds()[0])
+    assert max(map(abs, w.render((0x6400, 0, 0x4000, 0x7F00), False, 32))) > 0.1   # Inf: no envelope
+
+
+def test_the_noises_types_and_tilt():
+    """WHT is the generator scaled, DIG +-0.5, and COLR +63 (high-pass) has less energy
+    in a brown noise than COLR -64 (low boost)"""
+    def block(words, n=4800):
+        v = live.NoiseVoice(live.noise_seeds()[0])
+        return v.render(words, True, n)
+    dig = block((0x6400, 0x0300, 0x4000, 0x7F00))
+    assert {abs(x) for x in dig} == {live._f32(0.5 * live.gain(0x6400))}      # +-0.5, scaled by the trim's default (-11 dB)
+    rms = lambda ys: (sum(y * y for y in ys) / len(ys)) ** 0.5     # noqa: E731
+    assert rms(block((0x6400, 0x0200, 0x7F00, 0x7F00))) < rms(block((0x6400, 0x0200, 0x0000, 0x7F00)))
+
+
+def test_dclk_holds_a_jump_until_the_fade_ends():
+    """2026-10-07: TBL switching every block under DCLK 3 ms (a fade of 4.5 blocks)
+    restarted the fade each block and cut the old wave off: steps as large as the switch.
+    A jump now waits for the running fade, so no step is larger than the wave's own."""
+    t = dsp.tables()
+
+    def run(period, dclk, n=40):
+        blocks = []
+        for b in range(n):
+            tbl = 0x0100 if period and (b // period) % 2 else 0x0000
+            osc1 = (0x3000, tbl, 0x4000, 0x6400, 0, 0x3200, 0x3200, 0, 0, 0)
+            osc2 = (0, 0, 0x4000, 0, 0, 0x3200, 0x3200, 0, 0, 0)
+            blocks.append((48.0, osc1, osc2, (0, b == 0, 0, 0, 0, dclk)))
+        y = live.render_two(t, blocks, 32)
+        return max(abs(a - b) for a, b in zip(y[32:], y[33:]))
+
+    own = run(0, live.DCLK_DEFAULT)
+    assert run(1, 0) > 4 * own                                  # DCLK Off: the switch clicks
+    for period in (1, 2, 4):
+        assert run(period, live.DCLK_DEFAULT) <= own
+
+
+
+def test_trim_slews_at_most_a_tenth_of_a_db_a_block():
+    # 0.1.2: a jump of TRIM reaches the knob's factor in steps of 0.1 dB at most, a note
+    # (or no factor yet) takes it as it is, and a held knob does not move it
+    lo, hi = live.trim_factor(0), live.trim_factor(0x7F00)
+    assert live.trim_slew(0.0, lo, False) == lo
+    assert live.trim_slew(lo, hi, True) == hi
+    for start, end in ((lo, hi), (hi, lo)):
+        f, steps = start, 0
+        while f != end:
+            g = live.trim_slew(f, end, False)
+            assert 0 < abs(20 * math.log10(g / f)) <= 0.1 + 1e-6
+            f, steps = g, steps + 1
+        assert 140 <= steps <= 160                     # 15 dB: about 100 ms of 32-sample blocks
+    assert live.trim_slew(hi, hi, False) == hi
+
+
+def _trim_blocks(n, note_at=None):
+    osc1 = (0x4000, 0, 0x4000, 0x6400, 0x3200, live.MPOS_NONE, 0, 0, 0, 0)
+    return [(48.0, osc1, (0, 0, 0x4000, 0), (0, b == note_at, live.PRST_OFF, 0, 0, 0)) for b in range(n)]
+
+
+def test_a_held_trim_renders_as_before_the_slew():
+    t = dsp.tables()
+    assert live.render_two(t, _trim_blocks(6)) == live.render_two(t, _trim_blocks(6), trims=[0x4000] * 6)
+
+
+def test_a_trim_jump_slews_and_a_note_snaps():
+    t = dsp.tables()
+    jump = [0x4000, 0x4000, 0x7F00, 0x7F00, 0x7F00, 0x7F00]
+    slewed = live.render_two(t, _trim_blocks(6), trims=jump)
+    noted = live.render_two(t, _trim_blocks(6, note_at=2), trims=jump)
+    full = live.render_two(t, _trim_blocks(6), trims=[0x7F00] * 6)
+    held = live.render_two(t, _trim_blocks(6))
+    assert slewed[:64] == held[:64]
+    # the same waveform, so the ratio to the held render is the factor's: 0.1 dB a block more
+    for blk in range(2, 6):
+        ratios = {round(x / y, 4) for x, y in zip(slewed[32 * blk:32 * blk + 32], held[32 * blk:32 * blk + 32]) if abs(y) > 1e-3}
+        assert ratios == {round(10 ** (0.1 * (blk - 1) / 20), 4)}
+    assert noted[64:] == full[64:]                   # a note on: the knob's factor at once
+    assert full != slewed

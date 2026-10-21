@@ -75,3 +75,48 @@ def c_source() -> str:
             f"#define WR_FRAMES {FRAMES}\n#define WR_WIDTH {WIDTH}\n"
             f"static const signed char wr_spans[WR_TABLES][WR_FRAMES][2][WR_WIDTH] = {{\n"
             + ",\n".join(rows) + "\n};\n")
+
+
+def _byte_c(v: int) -> int:
+    """pool.c's to_byte: v * 127 / 32767 to nearest, halves away from zero (C division)."""
+    n = v * 127 + (16383 if v >= 0 else -16383)
+    b = abs(n) // 32767 * (1 if n >= 0 else -1)
+    return max(-127, min(127, b))
+
+
+SHOWN = 16                     # the page's frames of a pool table (pool.h: WR_POOL_SPANS)
+
+
+def shown_frame(d: int, frames: int) -> int:
+    """The table frame pool.c shows as frame D: the nearest to d x (F - 1) / 15, the one
+    a POS of d plays (`table3.position`)."""
+    return (2 * d * (frames - 1) + SHOWN - 1) // (2 * (SHOWN - 1))
+
+
+def pool_spans(table: list[list[int]], samples: int | None = None, width: int = WIDTH) -> bytes:
+    """A pool table's display spans as `csrc/waverider/pool.c` makes them while its
+    chunks pass, [shown frame][min, max][column] signed bytes, 16 shown frames whatever
+    the table's (`shown_frame`); column c of N points covers c N / 96 .. (c + 1) N / 96, the
+    same rounding as C. SAMPLES limits it to the table's first samples (the rest stay at
+    pool.c's start, min 127 and max -127)."""
+    frames, points = len(table), len(table[0])
+    flat = [v for f in table for v in f]
+    n = len(flat) if samples is None else samples
+    out = [[[127] * width, [-127] * width] for _ in range(SHOWN)]
+    starts = [c * points // width for c in range(width + 1)]
+    shows = {f: [d for d in range(SHOWN) if shown_frame(d, frames) == f] for f in range(frames)}
+    for k in range(n):
+        f, p = divmod(k, points)
+        if not shows[f]:
+            continue
+        b = _byte_c(flat[k])
+        cols = [max(c for c in range(width) if starts[c] <= p)]
+        if p == starts[cols[0]] and cols[0] > 0:
+            cols.append(cols[0] - 1)
+        if p == 0:
+            cols.append(width - 1)
+        for d in shows[f]:
+            for c in cols:
+                out[d][0][c] = min(out[d][0][c], b)
+                out[d][1][c] = max(out[d][1][c], b)
+    return b"".join(bytes(x & 0xFF for x in lohi) for fr in out for lohi in fr)

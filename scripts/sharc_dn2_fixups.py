@@ -1,4 +1,4 @@
-"""Workarounds that let digikit's SHARC runner (work/sharc-emulator, 6f812e9)
+"""Workarounds that let digikit's SHARC runner (work/sharc-emulator: written for 6f812e9, run on 277760a since 2026-10-09)
 run the DN2 1.11 voice path. Each one is a gap in the runner, measured on the
 DN2 image, and documented in `docs/for-digikit-sharc-runner-dn2.md` (sections
 6 onward) -- that is where a fix belongs; this file only steps around them.
@@ -13,7 +13,9 @@ either does nothing (the runner steps as usual), runs after the step (a
 post-fix), or replaces the step outright:
 
   G1  SIMD PEy is modelled only in Types 2c and 2a_short (compute) and 14a,
-      3b and 15a (memory companion). Everything else runs PEx only. We run
+      3b and 15a (memory companion). Everything else runs PEx only. (277760a
+      models Type 3a's companion too; the two-pass is kept for 3a so both
+      versions run the same way, and the gate suite's outputs are identical.) We run
       such an instruction twice in SISD: PEy on a copy with R<->S (and the
       other complementary pairs) swapped and the transfer address one
       normal word up, then PEx on the real state, and merge PEy's registers,
@@ -23,6 +25,14 @@ post-fix), or replaces the step outright:
       out right only with it).                                   ("simd 17a")
   G3  (LW) register-pair transfers in Types 4b and 3b read Unknown and write
       nothing; Types 3a, 14a, 15a and 15b already do the pair.   ("lw ...")
+      **Type 4b has no (LW)** (found 2026-10-14): 277760a reads its (l, x, w) =
+      (1, 1, 1) as the plain normal word, from the PRM's own Type 4b table, and the
+      DN2's 19 such sites in the block call agree (all post-modify, strides of 5,
+      7 and 13 words, so half the accesses would be misaligned as 64 bits). On
+      6f812e9 the fix-up got the named register or word right and was wrong in
+      the pair's other half (the neighbour register on a load, the next word on a
+      store). On a core with its own Type 4b table it is off; no recorded output
+      of the block call changes with it off (12 blocks, every field).
   G4  L1 normal-word addresses (0x90000..0xe7fff) are used as byte
       addresses, so the math library's coefficient tables read as zero and
       sinf(x) returns x. An immediate NW address loaded into an I register
@@ -37,7 +47,15 @@ post-fix), or replaces the step outright:
   G8  a conditional Type 7a (`IF EQ MODIFY(I4, M4)`, in the amp stage
       sw 0xb80345 once a note is on) halts ("unsupported Type7a
       predicate"): only "always" (31) and 0x17 run. Handled as G6.
-  G10 Type 8a ignores the (LA) loop-abort bit: `_type_25a_direct` calls the
+  G11 (ours, not the runner's) G1's two-pass merge took every S register from the PEy
+      pass. A transfer that names the PEy register (`S5 = DM(I1, M0)`: the implicit
+      half goes to R5, PRM "DAG Transfers in SIMD Mode") then lost both halves: PEx's
+      pass loads S5 (overwritten by the merge) and PEy's loads R5 (never merged). The
+      merge now keeps the named S register from PEx and its complement from PEy.
+      Found by fft2.asm's ys load (2026-10-09).                 ("simd two-pass")
+  G10 (277760a honours (LA) on 8a_rel itself: the fix-up now pops only when the
+      step has not, or the caller's PC-stack entry went too, which 277760a's
+      return check caught at sw 0xb8042d.) Type 8a ignores the (LA) loop-abort bit: `_type_25a_direct` calls the
       transfer without `loop_abort`, although `_transfer` supports it (Type
       9a passes it). A JUMP (LA) out of a DO loop then leaves the loop's
       PC-stack entry behind, and the next RETURN halts ("return target
@@ -52,6 +70,22 @@ post-fix), or replaces the step outright:
       parameter picked up its neighbour as bits 16-31 (Milestone 4, measured
       at 0x1c29fa; control: plain FEXT, opcode 0x10, at 0x1c28fc is right).
       The result register is recomputed after the step.
+  G14 the fixed-point CLIP (`Rn = CLIP Rx BY Ry`, ALU opcode 0x63) is not in
+      compute_alu's table ("unsupported full compute ... opcode=0x63"): bind() adds it,
+      Rx if |Rx| < |Ry| else |Ry| with Rx's sign. For mipb3.asm's int16 rows
+      (2026-10-09).
+  G13 Type 1a (a compute with a DM and a PM transfer) in SIMD went through G1's compute
+      two-pass, so PEy's pass moved the same words as PEx's. In 277760a's own SIMD
+      handling the DM companion is right but the PM one is not modelled (a load leaves
+      the S register Unknown, a store writes nothing). It now runs as G1's memory
+      two-pass with both I registers a word up for PEy, PEy's stores kept. For fft3.asm's
+      butterflies (2026-10-09).                                   ("simd two-pass")
+  G12 Type 19a with the bit-reverse bit (`BITREV(Ia, data32)`, `Ib = BITREV(Ia, data32)`,
+      PRM "Bit-Reverse Instruction"; bit 39, the classic manuals and digikit's own
+      decode table) is decoded as 19a_bitrev but not executed (`forms_dag` runs 19a
+      and 19a_scaled only). The step is replaced: Ia + data, its 32 bits reversed, to
+      the destination (Is XOR Idis in the DAG g names, as 19a). For the stage 3 FFT
+      (2026-10-09).                                               ("bitrev")
   G9  (ours, not the runner's) G1's two-pass assumed every memory form names
       its DAG field `i`; the 16-bit Type 3c names it `dmi`. Met in SIMD at
       0x1c2857 in sw 0x1c2712 (Milestone 3).
@@ -71,19 +105,29 @@ from __future__ import annotations
 import collections
 import dataclasses
 import math
+import os
+import pathlib
 import struct
 import sys
 
 sr = st = fm = seq = None
 ACCESS_WIDTHS = UREG_CODES = None
+TYPE4B_OWN_WIDTHS = False       # the bound core reads Type 4b's widths from its own table (277760a)
 _dm_read = _dm_write = _simd_active = None
 Const = _signed = None
 
 
 def bind(tools_dir: str) -> None:
-    """Import digikit's runner from TOOLS_DIR (a checkout's tools/)."""
+    """Import digikit's runner from TOOLS_DIR (a checkout's tools/, or its tools/sharc_dev/ in
+    the layout digikit's main has used since 2026-10)."""
     global sr, st, fm, seq, ACCESS_WIDTHS, UREG_CODES, _dm_read, _dm_write, _simd_active
-    global Const, _signed
+    global Const, _signed, TYPE4B_OWN_WIDTHS
+    dev = os.path.join(tools_dir, "sharc_dev")
+    if not os.path.exists(os.path.join(tools_dir, "sharc_run.py")) and os.path.exists(os.path.join(dev, "sharc_run.py")):
+        tools_dir = dev
+        root = os.path.dirname(os.path.dirname(dev))
+        from dnfw import sharcemu  # noqa: PLC0415  (it imports itself as tools.sharc_dev)
+        sharcemu.alias_main_layout(pathlib.Path(root))
     if tools_dir not in sys.path:
         sys.path.insert(0, tools_dir)
     import sharc_run as _sr  # noqa: PLC0415
@@ -96,8 +140,27 @@ def bind(tools_dir: str) -> None:
     from sharc_core.values import Const as _c, _signed as _s  # noqa: PLC0415
     sr, st, fm, seq = _sr, _st, _fm, _seq
     ACCESS_WIDTHS, UREG_CODES = _aw, _uc
+    from sharc_core import encoding as _enc  # noqa: PLC0415
+    TYPE4B_OWN_WIDTHS = hasattr(_enc, "TYPE4B_ACCESS_WIDTHS")
     _dm_read, _dm_write, _simd_active = _r, _w, _sa
     Const, _signed = _c, _s
+    from sharc_core import compute_alu as _ca  # noqa: PLC0415
+    if 0x63 not in _ca.ALU_OPS:                # G14
+        _ca.ALU_OPS[0x63] = _clip_fixed(_ca)
+
+
+def _clip_fixed(ca):
+    """G14: `Rn = CLIP Rx BY Ry` (fixed-point ALU opcode 0x63, PRM Table 18-5 and
+    "RN = clip RX by RY"): Rx if |Rx| < |Ry|, else |Ry| with Rx's sign. AZ and AN follow
+    the result, the other flags clear, as min/max (the PRM's flag table for both)."""
+    def alu_clip_fixed(rn, rx, ry, left, right, values, special, approx_recips):
+        if isinstance(left, ca.Const) and isinstance(right, ca.Const):
+            a, b = ca._signed32(left.value), abs(ca._signed32(right.value))
+            value = ca.Const((a if abs(a) < b else (b if a >= 0 else -b)) & 0xFFFFFFFF)
+        else:
+            value = ca.Unknown("clip(R%d, R%d)" % (rx, ry))
+        return rn, value, "clip", ca._astatx_alu_logical(value)
+    return alu_clip_fixed
 
 
 def F(f, name):
@@ -125,7 +188,7 @@ COND_UNSUPPORTED = {"6b_shiftimm", "6a_mem", "7a"}
 COND_NATIVE = {31, 0x17}          # the predicates the runner already runs (0x17: Type 7a only)
 MR_PAIRS = (("MRF", "MSF"), ("MRB", "MSB"))     # PEx / PEy multiplier result registers
 LOOP_ABORT_FORMS = {"8a_rel", "8a_abs"}
-WATCH = COND_UNSUPPORTED | LOOP_ABORT_FORMS | {"3a", "4a", "4b", "3b", "15b", "13a", "17a", "17b", "2b"}
+WATCH = COND_UNSUPPORTED | LOOP_ABORT_FORMS | {"19a_bitrev", "3a", "4a", "4b", "3b", "15b", "13a", "17a", "17b", "2b"}
 NW_LO, NW_HI = 0x240000 // 4, 0x3A0000 // 4
 # PCs whose parcel digikit reads as a 32-bit Type 2b and selache as a 16-bit 2c
 AS_2C = {0x1C0E13, 0x1C4F4A}
@@ -198,7 +261,11 @@ class Fixups:
             return None
         f = insn.fields
         pc = s.pc_sw
+        if t == "19a_bitrev":
+            return ("replace", lambda r: self.bitrev(r, insn))
         if in_simd and t not in SIMD_NATIVE and t not in ("17a", "17b"):
+            if t == "1a":                       # G13: both transfers' companions
+                return ("replace", lambda r: self.two_pass(r, insn, memory=True))
             if t in MEM_NO_COMPANION and not self.is_long(t, f):
                 return ("replace", lambda r: self.two_pass(r, insn, memory=True))
             if t in FLOW:
@@ -224,6 +291,8 @@ class Fixups:
 
     @staticmethod
     def is_long(t, f) -> bool:
+        # for Type 4b this is its (1, 1, 1) row, which is the plain normal word, not a long
+        # word (G3): `pre` still keeps those out of the SIMD two-pass, as it always has
         if t in ("4b", "3b"):
             return ACCESS_WIDTHS.get((F(f, "l"), F(f, "x"), F(f, "w"))) == "long-word"
         if t in ("3a", "15b"):
@@ -248,6 +317,21 @@ class Fixups:
                 self.note("nw->byte I register (G4)", pc)
             return post
         return None
+
+    # -- G12 ---------------------------------------------------------------------------
+    def bitrev(self, runner, insn):
+        s, f = runner.state, insn.fields
+        bank = 8 if F(f, "g") else 0
+        src = F(f, "is[2:0]") + bank
+        dst = (F(f, "is[2:0]") ^ F(f, "idis[2:0]")) + bank
+        v = s.uregs[16 + src]
+        if not isinstance(v, Const):
+            raise sr.Halt("BITREV of an unknown I register (G12)", s.pc_sw, insn.type_name)
+        x = (v.value + ((F(f, "data[31:16]") << 16) | F(f, "data[15:0]"))) & 0xFFFFFFFF
+        s.uregs[16 + dst] = Const(int(f"{x:032b}"[::-1], 2))
+        runner.state = seq._advance(s, insn)[0]
+        runner.instructions += 1
+        self.note("bitrev (G12)", s.pc_sw)
 
     # -- G6 ----------------------------------------------------------------------------
     def conditional(self, runner, insn):
@@ -282,7 +366,15 @@ class Fixups:
         if not pred:
             return None
 
+        depth = len(s.loops)
+
         def post(r):
+            # newer digikit (277760a) honours (LA) on this form itself: the step has
+            # popped the loop already, and a second pop would take the caller's entry
+            # off the PC stack too
+            if len(r.state.loops) < depth:
+                self.note("jump (LA) loop abort: done by the runner (G10)", pc)
+                return
             seq._apply_loop_abort(r.state)
             self.note("jump (LA) loop abort (G10)", pc)
         return post
@@ -291,6 +383,8 @@ class Fixups:
     def long_word(self, t, f, s, pc):
         if not self.is_long(t, f):
             return None
+        if t == "4b" and TYPE4B_OWN_WIDTHS:
+            return None                 # the core's own normal-word access is right; no pair
         if cond_of(f) != 31 and seq._predicate(s, cond_of(f)) is not True:
             return None
         if F(f, "g"):
@@ -338,15 +432,22 @@ class Fixups:
         uy[m1] = sisd
         comp = False
         if memory:
-            # the 16-bit Type 3c names its DAG fields dmi/dmm and is always DM
-            idx = (16 + F(f, "dmi")) if "dmi[2:0]" in f else \
-                16 + F(f, "i") + (8 if F(f, "g") else 0)
-            iv = uy[idx]
-            if not isinstance(iv, Const):
-                raise sr.Halt("two-pass: I register not concrete", s.pc_sw, insn.type_name)
-            uy[idx] = Const((iv.value + 4) & 0xFFFFFFFF)
-            code = F(f, "dreg") if "dreg[3:0]" in f else F(f, "ureg")
-            comp = fm._cureg_code(code) is not None
+            if "pmi[1:0]" in f:
+                # G13: Type 1a moves on DM (DAG1) and PM (DAG2) at once; both companions
+                # are the next word, and its data registers are R0-R15 (a complement each)
+                idxs = [16 + F(f, "dmi[2:0]"), 24 + ((F(f, "pmi[2:2]") << 2) | F(f, "pmi[1:0]"))]
+                code, comp = None, True
+            else:
+                # the 16-bit Type 3c names its DAG fields dmi/dmm and is always DM
+                idxs = [(16 + F(f, "dmi")) if "dmi[2:0]" in f else
+                        16 + F(f, "i") + (8 if F(f, "g") else 0)]
+                code = F(f, "dreg") if "dreg[3:0]" in f else F(f, "ureg")
+                comp = fm._cureg_code(code) is not None
+            for idx in idxs:
+                iv = uy[idx]
+                if not isinstance(iv, Const):
+                    raise sr.Halt("two-pass: I register not concrete", s.pc_sw, insn.type_name)
+                uy[idx] = Const((iv.value + 4) & 0xFFFFFFFF)
         # PEy's multiplier result registers are MSF/MSB: give them to the
         # SISD pass under PEx's names, and take them back afterwards
         sp = dict(s.special)
@@ -368,8 +469,17 @@ class Fixups:
                           "%s / %s" % (ox[0].stopped if ox else "", oy[0].stopped if oy else ""))
         x, y = ox[0], oy[0]
         swap(y.uregs)
+        # G11 (ours): when the named register is PEy's (`S5 = DM(...)`, PRM "DAG Transfers
+        # in SIMD Mode": the implicit transfer then goes to its complement R5), PEx's pass
+        # wrote the named S register and PEy's pass its complement: keep both, not PEy's
+        # copy of the S register.
+        named_s = memory and code is not None and 80 <= code <= 95 and not F(f, "d")
+        kept = x.uregs.get(code) if named_s else None
         for _, b in _pairs():
             x.uregs[b] = y.uregs[b]
+        if named_s:
+            x.uregs[code] = kept
+            x.uregs[code - 80] = y.uregs[code - 80]
         if x.uregs[m1] == sisd:
             x.uregs[m1] = mode1
         for a, b in MR_PAIRS:
@@ -391,6 +501,12 @@ def as_2c(insn):
                                fields={"compute[11:0]": first & 0xFFF}, note="G5: read as 2c")
 
 
+# An observer of every step run() makes (scripts/sharc_cycles_recorder.py): before(runner,
+# insn) and after(runner, insn, emulated) around each instruction, skipped(pc) for a
+# skip. None (the default) costs one test per step.
+OBSERVER = None
+
+
 def run(runner, max_steps: int, fix: Fixups, stop_at=()):
     """Step RUNNER with FIX. -> ("stop", pc, n) | ("halt", Halt, n) | ("max", pc, n)."""
     stop_at = set(stop_at)
@@ -403,11 +519,15 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
         if pc in fix.skips:
             runner.state.pc_sw = fix.skips[pc]
             fix.note("skip", pc)
+            if OBSERVER is not None:
+                OBSERVER.skipped(pc)
             continue
         if pc in fix.hooks:
             fix.hooks[pc](runner)
             if runner.state.pc_sw != pc:
                 n += 1
+                if OBSERVER is not None:
+                    OBSERVER.skipped(pc)
                 continue
         insn = runner._decode(pc)
         if insn.type_name == "2b" and pc in AS_2C:
@@ -416,6 +536,8 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
             fix.note("2b->2c decode (G5)", pc)
         act = fix.pre(runner, insn)
         g11 = fext_se_fix(runner, insn, fix) if insn.type_name in FEXT_SE_FORMS else None
+        if OBSERVER is not None:
+            OBSERVER.before(runner, insn)
         if isinstance(act, tuple):
             try:
                 act[1](runner)
@@ -423,6 +545,8 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
                 return ("halt", h, n)
             if g11:
                 g11(runner)
+            if OBSERVER is not None:
+                OBSERVER.after(runner, insn, True)
             n += 1
             continue
         try:
@@ -433,6 +557,8 @@ def run(runner, max_steps: int, fix: Fixups, stop_at=()):
             act(runner)
         if g11:
             g11(runner)
+        if OBSERVER is not None:
+            OBSERVER.after(runner, insn, bool(act or g11))
         n += 1
     return ("max", runner.state.pc_sw, n)
 

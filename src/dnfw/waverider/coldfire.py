@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import struct
 
-from . import pages, wave
+from . import drive, pages, wave
 from dataclasses import dataclass
 
 BASE = 0x40000400
@@ -288,6 +288,10 @@ IDENTITY_SITES = (
     (0x400D5A72, "4eb9", "the track state message: machine type byte"),
     (0x400D675E, "4eb9", "an incoming machine type, compared with the track's before commit"),
 )
+# CLEAR TRK PRESET (TRK + PLAY, 0x40071e80) asks the machine its new preset keeps at
+# drive.CLEAR_SITE: the real type there too (owner, 2026-10-05: a cleared Waverider
+# track came back as WaveTone). With the +Drive chunk, the call goes to its
+# wr_clear_type, which also counts the clear for the page; without it, to raw_track.
 
 # -- 7b. getMachineType(model, track) 0x4003134e: the real type -------------------------
 # The model-level question -- "what machine does track t have?" -- is 0x4003134e,
@@ -319,8 +323,17 @@ CANON_ARG_SITES = (
 COUNT_SITE = 0x400C24D2                 # SYN page count(type): 0x42432ad4[type].count
 LABEL_SITE = 0x40064622                 # the SYN page's jsr getShortName(this, id)
 LABEL_STOCK = bytes.fromhex("4eb9400372da")
+MINILABEL_SITE = 0x400C267C             # the LFO page's DEST cell: movel %a0@(30,%d2:l),%sp@- ; pea 0x40219c2d
+MINILABEL_STOCK = bytes.fromhex("2f302830487940219c2d")
 LONG_SITE = 0x400365F2                  # the long-name getter: push record+0x28, push d2
 LONG_STOCK = bytes.fromhex("2f3018282f02")
+# the LFO destination list (owner, 2026-10-13): one SYN group, page and knob order, numbered names
+DESTGROUP_SITE = 0x400DBCE8                 # entry -> group: movel %sp@(4),%d0 ; cmpil #321,%d0
+DESTGROUP_STOCK = bytes.fromhex("202f00040c8000000141")
+TIE_SITE = 0x400390D0                   # the sort comparator's tie-break: cmpl %d3,%d2 ; sgt %d0 ; bras
+TIE_STOCK = bytes.fromhex("b4835ec06004")
+LISTNAME_SITE = 0x40105AF2              # the list: push the name's char*, push the format
+LISTNAME_STOCK = bytes.fromhex("2f2f004048794021f244")
 CANON_ARG_STOCK = bytes.fromhex("7204202f0004")
 PAGE_SITE = 0x400C24F2                  # 0x400c24ee: after `move.l %d2,-(%sp) ; moveq #4,%d2`
 PAGE_STOCK = bytes.fromhex("222f0008202f000c")
@@ -360,6 +373,28 @@ VFMT_SITE = 0x40036708                  # movea.l %a2@(0x34),%a1 ; movem.l ; lea
 VFMT_STOCK = bytes.fromhex("226a00344cd7041c4fef00104ed1")
 RANGE_SITE = 0x400DBFF0                 # move.l %d2,-(%sp) ; move.l %sp@(8),%d1
 RANGE_STOCK = bytes.fromhex("2f02222f0008")
+# The knob turn reads its current value at 0x40036aec; the caller (0x4003786c, the set's
+# vtable +32) passes it sign-extended, so TBL at 0x8000 and up turned to Prim. wr_turn
+# reads TBL's as unsigned on a Waverider track.
+TURN_SITE = 0x40036AEC                  # move.l %sp@(56),%d2 ; move.l %sp@(60),%d7
+TURN_STOCK = bytes.fromhex("242f00382e2f003c")
+# The header line ("Osc1 Table=Prim.") is printed once, at 0x4006782a, as "%s=%s" with the
+# control's long name and its value text; d2 = the id. wr_head drops the name for TBL.
+HEAD_SITE = 0x4006781C                  # move.l %fp@(-36),%sp@- ; pea 0x40216cee
+# param_set_slot_to_id(slot, type, filter): the per-type list (the table at 0x42c64d18)
+# behind p-locks, LFO destinations and CC. wr_slot_id adds page 3's eight on a Waverider
+# track (docs/waverider-pages34.md).
+SLOT_ID_SITE = 0x400DC02A               # move.l %d2,-(%sp) ; moveq #100,%d1 ; movea.l %sp@(8),%a0
+SLOT_ID_STOCK = bytes.fromhex("2f027264206f0008")
+HEAD_STOCK = bytes.fromhex("2f2effdc487940216cee")
+# MIDI (docs/waverider-midi.md). The synth track's parameter setter (its vtable +52), where an
+# incoming CC or NRPN arrives once the bus's handler has found the record, asks the limits
+# getter; wr_set marks the track being set, so wr_range answers for it, not the active track.
+# The parameter send 0x400379dc(track, id) asks the record for its NRPN, CC and CC LSB;
+# wr_out_* answer a Waverider track's knob place instead.
+OUT_SITES = ((0x40037A74, "4eb9400dc2ea", "wr_out_nrpn", "NRPN"),
+             (0x40037AB2, "4eb9400dc2a2", "wr_out_cc", "CC"),
+             (0x40037AD2, "4eb9400dc2c6", "wr_out_lsb", "CC LSB"))
 
 
 def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
@@ -368,12 +403,14 @@ def _cave_free(content: bytes, cave: tuple[int, int]) -> None:
         raise ComposeError(f"the cave at {at:#010x} (+{cap}) is not free")
 
 
-def compose(stock: bytes, assemble, compile_c) -> dict:
-    """-> {"content", "edits", "layout", "chunk"}. ASSEMBLE(source, base=...) -> bytes;
-    COMPILE_C(header, base=...) -> (image, symbols, bss): csrc/waverider/page.c linked at
-    BASE with `header` as its generated `wr_gen.h`."""
+def compose(stock: bytes, assemble, compile_c, build_drive=None) -> dict:
+    """-> {"content", "edits", "layout", "chunk", "drive"}. ASSEMBLE(source, base=...) ->
+    bytes; COMPILE_C(header, base=...) -> (image, symbols, bss): csrc/waverider/page.c
+    linked at BASE with `header` as its generated `wr_gen.h`. BUILD_DRIVE (cbuild.build)
+    links the +Drive chunk (`dnfw.waverider.drive`) and hooks it in; without it "drive"
+    is None and the page finds no drive chunk (its head check)."""
     content = bytearray(stock)
-    for va, want, why in GUARDS:
+    for va, want, why in GUARDS + (drive.GUARDS if build_drive else ()):
         _need(content, va, bytes.fromhex(want), why)
     edits: list[Edit] = []
 
@@ -383,9 +420,11 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
     if cbss:
         raise ComposeError(f"the page renderer has {cbss} bytes of BSS; nothing zeroes it")
     if pages.C_LOAD + len(cimage) > pages.C_END:
-        raise ComposeError(f"the page renderer ends past {pages.C_END:#010x}")
+        raise ComposeError(f"the page renderer ({len(cimage)} B at {pages.C_LOAD:#x}) ends past {pages.C_END:#010x}")
     ptable = "\n    .align 2\n" + "\n".join(f"    .long {n}" for n in pages.LABELS_OUT) + "\n"
-    pblob = assemble(pages.source(csyms["wr_page_draw"]) + ptable, base=pages.LOAD)
+    pblob = assemble(pages.source(csyms["wr_page_draw"], csyms["wr_tbl_range"], csyms["wr_tbl_fmt"],
+                                  csyms["wr_rate_fmt"])
+                     + ptable, base=pages.LOAD)
     asm = pblob[:-4 * len(pages.LABELS_OUT)]
     if len(asm) > pages.C_LOAD - pages.LOAD:
         raise ComposeError(f"the pages assembly ({len(asm)} B) runs into the renderer")
@@ -460,27 +499,26 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
          f"{SAMPLE_TYPES_LAST} are a section of their own ({SAMPLE_GROUP}), divided off like MIDI",
          GROUP_STOCK)
 
-    # 2. the names
+    # 2. the names. Their bounds (4 -> 5), the attribute rows' and the LOAD's are the
+    # bus's machine count (dnfw.mods.bus): the mod adds one machine, the platform writes them.
     for bound, base, op, col in NAME_SITES:
-        edit(bound, bytes.fromhex("7205"), f"name column {col // 4}: bound 4 -> 5",
-             bytes.fromhex("7204"))
+        _need(content, bound, bytes.fromhex("7204"), f"name column {col // 4}: the bound")
         edit(base + 2, _long(layout["names"] + col), f"name column {col // 4}: the six-row table",
              _long(NAMES_STOCK_VA + col))
         _need(content, base, bytes.fromhex(op), "the name accessor's base instruction")
 
     # 3. the attribute rows
     for bound in ATTR_BOUNDS:
-        edit(bound, bytes.fromhex("7405" if bound == 0x400DC19C else "7205"),
-             "attribute rows: bound 4 -> 5", bytes.fromhex("7404" if bound == 0x400DC19C else "7204"))
+        _need(content, bound, bytes.fromhex("7404" if bound == 0x400DC19C else "7204"),
+              "attribute rows: the bound")
     for site, col in ATTR_BASES:
         _need(content, site, bytes.fromhex("41f9"), "the attribute accessor's lea")
         edit(site + 2, _long(layout["attributes"] + col), "attribute rows: the six-row copy",
              _long(ATTR_STOCK_VA + col))
 
-    # 5. the stored-sound LOAD keeps type 5 (stock turns it into FM Tone)
-    edit(LOAD_BOUND, bytes.fromhex("7407"), "stored-sound LOAD: machine types -1..5 are kept "
-                                            "(stock keeps -1..4; anything else loads as FM Tone)",
-         bytes.fromhex("7406"))
+    # 5. the stored-sound LOAD keeps type 5 (stock turns it into FM Tone): the machine
+    # count's bound, which the platform writes
+    _need(content, LOAD_BOUND, bytes.fromhex("7406"), "stored-sound LOAD: the bound")
 
     # 4. slot_to_id
     edit(SLOT_HOOK, bytes.fromhex("4ef9") + _long(layout["slot_shim"]) + bytes.fromhex("4e71"),
@@ -498,9 +536,21 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
          "type 5 reads WaveTone's", PAGE_STOCK)
     edit(LABEL_SITE, bytes.fromhex("4eb9") + _long(playout["wr_label"]),
          "the SYN page's label fetch: Waverider's labels for a Waverider track (M7)", LABEL_STOCK)
+    edit(MINILABEL_SITE, bytes.fromhex("4eb9") + _long(playout["wr_minilabel"]) + bytes.fromhex("4e714e71"),
+         "the LFO page's destination cell: Waverider's label for a Waverider track (the cell read "
+         "the record's short name inline: 3A Sub Level showed PITCH)", MINILABEL_STOCK)
     edit(LONG_SITE, bytes.fromhex("4eb9") + _long(playout["wr_long"]),
          "the long-name getter: Waverider's long names for a Waverider track (the header, "
          "the LFO destination browser)", LONG_STOCK)
+    edit(DESTGROUP_SITE, bytes.fromhex("4ef9") + _long(playout["wr_group"]) + bytes.fromhex("4e714e71"),
+         "the destination list's group getter: one SYN group for the records a Waverider track's "
+         "pages hold", DESTGROUP_STOCK)
+    _need(content, TIE_SITE + 6, bytes.fromhex("b0845ec0"), "the comparator's else arm, 4 bytes")
+    edit(TIE_SITE, bytes.fromhex("4eb9") + _long(playout["wr_tie"]),
+         "the destination sort's tie-break: page and knob order on a Waverider track", TIE_STOCK)
+    edit(LISTNAME_SITE, bytes.fromhex("4eb9") + _long(playout["wr_list_name"]) + bytes.fromhex("4e714e71"),
+         "the destination list's name text: the page and knob number in front, on a Waverider "
+         "track", LISTNAME_STOCK)
     edit(GRID_SITE, bytes.fromhex("4eb9") + _long(playout["wr_grid"]) + bytes.fromhex("4e714e71"),
          "the SYN page draw: Waverider's own page for a Waverider track (M8.1)", GRID_STOCK)
     edit(GRID9_SITE, bytes.fromhex("4eb9") + _long(playout["wr_grid9"]) + bytes.fromhex("518f"),
@@ -524,6 +574,34 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
     edit(RANGE_SITE, bytes.fromhex("4eb9") + _long(playout["wr_range"]),
          "the limits getter: MOVE 0..4 and TRIG 0..1 on a Waverider track (M10b); every "
          "other parameter its record's", RANGE_STOCK)
+    _need(content, TURN_SITE + 8, bytes.fromhex("0c8400000140"), "the knob turn's id bound")
+    edit(TURN_SITE, bytes.fromhex("4eb9") + _long(playout["wr_turn"]) + bytes.fromhex("4e71"),
+         "the knob turn's current value: TBL1 and TBL2 read unsigned on a Waverider track, "
+         "so a turn from the pool's last tables steps instead of falling to Prim.", TURN_STOCK)
+    edit(pages.SETTER_SLOT, _long(playout["wr_set"]),
+         "a synth track's parameter setter (vtable +52): wr_set, so MIDI CC and NRPN to a "
+         "track that is not on the screen clamp to that track's limits", _long(pages.SETTER))
+    for site, stock_hex, entry, what in OUT_SITES:
+        _need(content, site - 2, bytes.fromhex("2f02"), f"the parameter send pushes the id ({what})")
+        edit(site, bytes.fromhex("4eb9") + _long(playout[entry]),
+             f"the parameter send's {what}: a Waverider track's knob place (pages 1..4 as "
+             "stock's knob numbers, page 5 CC 12, 15, 35..37, 83, 93, 119 and NRPN 1:112..119)",
+             bytes.fromhex(stock_hex))
+    _need(content, pages.KNOB_DESC_SITE - 2, bytes.fromhex("2f02"), "the encoder handler pushes the id")
+    edit(pages.KNOB_DESC_SITE, bytes.fromhex("4eb9") + _long(playout["wr_knob_desc"]),
+         "the SYN page encoder's knob descriptor: Waverider's short lists turn as stock's ALGO "
+         "does", bytes.fromhex("4eb9") + _long(pages.KNOB_DESC))
+    # MIDI in is the bus's ev_param_cc and ev_param_nrpn (wr_cc_id, wr_nrpn_id): the
+    # platform owns the lookups' entries
+    # the per-type parameter list (page 3's and page 5's records on a Waverider track) is
+    # wr_slot_id, the bus's ev_param_slot handler: the platform owns the site
+    _need(content, SLOT_ID_SITE, SLOT_ID_STOCK, "param_set_slot_to_id's entry, the bus's site")
+    _need(content, SLOT_ID_SITE + 8, bytes.fromhex("4ef9") + _long(layout["slot_shim"]),
+          "param_set_slot_to_id's type load, already the type-5 shim's jmp (step 4)")
+    _need(content, HEAD_SITE + 10, bytes.fromhex("2f2a006c4eb9400562e6"), "the header's printf")
+    edit(HEAD_SITE, bytes.fromhex("4eb9") + _long(playout["wr_head"]) + bytes.fromhex("4e714e71"),
+         "the header: TBL1 and TBL2 on a Waverider track show their value only (the pool "
+         "position and name), without the control's name", HEAD_STOCK)
     edit(POLL_SITE, bytes.fromhex("4eb9") + _long(csyms["wr_poll"]),
          "the UI loop's redraw test: wr_poll asks for a redraw while a modulation marker on "
          "Waverider's page would move, then answers as stock", POLL_STOCK)
@@ -536,6 +614,10 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
         _need(content, op_va, bytes.fromhex(op), f"{what}: the instruction")
         edit(op_va + 2, _long(layout["raw_track"]), f"{what}: asks for the real type",
              _long(TRACK_TYPE_FN))
+    if not build_drive:
+        _need(content, drive.CLEAR_SITE, bytes.fromhex("4eb9"), "CLEAR TRK PRESET's getter call")
+        edit(drive.CLEAR_SITE + 2, _long(layout["raw_track"]),
+             "CLEAR TRK PRESET (TRK + PLAY): asks for the real type", _long(TRACK_TYPE_FN))
 
     # 7b. getMachineType(model, track): the real type, for MACHINE SEL and the re-commits
     _need(content, MODEL_TRACK_TYPE_JMP, bytes.fromhex("4ef9"), "0x4003134e's tail jump")
@@ -548,10 +630,21 @@ def compose(stock: bytes, assemble, compile_c) -> dict:
     edit(VALID_SITE, bytes.fromhex("4eb9") + _long(layout["canon_valid"]),
          "the sound's parameter-ownership test: type 5 owns WaveTone's machine parameters",
          VALID_STOCK)
+    # 9. the +Drive chunk: the route, the loader and the pool (dnfw.waverider.drive)
+    dchunk = None
+    if build_drive:
+        dimage, dsyms = drive.compile_drive(build_drive, layout["raw_track"])
+        for va, new, old, what in drive.hooks(dsyms):
+            edit(va, new, what, old)
+        dchunk = {"load": drive.LOAD, "code": dimage}
+        layout.update({k: dsyms[k] for k in drive.ENTRIES + list(drive.STATUS)})
     layout.update(playout)
     # the wave spans are data (signed sample bytes): where they lie, so the RAM check
     # (dnfw.mods.ramcheck) can tell four of their bytes from an address
+    if pages.SET_CTX != drive.SPANS + drive.SPANS_BYTES:
+        raise ComposeError("the setter's mark is not right after the pool's display spans")
+    layout["set_ctx"] = pages.SET_CTX
     layout["wr_spans"] = csyms["wr_spans"]
     layout["wr_spans_end"] = csyms["wr_spans"] + wave.TABLES * wave.FRAMES * 2 * wave.WIDTH
     return {"content": bytes(content), "edits": edits, "layout": layout,
-            "chunk": {"load": pages.LOAD, "code": chunk}}
+            "chunk": {"load": pages.LOAD, "code": chunk}, "drive": dchunk}

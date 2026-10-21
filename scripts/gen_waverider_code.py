@@ -31,7 +31,10 @@ from dnfw.cli.files import read_image                   # noqa: E402
 from dnfw.firmware.load import load                     # noqa: E402
 from dnfw.patch.assemble import assemble, available     # noqa: E402
 from dnfw.waverider import coldfire as CF               # noqa: E402
+from dnfw.patch import cbuild                           # noqa: E402
 from dnfw.waverider import cpage                        # noqa: E402
+from dnfw.waverider import drive                        # noqa: E402
+from dnfw.waverider import pages                        # noqa: E402
 
 STOCK = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
 OUT_JSON = ROOT / "src/dnfw/mods/waverider_code.json"
@@ -54,7 +57,7 @@ def main() -> int:
     stock = load(read_image(STOCK)).container.find(3).unpack()
     if not cpage.available():
         raise SystemExit("no m68k GCC found (m68k-linux-gnu-gcc; WSL is fine)")
-    built = CF.compose(stock, assemble, cpage.compile_page)
+    built = CF.compose(stock, assemble, cpage.compile_page, cbuild.build)
     edits = sorted((e.to_json() for e in built["edits"]), key=lambda e: e["va"])
     if replay(stock, edits) != built["content"]:
         raise SystemExit("the edits do not reproduce the compose output -- not written")
@@ -65,9 +68,15 @@ def main() -> int:
         "clone": CF.CLONE,
         "names": [CF.LONG_NAME, CF.SHORT_NAME],
         "edits": edits,
-        "guards": [{"va": va, "bytes": want, "what": why} for va, want, why in CF.GUARDS],
+        "guards": [{"va": va, "bytes": want, "what": why} for va, want, why in CF.GUARDS + drive.GUARDS],
         "layout": {k: v for k, v in sorted(built["layout"].items())},
         "chunk": {"load": built["chunk"]["load"], "code": built["chunk"]["code"].hex()},
+        "drive": {"load": built["drive"]["load"], "code": built["drive"]["code"].hex(),
+                  "spans": {"va": drive.SPANS, "bytes": drive.SPANS_BYTES}},
+        # what the MIDI maps answer (docs/waverider-midi.md), for scripts/emu_waverider_midi.py
+        # under digikit's venv, which cannot import dnfw.waverider
+        "midi": {"rows": [list(r) for r in pages.midi_rows()],
+                 "ranges": {str(rid): list(v) for rid, v in pages.RANGES.items()}},
     }
     OUT_JSON.write_bytes((json.dumps(code, indent=1) + "\n").encode())
     size = sum(len(e["new"]) // 2 for e in edits)

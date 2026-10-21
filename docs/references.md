@@ -217,9 +217,9 @@ findings change what may be copied**, and both moved since this project started:
 | **`m-dwyer/digikit`** | **GPL-2.0-or-later** | **yes, with care** — see below. Taken forward as GPLv3 it combines with this repo's AGPL-3.0-or-later; **using it as a tool entangles nothing at all**, which is the route to prefer |
 | **`irpina/digiemu`** (added 2026-09-24) | **GPL-2.0-or-later** | **yes, with care.** Taken forward as GPLv3 it combines with this repo's AGPL-3.0-or-later, and it is GPL-2.0-compatible for digikit. Its six files are *Unicorn* patches, so **using them is using a tool and entangles nothing at all** -- the route to prefer, exactly as with digikit |
 | `js216/selache` (added 2026-09-19) | GPL-3.0; `libsel` MIT | may link (GPL-3.0 combines with our AGPL-3.0) but **not vendored**: `tools/selmap` is our own harness over a local checkout. Never into digikit, which is GPL-2.0 |
-| **`irpina/elekloader`** (added 2026-09-27) | **GPL-2.0-only** — `NOTICE` states "version 2" explicitly, no "or later" anywhere, confirmed 2026-09-27 | **no.** Not combinable with AGPL-3.0-or-later. Design reference and tool only |
-| **`irpina/digihealth`** (added 2026-09-27) | **GPL-2.0-only** — same as elekloader; re-checked 2026-09-27 against `LICENSE` and three source headers, all silent, none contradict | **no.** Design reference and tool only |
-| **`irpina/digislicer`** (new 2026-09-27) | **GPL-2.0-only** — same bare GPL-2.0 text, no "or later" | **no.** Design reference and tool only |
+| **`irpina/elekloader`** (added 2026-09-27) | **GPL-2.0-or-later since 2026-09-29**: `NOTICE` says "either version 2 of the License, or (at your option) any later version", and the README says "GPL-2.0-or-later", re-checked 2026-10-15. Before that it was GPL-2.0-only: `NOTICE` said "version 2" with no "or later", confirmed 2026-09-27 | **yes, with care.** Taken forward as GPLv3 it combines with this repo's AGPL-3.0-or-later. Notices go in `THIRD-PARTY.md` |
+| **`irpina/digihealth`** (added 2026-09-27) | **GPL-2.0-or-later since 2026-09-29** (`72f0183`): the README's licence section says so, and `LICENSE` holds the version 2 text; re-checked 2026-10-15. Before that it was GPL-2.0-only, checked 2026-09-27 against `LICENSE` and three source headers | **yes, with care**, as elekloader. `THIRD-PARTY.md` carries its notice for the USB probe |
+| **`irpina/digislicer`** (new 2026-09-27) | **GPL-2.0-or-later**: the README's licence section says so, read 2026-10-15; the date it changed was not checked. It was GPL-2.0-only on 2026-09-27: the bare GPL-2.0 text, no "or later" | **yes, with care**, as elekloader. Nothing is ported from it |
 | **`timhastie/octatrick`** (new 2026-09-27) | **MIT**, plus a trailing paragraph scoping the grant to the repo's own code (not Elektron firmware, not submodule content) — this appended text is why GitHub's API reports "NOASSERTION"/"Other" rather than plain MIT | **yes, for octatrick's own code**, with attribution. Ported submodule content (`octatrick-modules`) and any Elektron material stay out of the grant |
 | **`timhastie/octa-panel`** (licence checked for the first time 2026-09-27) | **MIT**, identical carve-out text to octatrick's (same appended paragraph, same reason for "NOASSERTION") | **yes**, with attribution, for the same reason as octatrick — though see the correction below: this repo is now a historical dev log, not the live location |
 | **`Zac-Kyoti/octatrack-kyoti-fw`** (new 2026-09-27) | **MIT with explicit exclusions**: `tools/attic/` (inherited from `mxldyn/octamax`, tagged `SPDX-License-Identifier: NONE`), patches to third-party tools and anything fetched at build time (keeps its own upstream licence — `dsp56300/dsp56300` is GPLv3, `octabam` is MIT), and all Elektron material | **yes, for the covered code**, with attribution. `tools/attic/` and vendored/patched third-party code are **not** covered — same "no" as octamax for the attic specifically |
@@ -703,11 +703,16 @@ adsp-ldr. lalzart has only its CC0 commit.
 By the author of digiemu. Both target the **Digitakt mk1, OS 1.53**, not the DN2.
 Tracked at the owner's request.
 
-**Licence: GPL-2.0.** The NOTICE says "version 2", and the file headers checked
-carry no "or later". Read that as **GPL-2.0-only**, which cannot be combined with
-this repository's AGPL-3.0-or-later. **Treat both as design references; copy no
-code.** elekloader's codec and ISA files come from digikit, which we already use
-as a tool.
+**Licence: GPL-2.0-or-later, since 2026-09-29.** irpina relicensed both
+repositories. elekloader's NOTICE and README and digihealth's README (`72f0183`)
+now give GPL-2.0-or-later. Taken forward as GPLv3, both
+combine with this repository's AGPL-3.0-or-later. Code ported from them carries
+its origin in its header and its notice in `THIRD-PARTY.md`. elekloader's codec
+and ISA files come from digikit, which we already use as a tool.
+
+Until 2026-09-29 the NOTICE said "version 2" and the file headers checked had no
+"or later". We read that as GPL-2.0-only, and treated both as design references
+with no code copied.
 
 ### elekloader: the loader model we are converging on
 - **A mod ships only its author's bytes plus hashes of the stock bytes it
@@ -783,10 +788,12 @@ mk1, OS 1.53**, confirmed from its own README rather than assumed from
 elekloader's other mods. Two releases: v1.0 (2026-09-26), v1.1 (2026-09-27,
 knob A-D labels and smooth knob-D zoom).
 
-**Licence: GPL-2.0.** Same bare Version 2 text as elekloader and digihealth,
-no "or later" anywhere in `LICENSE` or the README's licence line. Read as
-**GPL-2.0-only**, not combinable with our AGPL-3.0-or-later. Design reference
-and tool only, same as the rest of the irpina set.
+**Licence: GPL-2.0-or-later**, as its README's licence section said on
+2026-10-15. Taken forward as GPLv3, it combines with our AGPL-3.0-or-later.
+The date of the change was not checked. Nothing is ported from it.
+
+On 2026-09-27 it had the bare version 2 text, with no "or later" in `LICENSE` or
+in the README's licence line. We read that as GPL-2.0-only.
 
 It adds a slice editor for the Digitakt's **SLICE machine**: hold YES for
 about a second on a SLICE track's SRC page to open it, then knobs A-D
@@ -1220,4 +1227,57 @@ Elektron's artwork and are excluded by its own notice.
 
 **Adopted so far:** nothing. The hidden-intro finding is reproduced by
 reading only.
+
+
+## `naturarum/dn2-cfw` — OS 1.12 notes, and a frame-word census (added 2026-10-13)
+
+<https://github.com/naturarum/dn2-cfw>. "Custom firmware research for the Elektron
+Digitone II (OS 1.12): notes, tools and new effects. No Elektron firmware included."
+It reached this repository as issue #49 (2026-10-12).
+
+**Licence: GPL-2.0 or later, as the author states it** (issue #49); the GitHub licence record says
+GPL-2.0, and file headers were not checked (the owner asked the author to check them). A GPL-2.0-only work does not
+combine with this repository's AGPL-3.0-or-later, so **nothing was copied**: we cite
+its notes by file and re-did the measurements in our own code.
+
+**What it has that we use:**
+
+- **The frame layout** (`notes/T3.3-fx-frame.md`): regions of the ColdFire-to-DSP frame
+  by byte offset, which our census tools take as their list of regions.
+- **The census method** (`notes/T6.0-fx-params-room.md`, section 1.2): run the stock DSP
+  over many frames and report every instruction that reads each frame word, outside the
+  two unpack copy loops. This is how a word can be shown free, rather than assumed free.
+- **The claim that started it:** stock writes frame words 0xa54 and 0xa56 and the DSP
+  reads them (at `sw 0x1c3084`). **Checked and right** on OS 1.11: Waverider's song
+  position was in those words, and moved (`docs/waverider-frame-words.md`).
+
+**What we did with it:** `scripts/sharc_frame_census.py` (run, replay, report, diff and
+flip modes), `scripts/sharc_frame_word_check.py` and `sharc_frame_word_readers.py`, and
+`scripts/frame_corpus.py`, which records the frames the ColdFire really sends across
+machines and patterns, the corpus their census calls "every T3.3 capture". The census
+found word 0x2a read by the DSP in machine type 4, so the position went to 0xa18 and
+0x9a8, which no DSP instruction reads outside the copy loops in what we ran.
+
+**How far ours goes:** 169 random-frame blocks against their 2,247, and the replay of
+a real-frame corpus was still running when this was written. Read "no reader found" as
+bounded by that, not as proof.
+
+**Adopted so far:** the method and the region list. No code and no data.
+
+## `m-dwyer/moveforge`: judging a DSP render by numbers and plots (added 2026-10-14)
+
+A development platform for Ableton Move modules by digikit's author. No licence file as of
+2026-10-14, so it is read for its method and nothing is copied.
+
+**What it does that we wanted:** every module is rendered offline to WAVs (a preset suite and
+generated stress cases at each parameter's ends), each WAV is reduced to a metrics file (peak, RMS,
+DC offset, silence, clipped samples, a time profile and band energies in dB), the suite is compared
+against blessed goldens, the stress cases against safety limits (clipping, DC, silence, too-hot
+peaks, stereo imbalance), and waveform and spectrum plots are drawn for a person or a model to
+read before listening. Its README says why: audio bugs are easier to catch in a plot than by ear.
+
+**Adopted:** the method, in `dnfw wav report` and `dnfw wav compare` (`docs/wav-report.md`), with
+our own code and three additions: a spectrogram, the pitch and what lies between its harmonics,
+and a classification of steps into periodic and isolated. Not adopted yet: goldens and generated
+stress cases.
 

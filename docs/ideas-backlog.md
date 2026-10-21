@@ -49,9 +49,11 @@ Where they disagree, they win and this table is wrong.
 | 27 | LFO waves follow a negative SPD | **open (a fix)** | — | how a stock generator uses SPD's sign |
 | 32 | Transient shaper | **open (roadmap)** | — | everything: where it sits (master or per voice), its controls' home, and the SHARC cost |
 | 33 | LFO shape warps: phase distortion and a power curve | **open** | — | route: new shapes with their own parameter (as `lfowaves`), or a modifier on every shape |
-| 35 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
-| 36 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
-| 37 | Bloom: a VA machine around a modulator that bends time | **B0 built (the reference model)** | `docs/bloom-machine.md` | B0 (the reference model) and B1 (does a setup-arm write move the stock filter within the block?), then the machine type and a first flash |
+| 37 | Waverider: a marker for every playing voice on the position line | **open (polish, after Waverider's stages)** | — | whether the drawn wave is one voice's or all sounding voices' together; how many markers stay readable |
+| 38 | Tags, a tag filter and search for wavetables | **queued (owner, 2026-10-14)** | — | everything: how stock stores and filters sound tags, and where a table's tags live in the store |
+| 39 | An input machine, as the Machinedrum's | **scoped, not started** | `docs/input-and-drum-machines.md` Part A | I0: where the analog input lands on the SHARC (read-only first); then the copy loop and a first flash |
+| 40 | A drum sampler on the transient bank | **scoped, not started** | `docs/input-and-drum-machines.md` Part B | D0, offline: the kit packer and a reference player to audition; then the SHARC player |
+| 41 | Bloom: a VA machine around a modulator that bends time | **B0 built; B1 no, B1b yes** (the stock filter follows a FREQ rewritten in the incoming frame) | `docs/bloom-machine.md` | B2: the ColdFire half at machine type 7, on the hook bus; then B3 and a first flash |
 
 **The numbering is wrong and is left wrong on purpose.** There are two `## 8.`
 headings — "New LFO waveforms" and "FX machines on tracks" — and `## 7.` sits
@@ -3866,7 +3868,8 @@ On the instrument, the SHARC's time from the per-block routine's entry to the ma
 **What is known (static read of OS 1.11):**
 - PERSONALIZE has eleven items, not the two the manual lists (§13.7): LED INTENSITY, LED BACKLIGHT, REMEMBER SUBPAGE, U/D KEY MODE, PAGE AUTOCOPY, NOTE PARAM, LIVE REC OVERDUB, PARAM LIVE REC, TRK SELECT, NOTE PREVIEW, NOTE EDIT MENU. Not yet confirmed on the screen.
 - `PersonalizeMenuView`'s constructor (around `0x40097e86`) builds each item from a name routine (`0x400963c4`, `0x400963ec`, … one per item, each making its string with `0x401ce69e`) and value routines. It builds the item with `0x401170d8` and appends it with `0x4011690e`. A twelfth item means repeating one block, with LED BACKLIGHT's on/off item as the model.
-- The values are one byte each at `0x405cd898..0x405cd8ad`, each read and written individually by the settings load and save around `0x400bb3fa` and `0x400bb634`. The unreferenced bytes `0x405cd89d..0x405cd89f` are therefore **not persisted**. A persistent toggle needs the load/save pair hooked, after checking that stock ignores a value it doesn't know.
+- The values are one byte each at `0x405cd898..0x405cd8ad`, each read and written individually by the settings load and save around `0x400bb3fa` and `0x400bb634`. ~~The unreferenced bytes `0x405cd89d..0x405cd89f` are therefore not persisted.~~ **Corrected 2026-10-04:** `0x405cd89c` is a 32-bit setting (`0x400bb714`), and the whole settings block (`0x405cd85c`, 256 bytes) heads the working state that is saved to the +Drive whole and read back at start-up (`0x400f1ebe` / `0x400f2004`). Its unaddressed tail `0x405cd8ae..0x405cd95b` is persisted without any hook; `reloadconfirm` keeps its toggle at `0x405cd8ae` (`scripts/build_reload_confirm.py`).
+- **Done for `reloadconfirm` (2026-10-04):** a twelfth PERSONALIZE item, appended by a hook on the constructor's epilogue (`0x4009863e`), PAGE AUTOCOPY's managers reused. Checked in the emulator (it draws as a checkbox, YES ticks it). Note the menu is built at boot: `ui1200M` shows the stock eleven; a snapshot made with `guirun --patch-ranges` over `boot400M` is needed to see it.
 - The combo: the manual's own PERSONALIZE shortcuts are "hold [SETTINGS] + [TRIG 1..3]" (LED intensity) and "+ [TRIG 9]" (backlight), so a hold [SETTINGS] + an unused TRIG fits the idiom. Still to read: which TRIG keys the SETTINGS-hold handler acts on. The combo must not collide with the private combos kept in dn_sysex.
 
 **Order:** a RAM-only flag on the combo first; then the PERSONALIZE item; then its persistence.
@@ -4043,7 +4046,52 @@ fail on a build made broken on purpose, as the boot check is calibrated against 
 stock control. Built on `scripts/emulib/` and the existing harnesses; and anything about
 digikit itself that we learn goes back there as a PR.
 
-## 35. An input machine, as the Machinedrum's
+## 35. Granular synthesis (owner, 2026-10-08: after Wavefinder)
+
+The owner wants to explore granular synthesis once Wavefinder is finished. Reference to start from: https://acestudio.ai/blog/what-is-granular-synthesis/ (an introduction: grains, their size, density, position and pitch, windowing, clouds versus time-stretch). Nothing designed yet. What already exists that it would build on: Waverider's table store and reader (tables or samples on the +Drive, loaded at run time), the SHARC cycle estimate (`docs/sharc-cycle-model.md`) to size a grain engine's cost per voice before writing it, and the measured frame budget (opt2: 56.5 % used with 16 Waverider voices).
+
+## 36. Investigate: LFO trig modes ONE and HALF don't hold (community report, 2026-10-07/08)
+
+**The report** (Elektron community Discord, 2026-10-07): with a square LFO (driving a comb filter between two harmonics), TRIG MODE **ONE** seems to turn the modulation off after one cycle instead of holding its last position, and **HALF** jumps back to the middle. The reporter runs a modded box; a second user reproduced it on official **1.10**, and saw it with other LFO parameters too ("the full/half settings are broken"). A workaround offered there: SQR, speed 0, TRIG, and use the fade ramp. The owner said they'd investigate, and maybe "mod it out of sight".
+
+**What the manual promises** (DN2 manual, MOD page, Trig Mode; in our words): ONE starts at the trig, runs to the end of the waveform and stops, acting like an envelope; HALF runs to the middle of the waveform and stops. So the question is what "stops" outputs. Holding the value reached is what the reporter expects. A square's value at the end of its cycle, or at the middle, sits on an edge, so the output could flip there by design. And depth may be applied as if the LFO were off.
+
+**How to settle it:**
+1. Reproduce on **1.11** (the owner's version) with a clear control: a square, ONE and HALF, START PHASE 0 and 64, on a destination you can see (filter frequency), against TRIG mode.
+2. In the emulator, use the LFO evaluator mapped for LFO4 (evaluator A; `scripts/lfo4_harness.py`, `docs/` LFO4 notes). Step one LFO through a ONE and a HALF cycle and read its output and phase state after the stop. Is the stopped output the waveform at the stop phase, at phase 0, or zero (the bipolar centre)?
+3. If it's a bug (the output drops to 0, or the phase wraps before the hold), find where the stop is decided, and size a patch: hold the last output value, or clamp the phase just short of the wrap.
+
+**A fix would be a ColdFire patch.** The LFOs are computed on the ColdFire (the modulation reaches the DSP in the frame), so no DSP change. It goes through the usual gates and test plan; the factory behaviour stays selectable if any doubt remains.
+
+**Found (2026-10-08, static read + emulator):** evaluator A (1.11 `0x40137726`) decides the stop. On crossing the cycle's middle in HALF (mode 4, `0x401378c8`..`0x401378f0`), or its end in ONE (mode 3, `0x401378f4`..`0x40137924`), it **stores a per-waveform constant into the LFO's output** (state +84) and sets a stop flag. Once stopped, the waveform and the fade are skipped and the output stays that constant. The tables (TRI, SIN, SQR, SAW, EXP, RMP, RND): HALF `0x4020b2ec` = 0, 0, 0, 0, 0, max, 0; ONE `0x4020b308` = all 0; ONE at negative speed `0x4020b324` = 0, 0, 0, 0, max, 0, 0. So **the stop is "jump to a fixed value", almost always the centre, not "hold"**: invisible on TRI/SIN where the wave is at 0 there anyway, a jump on SQR (and on TRI's HALF, stopped at its peak in this harness).
+
+`scripts/emu_lfo_trigmodes.py` (the WSL venv; `ui1200M`, LFO3 on track 1 through the mirror, one trigger at frame 0, MULT 8): TRIG keeps running 400 frames (the control); ONE stops at frame 47, HALF at 24, and the destination goes to exactly 0x4000 (no modulation) on TRI, SIN, SQR, SAW. With `--hold` (NOPs on the two stores, `0x401378ec` `25500054` and `0x40137920` `25480054`) the LFO keeps its last value: TRI ONE 0x4034, HALF 0x4fe5; SIN 0x4028 / 0x4b61; SAW 0x401a / 0x480d. **Caveat:** in this harness the square never leaves 0x4fff, even in TRIG, so the square itself isn't exercised here (the harness feeds something the square needs differently; not found). **The candidate mod: two 4-byte NOPs**, ColdFire only. Before a build: check the RND and the EXP/RMP cases, where the tables hold the maximum, and whether anything else reads state +84 at the stop (the fade, the next trigger's restart).
+
+## 37. Waverider: a marker for every playing voice on the position line (owner, 2026-10-10: polish, later)
+
+**The request.** The position line under the wave shows one marker today: the position of the one voice the page follows. The owner wants a marker there for every voice of the track that is sounding, so a chord, unison or overlapping notes show each playhead.
+
+**To decide first: which wave is drawn above the line.** Two options, not chosen yet:
+- **One voice's wave**, as now, with the other voices shown only as markers on the line.
+- **An aggregate of every sounding voice**, so the picture matches what is heard.
+
+**What stays as it is.** The modulation indication on a parameter's destination stays linked to one voice. It only shows the speed and general movement, so one voice is enough (owner).
+
+**What exists to build on** (`docs/waverider-m10-move.md`, "Which voice the page follows"):
+- the DSP already reports each voice's position per oscillator, and the ColdFire reads those reports;
+- the page already tells which voices belong to the track and when one starts a new note, and applies the DSP's own MOVE arithmetic to place its marker.
+
+**To measure before building:**
+- how many markers stay readable on a line this wide (the marker is 3 pixels; a track can hold 16 voices), and what to draw when two land on the same pixel;
+- the page's redraw cost with all 16 voices moving, against the one-marker page;
+- for the aggregate wave: what it costs the ColdFire to sum up to 16 frames per redraw, and whether a sum of detuned or differently positioned voices reads as a wave at this size.
+
+## 38. Tags, a tag filter and search for wavetables (owner, 2026-10-14)
+
+The owner: "add tags to the tables (like sounds have) ... and the same filtering by tag and generic search that the sound manager currently implements". Three parts: tags on a stored table, of the same kind a sound carries; a filter by tag on the wavetable page, as the sound manager filters sounds; and a search by name there.
+
+Nothing designed yet. Where to start: how stock stores a sound's tags and how its sound manager filters and searches (the DN2 manual first, then the code), so the tag list and the filter and search screens are reused, not rewritten. A table's index entry has 28 reserved bytes (100..127, `docs/waverider-store.md`), a possible home for a tag field without moving anything; DNX is the format authority for what it writes, so the field is agreed with DNX, which would set tags on import. Control layout options come before code, as for Waverider's other pages.
+## 39. An input machine, as the Machinedrum's
 
 **Asked by the fork owner, 2026-10-17:** *"a way to modify the input audio,
 similar to Machinedrum's input machines."* A machine whose sound is the
@@ -4060,7 +4108,7 @@ Part A, and the evidence lives there, not here.
 - The first step is read-only: `tools/dn2reply_audio.py` on a stock + usbprobe
   build, with and without a signal at the inputs.
 
-## 36. A drum sampler on the transient bank
+## 40. A drum sampler on the transient bank
 
 **Asked by the fork owner, 2026-10-17:** *"a way to make sampled or
 sample-like drums. The drums on DN2 are sad and I need something better."*
@@ -4077,7 +4125,7 @@ Part B.
 - D0, the kit packer and a reference player to audition, is offline and needs
   no firmware.
 
-## 37. Bloom: a VA machine built around a modulator that bends time
+## 41. Bloom: a VA machine built around a modulator that bends time
 
 **Asked by the fork owner, 2026-10-17:** the effect in RÜFÜS DU SOL's
 *Innerbloom* (5:10-5:18), as a machine.

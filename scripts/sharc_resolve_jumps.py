@@ -6,11 +6,15 @@ Our sources write every branch target as an absolute short-word address, with th
 target named in the comment after it, in one of two forms:
 
     IF NE JUMP 0x16ee14;              // -> wr_t5v_next.
+    CALL 0x171c00;                    // -> wr_fft3.
+    CJUMP 0x172c80 (DB);              // -> wr_p5_phase.
     DM(I7, M7) = 0x16ee13;            // return address - 1: wr_t5v_next. - 1
 
 This assembles SOURCE with selas (WSL), reads where each named label lands (LOAD_SW
 plus its byte offset / 2), rewrites the literals, and repeats until the layout is
 stable (a literal's width can move later code). `--check` only reports mismatches.
+A target named in another of our sources (SIBLINGS, each at its own load address) is
+read from that source's layout, so resolve a source after the ones it jumps into.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-JUMP = re.compile(r"(JUMP\s+)(0x[0-9a-fA-F]+)(;\s*//\s*->\s*)([A-Za-z_][\w]*)\.")
+JUMP = re.compile(r"((?:C?JUMP|CALL)\s+)(0x[0-9a-fA-F]+)((?:\s*\(DB\))?;\s*//\s*->\s*)([A-Za-z_][\w]*)\.")
 RET = re.compile(r"(=\s*)(0x[0-9a-fA-F]+)(;\s*//\s*return address - 1:\s*)([A-Za-z_][\w]*)\.\s*-\s*1")
 
 
@@ -46,13 +50,43 @@ def labels(text: str) -> dict[str, int]:
     return out
 
 
-def resolve(src: str, load_sw: int, work: pathlib.Path) -> tuple[str, bytes, list[int]]:
+def siblings() -> dict[str, int]:
+    """Our SHARC sources that sit at a fixed address: name -> load sw."""
+    from dnfw.waverider import dsp  # noqa: PLC0415
+    return {"reader_m9": dsp.READER_SW, "machine9_live": dsp.LOOP_SW, "idle_load": dsp.IDLE_SW,
+            "block_count": dsp.COUNT_SW, "entry_mark": dsp.EMARK_SW, "modulator": dsp.MOD_SW,
+            "shapes": dsp.SHAPES_SW, "load": dsp.LOAD_SW, "pool": dsp.POOL_SW, "sync": dsp.SYNC_SW,
+            "smooth": dsp.SMOOTH_SW, "dclk": dsp.DCLK_SW, "sub": dsp.SUB_SW, "noise": dsp.NOISE_SW,
+            "trim": dsp.TRIM_SW,
+            "reader_mip": dsp.MIP_SW, "reader_miph": dsp.MIP_SW, "reader_miph2": dsp.MIP_SW,
+            "fft3": dsp.FFT3_SW, "spec3": dsp.SPEC3_SW, "mipb3": dsp.MIPB3_SW, "build3": dsp.BUILD3_SW,
+            "page5": dsp.PAGE5_SW, "phase": dsp.PHASE_SW, "formant": dsp.FORMANT_SW}
+
+
+def external(skip: pathlib.Path, work: pathlib.Path) -> dict[str, int]:
+    """label -> sw address of every label in the sibling sources but SKIP."""
+    import sharc_waverider_m3 as m3  # noqa: PLC0415
+    out = {}
+    for name, load_sw in siblings().items():
+        path = skip.with_name(f"{name}.asm")
+        if path.resolve() == skip.resolve() or not path.exists():
+            continue
+        text = path.read_text(encoding="utf-8")
+        (work / "x.asm").write_text(text, encoding="utf-8", newline="\n")
+        _, offs = m3._selas(work / "x.asm", work)
+        out.update({lab: load_sw + offs[k] // 2 for lab, k in labels(text).items() if k < len(offs)})
+    return out
+
+
+def resolve(src: str, load_sw: int, work: pathlib.Path,
+            extern: dict[str, int] | None = None) -> tuple[str, bytes, list[int]]:
     import sharc_waverider_m3 as m3  # noqa: PLC0415  (WSL + selas)
     lab = labels(src)
     for _ in range(6):
         (work / "r.asm").write_text(src, encoding="utf-8", newline="\n")
         be, offs = m3._selas(work / "r.asm", work)
-        addr = {name: load_sw + offs[k] // 2 for name, k in lab.items() if k < len(offs)}
+        addr = dict(extern or {})
+        addr.update({name: load_sw + offs[k] // 2 for name, k in lab.items() if k < len(offs)})
 
         def fix(m, minus=0):
             name = m.group(4)
@@ -77,7 +111,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     src = a.source.read_text(encoding="utf-8")
     with tempfile.TemporaryDirectory() as tmp:
-        out, be, offs = resolve(src, a.load_sw, pathlib.Path(tmp))
+        out, be, offs = resolve(src, a.load_sw, pathlib.Path(tmp), external(a.source, pathlib.Path(tmp)))
     if out == src:
         print(f"{a.source.name}: every target already resolved ({len(offs)} instructions, {len(be)} bytes)")
         return 0

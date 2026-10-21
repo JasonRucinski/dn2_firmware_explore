@@ -14,7 +14,7 @@ import struct
 import pytest
 
 from dnfw.mods import ModError, check_compatible
-from dnfw.mods import platform, waverider
+from dnfw.mods import bus, platform, waverider
 from dnfw.waverider import coldfire as CF
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -51,10 +51,18 @@ def long_at(content: bytes, va: int) -> int:
 
 def test_applies_to_both_sections(applied, dn2_111):
     assert set(applied.payloads) == {3, 7}
-    # MAIN OS: the stock image, plus the platform area carrying the M7 pages chunk
+    # MAIN OS: the stock image, plus the platform area carrying the M7 pages chunk and
+    # the +Drive chunk (the route, the loader, the pool), the group getter's displaced
+    # copy, the bus subscription and the machine count; the bus's own chunk comes and
+    # goes with split and join
     main, chunks = platform.split(applied.payloads[3])
     assert len(main) == len(dn2_111.container.find(3).unpack())
-    assert [kind for kind, _ in chunks] == [platform.area.CODE]
+    assert sorted(kind for kind, _ in chunks) == sorted([platform.DISP, bus.EVNT, bus.EVNT, bus.EVNT,
+                                                         bus.ADDS, platform.area.CODE, platform.area.CODE])
+    layout = waverider.SPEC["layout"]
+    assert bus.handlers(chunks) == {b"PSLT": [layout["wr_slot_id"]], b"PCCI": [layout["wr_cc_id"]],
+                                    b"PNRI": [layout["wr_nrpn_id"]]}
+    assert bus.totals(chunks) == {b"MACH": 1}
     assert len(applied.payloads[7]) > len(dn2_111.container.find(7).unpack())
 
 
@@ -167,7 +175,7 @@ def test_the_caves_were_free_in_stock(stock):
 
 def test_refuses_an_image_already_modified(dn2_111):
     main = bytearray(dn2_111.container.find(3).unpack())
-    main[CF.LOAD_BOUND - BASE + 1] = 9
+    main[CF.LIST_BEGIN - BASE + 5] ^= 4
     with pytest.raises(ModError):
         waverider._main_os(bytes(main))
 
@@ -185,7 +193,9 @@ def test_the_json_reproduces_the_compose(stock):
     from dnfw.waverider import cpage
     if not (available() and cpage.available()):
         pytest.skip("no m68k assembler or GCC")
-    built = CF.compose(stock, assemble, cpage.compile_page)
+    from dnfw.patch import cbuild
+    built = CF.compose(stock, assemble, cpage.compile_page, cbuild.build)
+    assert built["drive"]["code"].hex() == waverider.SPEC["drive"]["code"]
     content = bytearray(stock)
     for e in waverider.SPEC["edits"]:
         new = bytes.fromhex(e["new"])

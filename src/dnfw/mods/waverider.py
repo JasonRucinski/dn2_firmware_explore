@@ -30,6 +30,11 @@ Two sections, both from committed data:
 - **Its own SYN pages (Milestone 7):** `dnfw.waverider.pages`, one platform `CODE`
   chunk in RAM (`dnfw.mods.platform`): a Waverider track shows two pages of its own,
   labelled TUNE / POS / TBL where they work and empty where they do not yet.
+- **The hook bus (`dnfw.mods.bus`):** the mod adds one machine to the machine count,
+  so the platform writes the six machine-type bounds; its slot lookup is a handler of
+  `ev_param_slot`, and its MIDI CC and NRPN maps handlers of `ev_param_cc` and
+  `ev_param_nrpn` (`docs/waverider-midi.md`); and its group getter hook records the instructions it replays, so
+  lfo4's parameter bound lands in the copy. This is why it combines with fxmod and lfo4.
 
 ## A sound or project saved with a Waverider track
 
@@ -43,7 +48,7 @@ from __future__ import annotations
 import json
 import pathlib
 
-from . import RAM, Extent, ModError, Result, platform
+from . import RAM, Extent, ModError, Result, bus, platform
 from ..waverider import dsp
 
 ID = "waverider"
@@ -56,8 +61,13 @@ BASE = 0x40000400
 SPEC = json.loads((pathlib.Path(__file__).with_name("waverider_code.json")).read_text())
 
 
+# The group getter's hook replays its two stock instructions unchanged (pages.wr_group).
+DESTGROUP_SITE, DESTGROUP_DISPLACED = 0x400DBCE8, 10
+
+
 def extents(firmware=None, area_length: int = 0) -> list[Extent]:
-    out = [Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"]) for e in SPEC["edits"]]
+    out = [Extent(MAIN_OS, e["va"] - BASE, len(e["new"]) // 2, e["what"],
+                  displaced=e["va"] == DESTGROUP_SITE) for e in SPEC["edits"]]
     out += platform.extents(area_length)
     size = None
     if firmware is not None:
@@ -77,13 +87,52 @@ def extents(firmware=None, area_length: int = 0) -> list[Extent]:
 # them did, once the page code before them grew. They are data by construction, so
 # every word place inside them is declared not to hold an address; the code around
 # them is still checked.
+#
+# Three more places in the code, each disassembled in the applied chunk (2026-10-11); the
+# places move whenever the code before them does, so a change to a chunk needs them
+# checked again:
+#  - two instructions read as one word: `notl %d3 ; andl %d3,%d2` (46 83 c4 83), and
+#    `notl %d0 ; tstw %d0` (46 80 4a 40);
+#  - `addil #0x469fe800,%d0` (06 80 46 9f e8 00): the pool's display spans at 0x46a00000
+#    less WR_TABLES (4) tables of 1,536 bytes. `WR_POOL_SPANS[tbl - WR_TABLES]` folds the
+#    subtraction into the base, so the value is an address, biased 0x1800 below the
+#    declared range and past the checker's 64-byte slack. Nothing is read at it.
 NOT_RAM = tuple(range(SPEC["layout"]["wr_spans"] & ~1, SPEC["layout"]["wr_spans_end"], 2))
+
+# Word places that read as an address above BSS and are not one, each disassembled on
+# 2026-10-16 (the label texts read again after the bus moved them 10 bytes down, 4 bytes up when SMT1/SMT2
+# became SLW1/SLW2, 8 bytes up when TYPE lost Formant and Comb, 40 bytes down in 0.3.1 when SLW1/SLW2 got their own
+# range entries, and 4 bytes down when TYPE gained Formant, 2026-10-17: the words read Nois, Fold and Form) (objdump -m m68k:cfv4e over the two CODE chunks). A change to the code moves
+# them, so the check flags the new places again and they are read afresh.
+NOT_RAM += (
+    # 2026-10-18, MIDI CC: the assembly grew 730 bytes and the renderer moved 0x400 up; knob
+    # travel: 92 bytes more. Read again in the applied chunk
+    0x4670B2F8,              # "Noise Colour": the label text "Nois" (the uncached window's 0x4e...)
+    0x4670B316,              # "ave Fold": the label text "Fold"
+    0x4670B48E,              # "Formant", TYPE's fourth value: the text "Form"
+    0x4670B94A,              # notl %d3 ; andl %d3,%d2
+    0x4670BBDA,              # addil #0x469fe800,%d0: the pool spans' base 0x46a00000 less two
+                             # 3072 B entries, indexed by the table number (2 and up), declared
+    0x467F1B52, 0x467F27D4, 0x467F2D22,   # movel #0x467f46xx,(a0) ; clrl d(a0): read 2 bytes late
+    0x467F326A, 0x467F3270, 0x467F327A, 0x467F3280, 0x467F32CC, 0x467F32DC,
+                             # lea / movel of 0x467f46xx and 0x467f8e48: read 2 bytes late
+    0x467F4006,              # notl %d0 ; tstw %d0
+    0x467F4720, 0x467F472C, 0x467F4730, 0x467F4734,
+                             # a table of 0x467f46xx pointers: read 2 bytes late
+) + (
+    0x4670C8E2, 0x4670CBCE, 0x467F3180)
 
 
 def ram() -> list[Extent]:
-    chunk = SPEC["chunk"]
+    chunk, drive = SPEC["chunk"], SPEC["drive"]
     return [Extent(RAM, chunk["load"], len(bytes.fromhex(chunk["code"])),
-                   "Waverider's SYN pages: code, descriptors, labels (M7)")]
+                   "Waverider's SYN pages: code, descriptors, labels (M7)"),
+            Extent(RAM, drive["load"], len(bytes.fromhex(drive["code"])),
+                   "Waverider's +Drive chunk: the /waverider route, the table loader, the pool"),
+            Extent(RAM, drive["spans"]["va"], drive["spans"]["bytes"],
+                   "the pool tables' display spans (127 x 16 frames x 96 columns)"),
+            Extent(RAM, SPEC["layout"]["set_ctx"], 4,
+                   "the parameter setter's mark: the machine type of the track being set (MIDI)")]
 
 
 def _main_os(original: bytes) -> bytes:
@@ -120,13 +169,21 @@ def apply(firmware) -> Result:
         section7 = dsp.section7(stream)
     except dsp.DspError as exc:
         raise ModError(f"the DSP boot stream: {exc}") from exc
-    chunk = SPEC["chunk"]
+    chunk, drive = SPEC["chunk"], SPEC["drive"]
     code = platform.area.CodeChunk(chunk["load"], bytes.fromhex(chunk["code"])).pack()
-    content = platform.join(_main_os(main_os), others + [(platform.area.CODE, code)])
+    dcode = platform.area.CodeChunk(drive["load"], bytes.fromhex(drive["code"])).pack()
+    layout = SPEC["layout"]
+    content = platform.join(_main_os(main_os), others + [
+        (platform.area.CODE, code), (platform.area.CODE, dcode),
+        platform.displace(DESTGROUP_SITE, DESTGROUP_DISPLACED, layout["wr_group_displaced"]),
+        bus.subscribe(b"PSLT", layout["wr_slot_id"]),
+        bus.subscribe(b"PCCI", layout["wr_cc_id"]),
+        bus.subscribe(b"PNRI", layout["wr_nrpn_id"]),
+        bus.contribute(b"MACH", 1)])
     area_length = len(content) - platform.STOCK_LENGTH
     return Result(payloads={MAIN_OS: content, DSP_STREAM: section7},
                   extents=extents(firmware, area_length),
                   notes=[f"MACHINE SEL offers {SPEC['names'][0].upper()} after SWARMER "
                          f"(type {SPEC['new_type']}; WaveTone's pages)",
-                         f"{len(SPEC['edits'])} edits in section 3, nothing appended; "
-                         f"section 7 {len(stream):,} -> {len(section7):,} B"])
+                         f"{len(SPEC['edits'])} edits in section 3, two CODE chunks in the "
+                         f"platform's area; section 7 {len(stream):,} -> {len(section7):,} B"])

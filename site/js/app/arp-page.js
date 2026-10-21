@@ -26,8 +26,8 @@ async function buildImage() {
   const { content, notes } = apply(state.firmware);
   await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "midiarp", note: notes[1] });
+    new Map([[3, replacement(state.firmware, 3, content, "midiarp")]]),
+    { filename: state.filename, mod: "midiarp", suffix: "midiarp", note: notes[1] });
 }
 
 function open(file) {

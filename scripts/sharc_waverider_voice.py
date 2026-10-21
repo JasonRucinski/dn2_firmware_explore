@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_voice.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu [--blocks 16] [--seconds 2.5]
+        --digikit ../digikit-main [--blocks 16] [--seconds 2.5]
 
 Steps, each reported PASS or FAIL (`docs/waverider-feasibility.md`, "Milestone 2"):
 
@@ -49,6 +49,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import sharc_dn2_fixups as fx                               # noqa: E402
 import sharc_waverider_render as m1                          # noqa: E402
 from dnfw.waverider import render, testtable, voice as V    # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 RATE = 48000
@@ -101,6 +102,8 @@ class Machine:
 
 
 def word(state, addr: int) -> int | None:
+    if hasattr(state, "native_word"):          # sharc_native.Engine: the same word, from the native engine
+        return state.native_word(addr)
     v = fx._dm_read(state, addr, 4)
     return v.value if isinstance(v, fx.Const) else None
 
@@ -155,6 +158,8 @@ def controls(mach: Machine) -> dict:
 
 
 def word_reg(runner, name: str) -> int:
+    if hasattr(runner, "native_reg"):
+        return runner.native_reg(fx.UREG_CODES[name]) or 0
     v = runner.state.uregs[fx.UREG_CODES[name]]
     return v.value if isinstance(v, fx.Const) else 0
 
@@ -366,8 +371,7 @@ def main(argv=None) -> int:
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=16, help="32-sample blocks per run")
     p.add_argument("--reader-blocks", type=int, default=None,
                    help="blocks for our reader's run only (default --blocks). A looped WAV "

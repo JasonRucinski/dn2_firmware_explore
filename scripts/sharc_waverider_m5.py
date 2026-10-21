@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_m5.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit D:/01_Code/Z_Personal/digikit-wt-sharcemu \\
+        --digikit ../digikit-main \\
         [--blocks 8] [--frame FILE | --frame-be FILE | --frames PATTERN]
 
 The image is `dnfw.waverider.dsp.section7(stock)` -- byte for byte what the mod
@@ -65,9 +65,10 @@ import sharc_waverider_m4 as m4                                # noqa: E402
 import sharc_waverider_render as m1                            # noqa: E402
 import sharc_waverider_voice as m2                             # noqa: E402
 from dnfw.image import bootstream, sharc_object                # noqa: E402
-from dnfw.waverider import dsp, live, render, testtable        # noqa: E402
+from dnfw.waverider import dsp, live, mip, render, testtable        # noqa: E402
 from dnfw.waverider import frame as FR                         # noqa: E402
 from dnfw.waverider import voice as V                          # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 
 OUT = ROOT / "out" / "waverider"
 SHARC = ROOT / "csrc" / "waverider" / "sharc"
@@ -75,7 +76,11 @@ RATE, BLOCK = 48000, 32
 LOOP_RESUME = 0x1C944C          # where machine5_live rejoins the per-track chain
 
 
-SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"))
+SHIPPED_KEYS = (("reader", "READER_SW"), ("machine5_live", "LOOP_SW"), ("modulator", "MOD_SW"), ("sync", "SYNC_SW"),
+                ("smooth", "SMOOTH_SW"), ("dclk", "DCLK_SW"), ("sub", "SUB_SW"), ("noise", "NOISE_SW"), ("trim", "TRIM_SW"),
+                ({"hermite": "reader_miph", "hermite2": "reader_miph2"}.get(mip.INTERP, "reader_mip"), "MIP_SW"))
+# (reader_mip and reader_miph load at the same address; the image carries the one
+# dnfw.waverider.mip.INTERP picks, so that one is the one decoded)
 
 
 def shipped_sources() -> tuple[str, ...]:
@@ -101,6 +106,13 @@ RATE1, MPOS1, MLEV1, MOVE1 = live.MOVE_SLOTS[0][:4]   # M10a: PD1, OFS1, DRIF, A
 RATE2, MPOS2, MLEV2, MOVE2 = live.MOVE_SLOTS[1][:4]   # PD2, OFS2, NLEV, BASE
 TRIG = live.MOVE_SLOTS[0][4]                          # TYPE, shared (0: restart on a note)
 PRST = live.MOVE_SLOTS[0][5]                          # RSET, shared: the oscillators Off/On/Random
+SYNC1, SYNC2 = live.SYNC_SLOTS                        # M10b-2: MOD, CHAR (Off / On)
+SMTH1, SMTH2 = live.SMTH_SLOTS                        # DEC, WDTH: 0 no glide (since 0.3.1)
+DCLK = live.DCLK_SLOT                                 # HOLD, shared: 0 Off, else On
+JUMP_AT = 3                                           # the SMTH / DCLK runs' POS jump
+TRIM_SLOT = live.TRIM_PARAM                           # FINE, the level trim (page 4 D)
+SYNC_TEMPO = 14400                                    # BPM x 120: 120 BPM
+SYNC_P0 = 0xFFFD0000                                  # a position that wraps in block 4
 TUN1_ZERO = 0x4000              # the frame word for 0 semitones: the sound's own (probe, 2026-09-30)
 FRAME_COPY = 0x25C48C           # where sw 0x1c2712 copies the frame image
 OSC2_BLOCKS = 0x900             # osc 2's reader blocks are osc 1's + 0x900 (M9b): 0x2de800 + 32t
@@ -136,6 +148,14 @@ def init_on(snap, m2mach, image: Image):
     return runner
 
 
+def native_on(init, image: Image, library=None, host_fixups: bool = True):
+    """INIT (from `init_on`) in digikit's native engine: `run_blocks` then runs the same
+    blocks about 20 times faster. See scripts/sharc_native.py for what that is trusted for.
+    One engine holds one run's state: make a new one for each series of blocks."""
+    import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
+    return sharc_native.Engine(library or sharcemu.native_library(), image.memory, init, host_fixups)
+
+
 def fixups(hooks=None) -> fx.Fixups:
     return m4.fixups(hooks)
 
@@ -148,7 +168,8 @@ def base_frame(sound, machines, *, t0=5, others=None, overrides=None, note=0x3C0
     OTHERS = {track: machine type} for tracks 1-15 (default MIDI)."""
     # machines' defaults are the sound's scale, which is what the instrument's frame
     # carries (read through the USB probe, 2026-09-30)
-    track0 = {**machines.get(1, {}), TUN1: TUN1_ZERO, **(overrides or {})}
+    # SLW Off (0), as MACHINE SEL gives a new Waverider sound since 0.3.1: the stock sound holds 127
+    track0 = {**machines.get(1, {}), TUN1: TUN1_ZERO, SMTH1: 0, SMTH2: 0, **(overrides or {})}
     f = FR.init_frame(sound, t0, trigger=trigger, track0=track0)
     f.header(FR.NOTE, 0, note)
     for t, m in (others or {}).items():
@@ -181,11 +202,18 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
     """BLOCKS calls of sw 0x1c2712, FRAMES(b) -> frame bytes. Records, per block: every
     track buffer after the type-5 loop (at 0x1c944c) and at the end of the dispatch;
     track 0 at the amp's input and output; each type-5 track's inputs as the DSP holds
-    them at the loop's entry; the reader blocks the loop filled; loop entries."""
+    them at the loop's entry; the reader blocks the loop filled; loop entries.
+
+    A Python runner INIT runs in digikit's Rust engine (a new engine each call), the default for
+    every gate (owner, 2026-10-17). DNFW_WAVERIDER_PYTHON=1 runs the Python runner instead, as a
+    second opinion: where the two differ, the Python runner decides (scripts/sharc_native.py)."""
+    if os.environ.get("DNFW_WAVERIDER_PYTHON") != "1" and not hasattr(init, "block_call"):
+        import sharc_native  # noqa: PLC0415  (digikit's binding is importable only after fx.bind)
+        init = sharc_native.Engine(sharcemu.native_library(), init.data, init)
     state = init
     out = {"machine": [], "amp_in": [], "amp_out": [], "buffers": [], "buffer_bits": [], "t5_inputs": [],
            "reader_blocks": [], "reader_blocks2": [], "loop_entries": 0, "setup": [],
-           "reply_tail": [], "move_phases": []}
+           "reply_tail": [], "move_phases": [], "move_random": []}
     instr = wall = 0
     for b in range(blocks):
         tap = {}
@@ -214,6 +242,17 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                                              for s in live.MOVE_SLOTS[1][:4]),
                               "trig": frame_word(r.state, FR.slot_offset(t, TRIG)),
                               "prst": frame_word(r.state, FR.slot_offset(t, PRST)),
+                              # M10b-2: SYNC per oscillator; the song position and the
+                              # tempo, as the DSP's frame copy holds them
+                              "sync": (frame_word(r.state, FR.slot_offset(t, SYNC1)),
+                                       frame_word(r.state, FR.slot_offset(t, SYNC2))),
+                              "song": frame_word(r.state, live.SYNC_POSITION_LO)
+                                      | frame_word(r.state, live.SYNC_POSITION_HI) << 16,
+                              "tempo": frame_word(r.state, live.SYNC_TEMPO),
+                              "smth": (frame_word(r.state, FR.slot_offset(t, SMTH1)),
+                                       frame_word(r.state, FR.slot_offset(t, SMTH2))),
+                              "dclk": frame_word(r.state, FR.slot_offset(t, DCLK)),
+                              "trim": frame_word(r.state, FR.slot_offset(t, TRIM_SLOT)),
                               "triggered": bool(frame_word(r.state, FR.TRIG_NOTE) >> t & 1)}
             tap["t5_inputs"] = ins
 
@@ -222,6 +261,8 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
             # the count word down to 0, so the contract is read on entry, not at resume
             blk = m2.word_reg(r, "R4") or 0
             t = (blk - dsp.READER_BLOCKS_DM) // 32
+            if not (0 <= t < 16 or OSC2_BLOCKS // 32 <= t < OSC2_BLOCKS // 32 + 16):
+                return                          # DCLK's one-sample call on its scratch block (M10b-2)
             words = [m2.word(r.state, blk + 4 * k) or 0 for k in range(6)]
             if t >= OSC2_BLOCKS // 32:          # osc 2's blocks (M9b), 0x2de800 + 32t
                 tap.setdefault("reader_in2", {})[t - OSC2_BLOCKS // 32] = words
@@ -240,6 +281,9 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
             tap["reply_tail"] = [m2.word(r.state, REPLY_TAIL_DM + (page << 12) + 4 * k) or 0
                                  for k in range(8)]
             tap["move_phases"] = [m2.word(r.state, dsp.MOVE_PHASES_DM + 4 * k) or 0 for k in range(32)]
+            # M10b-4: the random shapes' (a, b) per voice and oscillator, then the generator
+            tap["move_random"] = [m2.word(r.state, dsp.MOVE_RANDOM_DM + 4 * k) or 0 for k in range(64)] + [
+                m2.word(r.state, dsp.MOVE_RANDOM_GEN_DM) or 0]
 
         def amp(r):
             if m2.word_reg(r, "R12") == tap["bufs"][0] and "amp_in" not in tap:
@@ -264,9 +308,10 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
                  SETUP_TABLE_READ: table_read, SETUP_NONE: none_arm}
         hooks.update(extra_hooks or {})
         f = fixups(hooks)
-        r = m4.unpack_call(state, frames(b))
+        native = hasattr(state, "block_call")   # a sharc_native.Engine: the taps above read it as they are
+        r = state.block_call(frames(b)) if native else m4.unpack_call(state, frames(b))
         t0 = time.perf_counter()
-        res = fx.run(r, 8_000_000, f)
+        res = r.run(8_000_000, hooks, m4.UNPACK_RETURN) if native else fx.run(r, 8_000_000, f)
         wall += time.perf_counter() - t0
         if not (res[0] == "halt" and res[1].pc_sw == m4.UNPACK_RETURN):
             halt = f"{res[1].reason} at {res[1].pc_sw:#x}" if res[0] == "halt" else f"{res[0]} at {res[1]:#x}"
@@ -282,6 +327,7 @@ def run_blocks(init, frames, blocks: int, extra_hooks=None):
         out["reader_blocks2"].append(tap.get("reader_blocks2", {}))
         out["reply_tail"].append(tap.get("reply_tail"))
         out["move_phases"].append(tap.get("move_phases"))
+        out["move_random"].append(tap.get("move_random"))
         instr += res[2]
         state = r
     return {**out, "ok": True, "blocks": blocks, "instructions": instr, "wall_s": round(wall, 1),
@@ -302,10 +348,23 @@ def track_series(run, t) -> list[float]:
 def reference_for(run, t, tables, precision="float32") -> list[float]:
     """live.render_two fed the DSP's own unpacked inputs for track T, block by block:
     both oscillators (M9b), osc 2 from its own four frame words."""
-    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"]),
-            (*i[t]["osc2"], *i[t]["move2"]), (i[t]["trig"], i[t]["triggered"], i[t]["prst"]))
+    seq = [(i[t]["note"], (i[t]["wav1"], i[t]["tbl1"], i[t]["tun1"], i[t]["lev1"], *i[t]["move1"],
+                           i[t]["sync"][0], i[t]["smth"][0]),
+            (*i[t]["osc2"], *i[t]["move2"], i[t]["sync"][1], i[t]["smth"][1]),
+            (i[t]["trig"], i[t]["triggered"], i[t]["prst"], i[t]["song"], i[t]["tempo"], i[t]["dclk"]))
            for i in run["t5_inputs"] if t in i]
-    return live.render_two(tables, seq, BLOCK, precision)
+    trims = [i[t]["trim"] for i in run["t5_inputs"] if t in i]
+    return live.render_two(tables, seq, BLOCK, precision, trims=trims)
+
+
+def reference_unslewed(run, t, tables) -> list[float]:
+    """reference_for with TRIM's factor taken as the knob's every block, as before 0.1.2."""
+    keep = live.trim_slew
+    live.trim_slew = lambda last, target, note_on: target
+    try:
+        return reference_for(run, t, tables)
+    finally:
+        live.trim_slew = keep
 
 
 def mismatches(a, b) -> int:
@@ -355,6 +414,23 @@ def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict
             insn = dk.st.decode_at(image.memory, None, load_sw + off // 2)
             if insn.kind in ("unknown", "uncertain") or (insn.length_bytes or 0) != end - off:
                 bad.append(f"+{off} digikit {insn.type_name}/{insn.length_bytes} vs {end - off}")
+            sub = m3.SUBWORD_LOAD.match(lines[k].split("//", 1)[0].strip())
+            if sub:
+                # a byte / short-word load, re-encoded as Type 3d (m3.fix_subword): digikit must
+                # read 3d with this load's fields; selmap has no Type 3d and reads 3a with a
+                # compute field of 0x31xxxx, so it is held to the load's registers only
+                f = insn.fields or {}
+                l, x, w = m3.SUBWORD[sub.group(4).upper()]
+                want3d = {"u": 1, "i[2:0]": int(sub.group(2)), "m[2:0]": int(sub.group(3)), "cond[4:0]": 31,
+                          "g": 0, "d": 0, "l": l, "ureg[6:0]": int(sub.group(1)), "ex": 0, "w": w, "x": x}
+                if insn.type_name != "3d" or {k2: f.get(k2) for k2 in want3d} != want3d:
+                    bad.append(f"+{off} digikit {insn.type_name} {f} vs Type 3d {want3d}")
+                if use_selmap:
+                    n, text = sel.get(off, (0, "?"))
+                    plain = norm(f"R{sub.group(1)} = DM(I{sub.group(2)}, M{sub.group(3)})")
+                    if n != 6 or not norm(text).endswith(plain):
+                        bad.append(f"+{off} selmap {n}B '{text}' vs a 3a reading of '{lines[k].strip()}'")
+                continue
             if use_selmap:
                 n, text = sel.get(off, (0, "?"))
                 want = norm(lines[k])
@@ -382,14 +458,17 @@ def decode_check(dk, image: Image, work: pathlib.Path, use_selmap: bool) -> dict
 
 # -- WAVs ------------------------------------------------------------------------------------------
 
-def wav(name, samples, seconds, wavs, what, normalise=False):
+def wav(name, samples, seconds, wavs, what, normalise=False, source="the runner"):
+    """SOURCE goes into the file with the loop note, so a reader of the WAV alone knows
+    what rendered it: the runner (the default) or "the model" for a preview."""
     n = int(seconds * RATE)
     pk = V.peak(samples)
     scale = 0.9 / pk if normalise and pk else 1.0
     looped = 0 < len(samples) < n
     data = V.loop_to([x * scale for x in samples], n) if looped else [x * scale for x in samples]
     path = OUT / name
-    m1.write_wav(path, data, RATE)
+    m1.write_wav(path, data, RATE, source + (", LOOPED from %d rendered samples" % len(samples) if looped
+                                             else ", not looped") + ": " + what)
     wavs.append({"file": str(path), "seconds": round(len(data) / RATE, 3),
                  "rendered_samples": len(samples), "looped": looped, "gain": round(scale, 4),
                  "peak": pk, "rms": V.rms(samples),
@@ -411,8 +490,7 @@ def main(argv=None):
     p.add_argument("--image", type=pathlib.Path,
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")))
+                   default=sharcemu.path())
     p.add_argument("--blocks", type=int, default=8)
     p.add_argument("--seconds", type=float, default=2.5)
     p.add_argument("--frame", help="a 2,688-byte frame in DSP memory order (dnfw.waverider.frame)")
@@ -481,7 +559,7 @@ def main(argv=None):
                 wav("m5_voice_machine.wav", track_series(runs["init"], 0), a.seconds, wavs,
                     "track 0's buffer after the type-5 loop, bit-exact to the reference (init sound)")
                 wav("m5_preview_init_sound.wav", preview(tables, 60.0, 0, 0, 0, a.seconds), a.seconds, wavs,
-                    "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)")
+                    "PREVIEW, not the runner: the reference for the init sound, note 60, POS 0, slot 0 (the saw)", source="the model")
             for key, what, pv in (
                     ("pos120", "POS (WAV1) 120: slot 0's last frame, the sine", (60.0, 0x7800, 0x7800, 0)),
                     ("slot1", "TBL1 1, WAV1 64: the overtone table, partials 9-10", (60.0, 0x4000, 0x4000, 0x100)),
@@ -490,16 +568,16 @@ def main(argv=None):
                     wav(f"m5_{key}_machine.wav", track_series(runs[key], 0), a.seconds, wavs,
                         f"track 0's buffer, {what}")
                     wav(f"m5_preview_{key}.wav", preview(tables, *pv[:1], pv[1], pv[2], pv[3], a.seconds),
-                        a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}")
+                        a.seconds, wavs, f"PREVIEW, not the runner: the reference for {what}", source="the model")
             if runs["silent"]["ok"]:
                 wav("m5_no_trigger.wav", runs["silent"]["amp_out"], a.seconds, wavs,
                     "control: no trigger, amp output (silent)")
             wav("m5_demo_pos_sweep_preview.wav", preview(tables, 48.0, 0, 0x7800, 0, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 0 at note 48, POS swept 0 -> 120 over 4 s: "
-                "a buzzy saw darkening to a sine")
+                "a buzzy saw darkening to a sine", source="the model")
             wav("m5_demo_harmonic_climb_preview.wav", preview(tables, 48.0, 0, 0x7800, 0x100, 4.0), 4.0, wavs,
                 "DEMO PREVIEW, not the runner: slot 1 at note 48, POS swept 0 -> 120 over 4 s: "
-                "the overtone series climbing, partial 1 to 16")
+                "the overtone series climbing, partial 1 to 16", source="the model")
 
         if "stock" in steps:
             print("\nstep 4: types 0-4 unchanged")
@@ -524,7 +602,7 @@ def main(argv=None):
                 i0 = run["t5_inputs"][-1][t]
                 wav(f"m5_preview_frame{sep[:-1]}.wav", preview(tables, i0["note"], i0["wav1"], i0["wav1"],
                                                     i0["tbl1"], a.seconds), a.seconds, wavs,
-                    "PREVIEW, not the runner: the reference for the caller's frame's last block inputs")
+                    "PREVIEW, not the runner: the reference for the caller's frame's last block inputs", source="the model")
 
     ok = bool(results) and all(r.get("ok") for r in results.values())
     report["steps"] = results
@@ -590,7 +668,7 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
     # our spans, as the runner's memory holds them after init
     spans = {}
     for what, at, payload in dsp.spans():
-        dm = at - dsp.LOAD_ALIAS
+        dm = at if at >= 0x80000000 else at - dsp.LOAD_ALIAS        # DDR has no load alias
         words = [m2.word(init.state, dm + 4 * k) for k in range(len(payload) // 4)]
         want = [struct.unpack_from("<I", payload, 4 * k)[0] for k in range(len(payload) // 4)]
         spans[what] = sum(1 for x, y in zip(words, want) if x != y)
@@ -617,12 +695,28 @@ def step_map(dk, snap, m2mach, m5: Image, stock: bytes, init, sound, machines) -
 # -- step 3 -------------------------------------------------------------------------------------------
 
 def step_voice(init, sound, machines, blocks, tables) -> dict:
-    def frames(**kw):
+    def frames(song=None, jump=None, trim=None, **kw):
         def fb(b):
-            return base_frame(sound, machines, trigger=(b == 1), **kw).to_bytes()
+            f = base_frame(sound, machines, trigger=(b == 1), **kw)
+            if trim is not None:                # 0.1.2: TRIM's word for this block
+                f.param(0, TRIM_SLOT, trim(b))
+            if jump is not None and b >= JUMP_AT:      # M10b-2: POS jumps, no note
+                f.param(0, WAV1, jump)
+            if song is not None:                # M10b-2: what the ColdFire's sync.c writes
+                p = song(b)
+                f.put(live.SYNC_POSITION_LO, p & 0xFFFF)
+                f.put(live.SYNC_POSITION_HI, p >> 16)
+                f.put(live.SYNC_TEMPO, SYNC_TEMPO)
+            return f.to_bytes()
         return fb
 
+    def song(b):                                # 120 BPM, a block a frame
+        return (SYNC_P0 + b * live.trunc(SYNC_TEMPO * live.SYNC_K)) & 0xFFFFFFFF
+
     solo = {LEV2: 0}                    # osc 1 alone: the loop skips osc 2 (M9b)
+
+    def trim_steps(b):
+        return live.TRIM_DEFAULT_WORD if b < JUMP_AT else 0x7F00 if b < JUMP_AT + 2 else 0
     runs = {"init": run_blocks(init, frames(), blocks),
             "init_solo": run_blocks(init, frames(overrides=solo), blocks),
             "pos120": run_blocks(init, frames(overrides={**solo, WAV1: 0x7800}), blocks),
@@ -640,21 +734,61 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
                                                            TUN2: TUN1_ZERO + 12 * 256}), blocks),
             # M10a: MOVE. POS swept up by a fast ramp (osc 1 alone); LEV shaped by a fast
             # looping triangle (rising over these blocks); the same ramp free-running (TRIG 0), which the trigger at
-            # block 1 does not restart; osc 2's own modulator on its own controls
+            # block 1 does not restart; osc 2's own modulator on its own controls. (M10b-4's
+            # order: 0 Ramp Up, 7 Tri Loop.)
             "move_pos": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
-                                                           MOVE1: 0x0100, RATE1: 0x6400}), blocks),
+                                                           MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             "move_lev": run_blocks(init, frames(overrides={**solo, WAV1: 0x4000, MLEV1: 0x7f00,
-                                                           MOVE1: 0x0300, RATE1: 0x6400}), blocks),
+                                                           MOVE1: 0x0700, RATE1: 0x6400}), blocks),
             "move_free": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
-                                                            MOVE1: 0x0100, RATE1: 0x6400}), blocks),
+                                                            MOVE1: 0x0000, RATE1: 0x6400}), blocks),
             "move_osc2": run_blocks(init, frames(overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0,
-                                                            MOVE2: 0x0100, RATE2: 0x6400}), blocks),
+                                                            MOVE2: 0x0000, RATE2: 0x6400}), blocks),
+            # M10b-4: the new shapes on POS, osc 1 alone: Exp Up, Down Loop, Rnd Hold, Rnd
+            # Glide; and both random shapes at once (Hold on osc 1, Glide on osc 2), which
+            # share the generator and keep their own (a, b)
+            "move_exp": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                           MOVE1: 0x0200, RATE1: 0x6400}), blocks),
+            "move_downloop": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                                MOVE1: 0x0600, RATE1: 0x6400}), blocks),
+            "move_hold": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                            MOVE1: 0x0900, RATE1: 0x6400}), blocks),
+            "move_glide": run_blocks(init, frames(overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                             MOVE1: 0x0a00, RATE1: 0x6400}), blocks),
+            "move_rnd_both": run_blocks(init, frames(overrides={WAV1: 0, MPOS1: 0x6400, MOVE1: 0x0900,
+                                                                RATE1: 0x6400, WAV2: 0, MPOS2: 0x6400,
+                                                                MOVE2: 0x0a00, RATE2: 0x6400}), blocks),
+            # M10b-2: SYNC. Free: the phase is the position x the note's multiplier (RATE 100
+            # is 1/32 T, x 1152), through the position's wrap; Retrig: RATE 50 is a half note,
+            # a second at 120 BPM, so the step is 2^32 / 1500; osc 2's own SYNC; and SYNC off
+            # with the same position, which must ignore it (the free ramp's run, moved)
+            "sync_free": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
+                                                                       MOVE1: 0x0500, RATE1: 0x6400, SYNC1: 0x100}), blocks),
+            "sync_retrig": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400,
+                                                                         MOVE1: 0x0500, RATE1: 0x3200, SYNC1: 0x100}), blocks),
+            "sync_osc2": run_blocks(init, frames(song=song, overrides={LEV1: 0, WAV2: 0x7800, MPOS2: 0, TRIG: 0x100,
+                                                                       MOVE2: 0x0500, RATE2: 0x6400, SYNC2: 0x100}), blocks),
+            "sync_off": run_blocks(init, frames(song=song, overrides={**solo, WAV1: 0, MPOS1: 0x6400, TRIG: 0x100,
+                                                                      MOVE1: 0x0000, RATE1: 0x6400}), blocks),
+            # M10b-2: SMTH and DCLK, osc 1 alone, POS jumping from 0 to 120 at JUMP_AT with no
+            # note: SMTH 0 (the default since 0.3.1) does not glide, SMTH 67 does; DCLK 3 ms crossfades
+            # the jump, Off does not, and the same without the jump is the old frame alone
+            "smth_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
+            "smth_glide": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0,
+                                                                          SMTH1: 0x4300}), blocks),
+            "dclk_on": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: live.DCLK_DEFAULT}),
+                                  blocks),
+            "dclk_stay": run_blocks(init, frames(overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
+            "dclk_off": run_blocks(init, frames(jump=0x7800, overrides={**solo, WAV1: 0, DCLK: 0}), blocks),
             # PRST (m10a3): the oscillators at the note (block 1) -- Off keeps running, Random
             # starts from the cycle counter (no reference: its tap is not compared)
             "prst_off": run_blocks(init, frames(overrides={**solo, PRST: 0}), blocks),
             "prst_random": run_blocks(init, frames(overrides={**solo, PRST: 0x200}), blocks),
             # M9b: DETN is a detune from osc 1, so TUNE +12 moves both oscillators
             "tune_both": run_blocks(init, frames(overrides={WAV1: 0x7800, TUN1: TUN1_ZERO + 12 * 256}), blocks),
+            # 0.1.2: TRIM jumps to 0 dB at JUMP_AT and to -15 dB two blocks on, no note: the
+            # factor slews 0.1 dB a block (a jump popped until then)
+            "trim_jump": run_blocks(init, frames(trim=trim_steps, overrides={**solo, WAV1: 0x7800}), blocks),
             "silent": run_blocks(init, lambda b: base_frame(sound, machines).to_bytes(), blocks)}
     ok_runs = all(r["ok"] for r in runs.values())
     n, mism = {}, {}
@@ -688,14 +822,15 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
 
     def tail_ok(name):
         run = runs[name]
-        for b, (ins, phases) in enumerate(zip(run["t5_inputs"], run["move_phases"])):
-            if not phases:
+        for b, (ins, phases, rnd) in enumerate(zip(run["t5_inputs"], run["move_phases"], run["move_random"])):
+            if not phases or not rnd:
                 return False
             for t, i in (ins or {}).items():
                 for osc, key in ((0, "move1"), (1, "move2")):
                     if osc and not (i["osc2"][3] & 0xFFFF):
                         continue                    # osc 2 at LEV 0 is not run (M9b)
-                    want = live.move_shape(phases[2 * t + osc], i[key][3]) >> 8
+                    k = 2 * t + osc
+                    want = live.move_shape(phases[k], i[key][3], (rnd[2 * k], rnd[2 * k + 1])) >> 8
                     if tail_byte(run, b, t, osc) != want:
                         return False
         return True
@@ -705,6 +840,43 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
 
     def pos_seq2(k, allb):
         return [b[0][3] for b in allb.get(k, []) if b.get(0)]
+
+    def phases(k, key):
+        """voice 0's MOVE phase after each block, osc KEY (0, 1)"""
+        return [ph[key] if ph else None for ph in runs[k]["move_phases"]] if runs[k]["ok"] else []
+
+    def frame_carries(k):
+        """the DSP's frame copy held the position and the tempo the frames carried"""
+        r = runs[k]
+        return r["ok"] and all(i.get(0) and i[0]["song"] == song(b) and i[0]["tempo"] == SYNC_TEMPO
+                               for b, i in enumerate(r["t5_inputs"]))
+    m_fast = live.sync_multiplier(live.SYNC_INDEX[100])
+    half = live.trunc(live._f32(live._f32(float(SYNC_TEMPO) * float(live.sync_multiplier(live.SYNC_INDEX[50])))
+                                * live._f32(live.SYNC_K)))
+
+    def boundary_step(k, b):
+        """|first sample of block b - last of block b - 1| of track 0's buffer"""
+        m = runs[k]["machine"] if runs[k]["ok"] else []
+        return abs(m[b][0][0] - m[b - 1][0][-1]) if len(m) > b and m[b] and m[b - 1] else None
+
+    def block_of(k, b):
+        m = runs[k]["machine"] if runs[k]["ok"] else []
+        return m[b][0] if len(m) > b and m[b] else None
+    p_soff, p_sglide = pos_seq("smth_off", rb_all), pos_seq("smth_glide", rb_all)
+    step_on, step_off = boundary_step("dclk_on", JUMP_AT), boundary_step("dclk_off", JUMP_AT)
+    def series(k):
+        return track_series(runs[k], 0) if runs[k]["ok"] else []
+    xf_n, xf_j = live.dclk_lengths()[live.DCLK_DEFAULT >> 8], JUMP_AT * BLOCK
+    xf_on, xf_off, xf_stay = series("dclk_on"), series("dclk_off"), series("dclk_stay")
+
+    def rnd_last(k):
+        r = runs[k]["move_random"] if runs[k]["ok"] else []
+        return r[-1] if r and r[-1] else [0] * 65
+    gen1 = live.rnd_next(0)
+    gen2 = live.rnd_next(gen1)
+    p_exp, p_ramp = pos_seq("move_exp", rb_all), pos_seq("move_pos", rb_all)
+    p_down, p_hold = pos_seq("move_downloop", rb_all), pos_seq("move_hold", rb_all)
+    p_glide = pos_seq("move_glide", rb_all)
     inc60, inc72 = (rb["pos120"] or [0] * 6)[2], (rb["note72"] or [0] * 6)[2]
     inc_up, inc_down = (rb["tune_up12"] or [0] * 6)[2], (rb["tune_down12"] or [0] * 6)[2]
     zc_up = zero_crossings(track_series(runs["tune_up12"], 0)) if runs["tune_up12"]["ok"] else 0
@@ -771,6 +943,10 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
             bool(n["machine_peak_pos120"]) and n["machine_peak_lev50"] is not None
             and abs(n["machine_peak_lev50"] / n["machine_peak_pos120"] - 0.5) < 1e-6,
         "LEV1 0 silences the machine tap (peak 0) (M9a)": n["machine_peak_lev0"] == 0,
+        "TRIM jumping to 0 dB, then to -15 dB, slews: the tap is bit-exact to the slewed model "
+        "and differs from the same model with no slew (0.1.2)":
+            runs["trim_jump"]["ok"] and mism.get("trim_jump") == 0
+            and mismatches(track_series(runs["trim_jump"], 0), reference_unslewed(runs["trim_jump"], 0, tables)) > 0,
         "LEV2 0 skips osc 2: no osc-2 reader call in any solo run (M9b)":
             all(r["ok"] and not any(r["reader_blocks2"]) for k, r in runs.items()
                 if k in ("init_solo", "pos120", "slot1", "note72", "tune_up12", "tune_down12", "lev50", "lev0")),
@@ -799,8 +975,27 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "the reply report: after every MOVE block, byte 2t + osc of the live reply tail is the "
         "high byte of the shape at the phase the DSP stored, for every Waverider voice and "
         "oscillator it ran; and the ramp's byte changes from block to block (M10b-3)":
-            all(tail_ok(name) for name in ("move_pos", "move_lev", "move_osc2"))
+            all(tail_ok(name) for name in ("move_pos", "move_lev", "move_osc2", "move_exp", "move_downloop",
+                                           "move_hold", "move_glide", "move_rnd_both"))
             and len({tail_byte(runs["move_pos"], b, 0, 0) for b in range(len(runs["move_pos"]["reply_tail"]))}) >= 3,
+        "Exp Up sweeps POS up below the ramp: rising, and at or under Ramp Up's position in every "
+        "block after the note (M10b-4)":
+            len(set(p_exp)) >= 3 and p_exp == sorted(p_exp) and len(p_exp) == len(p_ramp)
+            and all(e <= r for e, r in zip(p_exp[1:], p_ramp[1:])) and p_exp[-1] < p_ramp[-1],
+        "Down Loop sweeps POS down from the top after the note (M10b-4)":
+            len(set(p_down[1:])) >= 3 and p_down[1:] == sorted(p_down[1:], reverse=True),
+        "Rnd Hold: the note draws one value, held in every block after it; the DSP's generator "
+        "took one step (M10b-4)":
+            len(p_hold) == blocks and p_hold[0] == 0 and len(set(p_hold[1:])) == 1 and p_hold[1] > 0
+            and rnd_last("move_hold")[1] == gen1 >> 16 and rnd_last("move_hold")[64] == gen1,
+        "Rnd Glide: from the value before (0) towards the drawn one, rising and below Hold's level "
+        "(M10b-4)":
+            len(set(p_glide[1:])) >= 3 and p_glide[1:] == sorted(p_glide[1:])
+            and 0 < p_glide[-1] < p_hold[-1] and rnd_last("move_glide")[1] == gen1 >> 16,
+        "both random shapes: osc 1 draws first, osc 2 next, from one generator, each oscillator "
+        "keeping its own value (M10b-4)":
+            rnd_last("move_rnd_both")[1] == gen1 >> 16 and rnd_last("move_rnd_both")[3] == gen2 >> 16
+            and rnd_last("move_rnd_both")[64] == gen2,
         "PRST On (the default) restarts the oscillator at the note: osc 1's reader phase is 0 at "
         "block 1; Off keeps it running (not 0); Random gives neither (m10a3)":
             bool(phase_at("init_solo", 1)) is False and phase_at("init_solo", 1) == 0
@@ -810,6 +1005,42 @@ def step_voice(init, sound, machines, blocks, tables) -> dict:
         "(both increments 2 x note 60's within 1e-6, and equal) (M9b)":
             bool(rb2["tune_both"]) and bool(rb["tune_both"]) and bool(inc60)
             and rb2["tune_both"][2] == rb["tune_both"][2] and abs(rb["tune_both"][2] / inc60 - 2.0) < 1e-6,
+        "the DSP's frame copy carries the song position (words 0xa18 and 0x2a) and the tempo (0xd8), "
+        "as the frames put them (M10b-2)":
+            all(frame_carries(k) for k in ("sync_free", "sync_retrig", "sync_osc2", "sync_off")),
+        "SYNC Free: osc 1's MOVE phase is the song position x 1152 (RATE 100, 1/32 T) mod 2^32 "
+        "after every block, through the position's wrap (M10b-2)":
+            len(phases("sync_free", 0)) == blocks and m_fast == 1152
+            and all(ph == (song(b) * m_fast) & 0xFFFFFFFF for b, ph in enumerate(phases("sync_free", 0)))
+            and any(song(b) < song(b - 1) for b in range(1, blocks)),
+        "SYNC Retrig: RATE 50 is a half note, so at 120 BPM the phase steps 2^32 / 1500 a block "
+        "(within 1 in 1e5) from 0 at the note (M10b-2)":
+            abs(half - 2 ** 32 / 1500) < 2 ** 32 / 1500 * 1e-5 and len(phases("sync_retrig", 0)) == blocks
+            and all(phases("sync_retrig", 0)[b] == (b - 1) * half + half for b in range(1, blocks)),
+        "SYNC on osc 2 reads osc 2's own SYNC (CHAR): its phase is the position x 1152 (M10b-2)":
+            len(phases("sync_osc2", 1)) == blocks
+            and all(ph == (song(b) * m_fast) & 0xFFFFFFFF for b, ph in enumerate(phases("sync_osc2", 1))),
+        "SYNC off ignores the position: the free ramp's phases match the run without one (M10b-2)":
+            runs["sync_off"]["ok"] and runs["move_free"]["ok"]
+            and phases("sync_off", 0) == phases("move_free", 0)
+            and track_series(runs["sync_off"], 0) == track_series(runs["move_free"], 0),
+        "SMTH 0 (the default) is no glide: osc 1's pos is WAV1's, jumping to frame 15 at the "
+        "jump block (M10b-2)":
+            len(p_soff) == blocks and all(p == (live.position(0x7800) if b >= JUMP_AT else 0)
+                                          for b, p in enumerate(p_soff)),
+        "SMTH 67 glides: after the jump osc 1's pos rises block by block and stays below "
+        "frame 15 (M10b-2)":
+            len(p_sglide) == blocks and p_sglide[:JUMP_AT] == [0] * JUMP_AT
+            and 0 < p_sglide[JUMP_AT] < p_sglide[-1] < live.position(0x7800)
+            and p_sglide[JUMP_AT:] == sorted(p_sglide[JUMP_AT:]),
+        "DCLK 3 ms crossfades the jump: identical to Off before it, its first sample still the "
+        "old frame's (the run without the jump), the new frame alone, bit for bit, from 144 "
+        "samples on, and a smaller step between the two blocks (M10b-2)":
+            len(xf_on) == len(xf_off) == len(xf_stay) == blocks * BLOCK and xf_n == 144
+            and xf_j + xf_n <= len(xf_on)
+            and xf_on[:xf_j] == xf_off[:xf_j] and xf_on[xf_j] == xf_stay[xf_j]
+            and xf_on[xf_j + xf_n:] == xf_off[xf_j + xf_n:] and xf_on[xf_j + 1] != xf_off[xf_j + 1]
+            and step_on is not None and step_off is not None and step_on < step_off,
         "control: no trigger is silent at the amp's output (peak < 0.01)":
             n["silent_amp_out_peak"] is not None and n["silent_amp_out_peak"] < 0.01,
     }

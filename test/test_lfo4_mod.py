@@ -1,15 +1,8 @@
-"""The LFO4 mod: it applies to stock 1.11, refuses what it cannot sit on, and
-reproduces the image that was gated.
+"""The LFO4 mod: it applies to stock 1.11 and refuses what it cannot sit on.
 
-`scripts/gen_lfo4_code.py` packages `build_lfo4_browser.RELEASE`, the build
-the release `.syx` came from, so what is asserted here is **byte equality with
-`lfo4-fast`** (`python scripts/build_lfo4_browser.py --name lfo4-fast`).
-
-`lfo4-fast` is `lfo4-everyvoice4` -- the release twin of the code that passed
-tests 10 and 11 on the instrument (`docs/lfo4-build-plan.md`) -- with an idle
-LFO4 costing the frame nothing and the `memcpy` / `memset` test moved into the
-stubs, after the owner's save-while-playing stutter was bisected to lfo4
-(2026-09-27).
+Byte equality with the image on the instrument is test_flashed_build_reproduces.py: the last
+build that passed there, rebuilt from today's mods. The old check here compared with
+out/lfo4-fast (2026-09-27), which predates lfo4 1.0.1's state-array move (fbac7a3).
 """
 
 import pathlib
@@ -17,12 +10,11 @@ import struct
 
 import pytest
 
-from dnfw.mods import ModError, lfo4, moddest
-from dnfw.patch import paramtable
+from dnfw.mods import ModError, lfo4, moddest, platform
+from dnfw.patch import area, paramtable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STOCK_111 = ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip"
-GATED = ROOT / "out/lfo4-fast/section_3_MAIN_OS.bin"
 BASE = lfo4.BASE
 
 
@@ -45,10 +37,14 @@ def applied(stock):
     return lfo4.compose(stock)
 
 
-def test_is_the_image_that_was_gated(applied):
-    if not GATED.exists():
-        pytest.skip("out/lfo4-fast is not built")
-    assert applied == GATED.read_bytes()
+def _table_at(content: bytes) -> int:
+    """Where the relocated table starts in CONTENT: its CODE chunk's image."""
+    blob = content[platform.STOCK_LENGTH:]
+    for i in range(struct.unpack_from(">I", blob, 8)[0]):
+        cid, (off, n) = blob[12 + 12 * i:16 + 12 * i], struct.unpack_from(">II", blob, 16 + 12 * i)
+        if cid == area.CODE and area.CodeChunk.unpack(blob[off:off + n]).load == lfo4.SPEC["table_va"]:
+            return platform.STOCK_LENGTH + off + 16
+    raise AssertionError("no CODE chunk holds the relocated table")
 
 
 def test_changes_nothing_outside_its_extents(stock, applied):
@@ -56,7 +52,8 @@ def test_changes_nothing_outside_its_extents(stock, applied):
     stray = [i for i in range(len(stock))
              if stock[i] != applied[i] and not any(lo <= i < hi for lo, hi in allowed)]
     assert stray == []
-    assert len(applied) == allowed[-1][1]
+    (appended,) = [e for e in lfo4.extents() if e.what == "the appended DNFW area"]
+    assert len(applied) == appended.end
 
 
 def test_ships_no_stock_table():
@@ -85,7 +82,7 @@ def test_carries_a_table_edit_made_before_it(dn2_111, stock):
     opened = moddest.apply(dn2_111).payloads[moddest.SECTION]
     out = lfo4.compose(opened)
     table = paramtable.TABLE - BASE
-    moved = lfo4.SPEC["area_va"] - BASE + lfo4.SPEC["table_offset"]
+    moved = _table_at(out)
     for at, label in moddest._targets(stock):
         assert struct.unpack_from(">I", out, moved + at - table)[0] == moddest.OPEN, label
 
@@ -97,7 +94,7 @@ def test_carries_fxmod_table_edits(dn2_111, stock):
     out = lfo4.compose(edited)
     lo = paramtable.TABLE - BASE
     hi = lo + paramtable.RECORD * paramtable.COUNT
-    moved = lfo4.SPEC["area_va"] - BASE + lfo4.SPEC["table_offset"]
+    moved = _table_at(out)
     inside = [e for e in fxmod.SPEC["edits"] if lo <= e["va"] - BASE < hi]
     assert inside, "fxmod has no edit in the table any more; this test is stale"
     for e in inside:

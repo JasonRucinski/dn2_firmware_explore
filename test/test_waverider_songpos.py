@@ -1,0 +1,105 @@
+"""The song position for MOVE's SYNC (dnfw.waverider.songpos, the model of sync.c)."""
+
+import re
+import pathlib
+
+from dnfw.waverider import live, songpos
+
+SYNC_C = pathlib.Path(__file__).resolve().parents[1] / "csrc" / "waverider" / "sync.c"
+
+
+def test_the_position_wraps_at_24_bars_onto_zero():
+    assert songpos.position(0, 0) == 0
+    assert songpos.position(live.SYNC_LOOP, 0) == 0
+    # one sixteenth short of the wrap, all but done: just under 2^32
+    p = songpos.position(live.SYNC_LOOP - 1, songpos.SIXTEENTH - 1)
+    assert 2 ** 32 - 2 ** 32 // live.SYNC_LOOP // 60000 < p < 2 ** 32
+
+
+def test_a_sixteenth_is_2_to_the_32_over_384():
+    for s in (1, 5, 100):
+        d = songpos.position(s + 1, 0) - songpos.position(s, 0)
+        assert abs(d - 2 ** 32 / live.SYNC_LOOP) <= 1
+
+
+def test_every_sync_length_is_a_whole_multiple_of_the_loop():
+    # the phase is position x (a << k): a whole number of cycles in 24 bars
+    for name, a, k in live.SYNC_NOTES:
+        cycle = live.SYNC_LOOP / (a << k)
+        assert abs(cycle * (a << k) - live.SYNC_LOOP) < 1e-9, name
+
+
+def test_playing_at_120_steps_and_interpolates_from_the_tempo():
+    sp = songpos.SongPos()
+    out = [sp.frame(n, x, 14400) for n, x in songpos.playing(1500, 120.0)]
+    # 120 BPM: 8 sixteenths a second, so a second of frames ends just short of 8
+    assert sp.steps == 7
+    assert abs(out[-1] / (2 ** 32 / live.SYNC_LOOP) - 8) < 0.01
+    assert all(b >= a for a, b in zip(out, out[1:]))              # never backwards
+
+
+def test_stop_holds_step_1_and_play_starts_from_it():
+    sp = songpos.SongPos()
+    for n, x in songpos.playing(600, 120.0):
+        sp.frame(n, x, 14400)
+    assert sp.sixteenths > 0
+    for _ in range(songpos.STOP_FRAMES + 5):                      # STOP: both bytes 0
+        p = sp.frame(0, 0, 14400)
+    assert sp.stops == 1 and p == 0
+    q = [sp.frame(n, x, 14400) for n, x in songpos.playing(200, 120.0)]
+    assert q[0] > 0 and q[0] < 2 ** 32 // live.SYNC_LOOP // 100   # PLAY: from step 1 on
+
+
+def test_a_torn_read_is_not_a_stop():
+    sp = songpos.SongPos()
+    for n, x in songpos.playing(400, 120.0):
+        sp.frame(n, x, 14400)
+    before = sp.sixteenths
+    for _ in range(songpos.STOP_FRAMES - 1):                      # a few odd frames, not a STOP
+        sp.frame(0, 0, 14400)
+    assert sp.stops == 0 and sp.sixteenths == before
+
+
+def test_a_pause_holds_just_short_of_the_next_step():
+    sp = songpos.SongPos()
+    sp.frame(3, 4, 14400)
+    held = [sp.frame(3, 4, 14400) for _ in range(2000)]           # far longer than a step
+    assert held[-1] == held[-2] < songpos.position(sp.sixteenths + 1, 0)
+
+
+def test_sync_c_has_the_model_s_constants():
+    src = SYNC_C.read_text(encoding="utf-8")
+    assert re.search(r"#define SIXTEENTH\s+2700000u", src)
+    assert re.search(r"#define SYNC_LOOP\s+384u", src)
+    assert re.search(rf"#define STOP_FRAMES\s+{songpos.STOP_FRAMES}\b", src)
+    assert re.search(rf"#define POSITION_LO\s+{live.SYNC_POSITION_LO:#x}\b", src, re.I)
+    assert re.search(rf"#define POSITION_HI\s+{live.SYNC_POSITION_HI:#x}\b", src, re.I)
+    assert "1024u / 42188u" in src and "170u * x + 2u * x / 3u" in src
+
+
+def test_the_position_words_are_no_waverider_parameter_on_any_voice():
+    """sync.c writes the position over the frame at send time. Until 0.3.4 the high half sat on
+    voice 16's noise DEC (0x9a8, parameter 57), and the noise there died at its attack."""
+    from dnfw.waverider import frame
+    taken = {frame.slot_offset(t, p) + b for t in range(16) for p in range(25, 65) for b in (0, 1)}
+    # and the header arrays the frame model knows: notes, trig masks, levels, machines, filters
+    taken |= {a + 2 * t + b for a in (frame.NOTE, frame.LEVEL, frame.MACHINE, frame.FILTER)
+              for t in range(16) for b in (0, 1)}
+    taken |= {m + b for m in frame.TRIG_MASKS for b in (0, 1)}
+    for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):
+        assert not {word, word + 1} & taken, hex(word)
+    assert frame.slot_offset(15, live.NOISE_SLOTS[3]) == 0x9A8         # the word it was on
+
+
+def test_sync_asm_reads_the_words_sync_c_writes():
+    asm = (SYNC_C.parent / "sharc" / "sync.asm").read_text(encoding="utf-8")
+    for word in (live.SYNC_POSITION_LO, live.SYNC_POSITION_HI):     # 32-bit reads at aligned addresses
+        assert re.search(rf"DM\({0x25C48C + (word & ~3):#x}\)", asm), hex(word)
+
+
+def test_sync_free_phase_starts_each_cycle_on_step_1():
+    # a 1/4 SYNC on Free: the phase wraps exactly when step 1, 5, 9, 13 begins
+    m = live.sync_multiplier(next(i for i, n in enumerate(live.SYNC_NOTES) if n[0] == "1/4"))
+    for s in (0, 4, 8, 12, 16):
+        v = (songpos.position(s, 0) * m) & 0xFFFFFFFF
+        assert min(v, 2 ** 32 - v) < m * 2                        # within the rounding of x 512 / 3

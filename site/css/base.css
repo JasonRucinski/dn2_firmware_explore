@@ -77,6 +77,34 @@ p  { max-width: 42rem; }
 .mod-id {
   font-family: var(--mono); font-size: .8rem; color: var(--ink-soft);
 }
+
+/* A mod's 1-bit glyph (js/mods/glyphs.js): 16 px art drawn at a whole multiple,
+ * in the text colour, so one set serves the light and the dark theme. */
+.glyph {
+  --glyph-scale: 2;
+  display: inline-block; flex: none; vertical-align: middle;
+  width: calc(16px * var(--glyph-scale)); height: calc(16px * var(--glyph-scale));
+}
+.glyph svg { display: block; width: 100%; height: 100%; }
+/* The glyph stays left of the title at every width. On a card and in a table
+ * row it sits in the left padding of the title block, centred on the first line,
+ * so the card keeps its own padding and only the title text moves right. */
+.mod-head:has(> .glyph), td:has(> .glyph) {
+  position: relative; padding-left: calc(32px + .75rem);
+}
+.mod-head > .glyph { position: absolute; left: 0; top: calc((1.18rem * 1.6 - 32px) / 2); }
+td > .glyph { position: absolute; left: 0; top: calc(.5rem + (.92rem * 1.6 - 32px) / 2); }
+h1:has(> .glyph) { display: flex; align-items: flex-start; gap: .8rem; }
+h1 > .glyph { --glyph-scale: 3; margin-top: calc((1.05em - 48px) / 2); }
+.mod-version {
+  font-family: var(--mono); font-size: .8rem; color: var(--ink-soft);
+}
+dl.changes { margin: .9rem 0 0; }
+dl.changes dt { font-family: var(--mono); font-size: .85rem; margin-top: .8rem; }
+dl.changes dt .version { color: var(--accent); font-weight: 600; }
+dl.changes dt time { color: var(--ink-soft); margin-left: .6rem; }
+dl.changes dd { margin: .25rem 0 0; }
+dl.changes ul { margin: 0; padding-left: 1.2rem; }
 .tag {
   font-family: var(--mono); font-size: .68rem; letter-spacing: .09em;
   text-transform: uppercase; padding: .2rem .55rem; border-radius: 4px;
@@ -158,3 +186,20 @@ footer {
   :root:not([data-theme="light"]) .cta { color: #16181c; }
 }
 .cta-note { margin-top: .7rem; font-size: .9rem; color: var(--ink-soft); }
+
+/* The notice before a download (js/app/notice.js). Here and not in tool.css:
+ * every page that builds an image shows it, and not all of them load tool.css. */
+dialog.notice {
+  background: var(--panel); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 8px;
+  padding: 1.5rem; max-width: min(32rem, calc(100vw - 32px));
+}
+dialog.notice::backdrop { background: rgb(0 0 0 / .55); }
+dialog.notice h2 { margin: 0 0 .8rem; border: 0; padding: 0; font-size: 1.2rem; }
+dialog.notice ul { margin: 0 0 1.2rem; padding-left: 1.1rem; display: grid; gap: .6rem; }
+dialog.notice form { display: flex; gap: .6rem; justify-content: flex-end; flex-wrap: wrap; }
+dialog.notice button {
+  font: inherit; cursor: pointer; padding: .5rem 1rem; border-radius: 6px;
+  border: 1px solid var(--rule); background: var(--panel); color: var(--ink);
+}
+dialog.notice button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }

@@ -2,7 +2,7 @@
 
     python scripts/sharc_waverider_render.py \\
         --image 00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip \\
-        --digikit ../digikit-wt-sharcemu [--assemble] [--seconds 0.5]
+        --digikit ../digikit-main [--assemble] [--seconds 0.5]
 
 Three gates, each one required before the next (`docs/waverider-feasibility.md`,
 "Milestone 1"):
@@ -41,6 +41,7 @@ import hashlib
 import json
 import os
 import pathlib
+import struct
 import subprocess
 import sys
 import tempfile
@@ -52,8 +53,10 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from dnfw.cli.files import read_image                      # noqa: E402
 from dnfw.firmware.load import load                        # noqa: E402
+from dnfw.audio import wavio                              # noqa: E402
 from dnfw.image import bootstream, sharc_object           # noqa: E402
 from dnfw.waverider import render, testtable             # noqa: E402
+from dnfw import sharcemu  # noqa: E402
 from emulib import paths                                  # noqa: E402
 
 SOURCE = ROOT / "csrc" / "waverider" / "sharc" / "reader.asm"
@@ -244,6 +247,10 @@ class Digikit:
 
     def __init__(self, path: pathlib.Path):
         tools = path / "tools"
+        if not (tools / "sharc_run.py").exists() and (tools / "sharc_dev" / "sharc_run.py").exists():
+            tools = tools / "sharc_dev"         # digikit main's layout since 2026-10: it imports
+            from dnfw import sharcemu  # noqa: PLC0415  (itself as the package tools.sharc_dev)
+            sharcemu.alias_main_layout(path)
         if not (tools / "sharc_run.py").exists():
             raise SystemExit(f"{path} has no tools/sharc_run.py: point --digikit at a "
                              f"checkout of work/sharc-emulator ({DIGIKIT_MEASURED_AT})")
@@ -390,13 +397,18 @@ def gate2(dk, reader: Reader, table) -> dict:
     return {"ok": ok, "cases": rows}
 
 
-def write_wav(path: pathlib.Path, samples: list[float], rate: int = 48000) -> None:
+def write_wav(path: pathlib.Path, samples: list[float], rate: int = 48000, comment: str = "") -> None:
+    """16-bit mono. COMMENT says what rendered the file and whether it is looped
+    (`dnfw wav report` prints it as the source)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(rate)
         w.writeframes(render.pcm16(samples))
+    if comment:
+        raw = path.read_bytes() + wavio.info_chunk(comment)
+        path.write_bytes(raw[:4] + struct.pack("<I", len(raw) - 8) + raw[8:])
 
 
 def gate3(reader: Reader, table, seconds: float, freq: float, block: int) -> dict:
@@ -433,8 +445,7 @@ def main(argv=None) -> int:
                    default=ROOT / "00_Resources/00_Firmware/Digitone_II_OS1.11_dist.zip",
                    help="the DN2 1.11 update (.zip or .syx)")
     p.add_argument("--digikit", type=pathlib.Path,
-                   default=pathlib.Path(os.environ.get("DNFW_DIGIKIT_SHARC",
-                                                       ROOT.parent / "digikit-wt-sharcemu")),
+                   default=sharcemu.path(),
                    help="a digikit checkout of work/sharc-emulator (env DNFW_DIGIKIT_SHARC)")
     p.add_argument("--assemble", action="store_true",
                    help="reassemble with selas and cross-decode with selmap (WSL)")

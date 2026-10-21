@@ -5,7 +5,14 @@
 `dnfw.waverider.dsp` applies committed objects, never an assembler, so the mod runs
 anywhere. This writes `src/dnfw/waverider/sharc_code.json` from:
 
-- `csrc/waverider/sharc/modulator.json` (Milestone 10a: MOVE, at sw 0x16f700);
+- `csrc/waverider/sharc/modulator.json` (Milestone 10a: MOVE, at sw 0x16f700) and
+  `shapes.json` (M10b-4: its shapes, at sw 0x16f800);
+  `load.json` (command 4: a table chunk from the frame into DDR, at sw 0x16fb00) and
+  `pool.json` (a slot past the baked tables, from the load area's pool, at sw 0x16fe00);
+  `sync.json` (M10b-2: SYNC, MOVE locked to the tempo, at sw 0x170000), `smooth.json`
+  (SMTH, the glide on POS, at sw 0x170300) and `dclk.json` (DCLK, the declick, at sw
+  0x170400); `page5.json` (page 5: FOLD, NPOS, the shaper, at sw 0x172b00); `formant.json` (page 5's
+  Formant: the coefficients each block, at sw 0x173800);
 - `csrc/waverider/sharc/reader_m9.json` and `machine9_live.json` (Milestone 9a: M5's
   reader and loop with osc 1's level as a gain; the M5 sources stay beside them) --
   each (re)written from its `.asm` with selas when `--assemble` (WSL + selache). The
@@ -84,6 +91,21 @@ def main(argv=None) -> int:
             count = assemble("block_count", dsp.COUNT_SW, work)
             emark = assemble("entry_mark", dsp.EMARK_SW, work)
             mod = assemble("modulator", dsp.MOD_SW, work)
+            shapes = assemble("shapes", dsp.SHAPES_SW, work)
+            load = assemble("load", dsp.LOAD_SW, work)
+            pool = assemble("pool", dsp.POOL_SW, work)
+            sync = assemble("sync", dsp.SYNC_SW, work)
+            smooth = assemble("smooth", dsp.SMOOTH_SW, work)
+            dclk = assemble("dclk", dsp.DCLK_SW, work)
+            subosc = assemble("sub", dsp.SUB_SW, work)
+            noise = assemble("noise", dsp.NOISE_SW, work)
+            trim = assemble("trim", dsp.TRIM_SW, work)
+            rmip = assemble("reader_mip", dsp.MIP_SW, work)
+            rmiph = assemble("reader_miph", dsp.MIP_SW, work)
+            rmiph2 = assemble("reader_miph2", dsp.MIP_SW, work)
+            page5 = assemble("page5", dsp.PAGE5_SW, work)
+            phase = assemble("phase", dsp.PHASE_SW, work)
+            formant = assemble("formant", dsp.FORMANT_SW, work)
             ejump = one_jump(EMARK_LINE, dsp.CALL_SITE_SW, work)
             jump = one_jump(ENTRY_LINE, dsp.ENTRY_SW, work)
             ijump = one_jump(IDLE_LINE, dsp.IDLE_SITE_SW, work)
@@ -94,6 +116,21 @@ def main(argv=None) -> int:
             count = committed("block_count")
             emark = committed("entry_mark")
             mod = committed("modulator")
+            shapes = committed("shapes")
+            load = committed("load")
+            pool = committed("pool")
+            sync = committed("sync")
+            smooth = committed("smooth")
+            dclk = committed("dclk")
+            subosc = committed("sub")
+            noise = committed("noise")
+            trim = committed("trim")
+            rmip = committed("reader_mip")
+            rmiph = committed("reader_miph")
+            rmiph2 = committed("reader_miph2")
+            page5 = committed("page5")
+            phase = committed("phase")
+            formant = committed("formant")
             ejump = old["emark_jump"]
             if "entry_jump" not in old or "idle_jump" not in old:
                 raise SystemExit("no entry or idle JUMP committed yet: run with --assemble")
@@ -107,7 +144,22 @@ def main(argv=None) -> int:
             "block_count": {k: v for k, v in count.items() if k != "instruction_offsets"},
             "entry_mark": {k: v for k, v in emark.items() if k != "instruction_offsets"},
             "emark_jump": ejump,
-            "modulator": {k: v for k, v in mod.items() if k != "instruction_offsets"}}
+            "modulator": {k: v for k, v in mod.items() if k != "instruction_offsets"},
+            "shapes": {k: v for k, v in shapes.items() if k != "instruction_offsets"},
+            "load": {k: v for k, v in load.items() if k != "instruction_offsets"},
+            "pool": {k: v for k, v in pool.items() if k != "instruction_offsets"},
+            "sync": {k: v for k, v in sync.items() if k != "instruction_offsets"},
+            "smooth": {k: v for k, v in smooth.items() if k != "instruction_offsets"},
+            "dclk": {k: v for k, v in dclk.items() if k != "instruction_offsets"},
+            "sub": {k: v for k, v in subosc.items() if k != "instruction_offsets"},
+            "noise": {k: v for k, v in noise.items() if k != "instruction_offsets"},
+            "trim": {k: v for k, v in trim.items() if k != "instruction_offsets"},
+            "reader_mip": {k: v for k, v in rmip.items() if k != "instruction_offsets"},
+            "reader_miph": {k: v for k, v in rmiph.items() if k != "instruction_offsets"},
+            "reader_miph2": {k: v for k, v in rmiph2.items() if k != "instruction_offsets"},
+            "page5": {k: v for k, v in page5.items() if k != "instruction_offsets"},
+            "phase": {k: v for k, v in phase.items() if k != "instruction_offsets"},
+            "formant": {k: v for k, v in formant.items() if k != "instruction_offsets"}}
     dsp.CODE.write_text(json.dumps(spec, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {dsp.CODE.relative_to(ROOT)}: reader {len(reader['object_parcels_be']) // 2} B, "
           f"loop {len(loop['object_parcels_be']) // 2} B, entry {len(jump['object_parcels_be']) // 2} B")

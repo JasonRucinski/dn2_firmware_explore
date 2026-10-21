@@ -24,12 +24,13 @@ from . import (
     symbolmap,
     symbols,
     validate_disasm,
+    wav,
     waverider,
 )
 
 COMMANDS = (
     inspect, extract, build, patch, diff, symbols, symbolmap, params, disasm, validate_disasm,
-    cave, fn, ldr, mods, waverider, bloom,
+    cave, fn, ldr, mods, waverider, wav, bloom,
 )
 
 

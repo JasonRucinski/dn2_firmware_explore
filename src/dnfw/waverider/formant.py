@@ -1,0 +1,346 @@
+"""The Formant type's filter, in the model: five resonators in cascade, as IIR0 will run them.
+
+    cascade(position, shift) -> five biquads in IIR0's stored order (A0, A1, B1, A2, B2), float32
+    level_at(position, p1)   -> the gain that makes every vowel as loud as A at no shift (P1 0..127)
+    leveled(position, p1)    -> the cascade with that gain in the first A0, as the DSP stores it
+    run(x, biquads, states)  -> one block through the cascade, in IIR0's float order (float32)
+
+The owner chose the cascade form and the Formant type as IIR0's first job (2026-10-17,
+docs/waverider-formant.md).
+
+Every step the DSP repeats each block is written in the DSP's float32 order, so the DSP can
+match it bit for bit: the blend between vowels, exp and cos as short polynomials (`exp_neg`,
+`cos_poly`), and the level from a table of 33 x 9 points (`level_at`). The exact forms stay
+as the reference (`formants_exact`, `resonator_exact`, `level_exact`): the coefficients differ
+from them by at most 2.4e-7 (0.0011 dB in the response) and the level by at most 0.066 dB
+(2026-10-17; test/test_waverider_formant.py holds both bounds).
+
+- `position` 0..4 runs through the vowels A, E, I, O, U, with a linear blend of each
+  formant's frequency and bandwidth between two neighbours.
+- `shift` is a frequency ratio for all five formants (1.0: the table's bass voice).
+- Each resonator is Klatt's two-pole form, y = A x + B y[-1] + C y[-2] with A = 1 - B - C (a gain
+  of 1 at 0 Hz). As an IIR0 biquad that is A0 = A, A1 = A2 = 0, B1 = B, B2 = C (B = -a).
+- `run` uses the order measured on silicon (accelprobe1, ElekLabs/digikit#122): y = A0 x + s1,
+  s1 = (A1 x + s2) + B1 y, s2 = A2 x + B2 y, each product and sum rounded to float32.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+import pathlib
+import struct
+
+RATE = 48000
+# vowel: (F1..F5 Hz, BW1..BW5 Hz), the published bass-voice values
+VOWELS = (
+    ("A", (600, 1040, 2250, 2450, 2750), (60, 70, 110, 120, 130)),
+    ("E", (400, 1620, 2400, 2800, 3100), (40, 80, 100, 120, 120)),
+    ("I", (250, 1750, 2600, 3050, 3340), (60, 90, 100, 120, 120)),
+    ("O", (400, 750, 2400, 2600, 2900), (40, 80, 100, 120, 120)),
+    ("U", (350, 600, 2400, 2675, 2950), (40, 80, 100, 120, 120)),
+)
+NYQUIST_GUARD = 0.45                     # no formant above 0.45 x the rate: a raised shift stops there
+# The level evens out the vowels for a source whose spectrum falls about 6 dB an octave, as a
+# Waverider oscillator's does: a leaky integrator, pole 0.99 (about 76 Hz), before the cascade.
+# For white noise (no tilt) the five vowels spread 9.9 dB on Prim. at 110 Hz; with the tilt 2.3 dB.
+LEVEL_TILT = 0.99
+
+
+def _f32(x: float) -> float:
+    return struct.unpack("<f", struct.pack("<f", x))[0]
+
+
+def formants_exact(position: float, shift: float = 1.0) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """(F1..F5, BW1..BW5) at POSITION (0..4, A..U) with every frequency times SHIFT, float64."""
+    p = min(max(position, 0.0), len(VOWELS) - 1.0)
+    i = min(int(p), len(VOWELS) - 2)
+    f = p - i
+    (_, fa, ba), (_, fb, bb) = VOWELS[i], VOWELS[i + 1]
+    freqs = tuple(min((x + (y - x) * f) * shift, NYQUIST_GUARD * RATE) for x, y in zip(fa, fb))
+    bws = tuple(x + (y - x) * f for x, y in zip(ba, bb))
+    return freqs, bws
+
+
+GUARD_HZ = _f32(NYQUIST_GUARD * RATE)
+
+
+def formants(position: float, shift: float = 1.0) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """`formants_exact` in the DSP's float32 order: f = p - i, F = (Fa + (Fb - Fa) f) x shift,
+    then MIN with the guard; BW = BWa + (BWb - BWa) f. Whole positions give the table's values."""
+    p = _f32(min(max(position, 0.0), len(VOWELS) - 1.0))
+    i = min(int(p), len(VOWELS) - 2)
+    f = _f32(p - i)
+    (_, fa, ba), (_, fb, bb) = VOWELS[i], VOWELS[i + 1]
+    sh = _f32(shift)
+    freqs = tuple(min(_f32(_f32(x + _f32((y - x) * f)) * sh), GUARD_HZ) for x, y in zip(fa, fb))
+    bws = tuple(_f32(x + _f32((y - x) * f)) for x, y in zip(ba, bb))
+    return freqs, bws
+
+
+def resonator_exact(freq: float, bw: float) -> tuple[float, float, float, float, float]:
+    """One formant as an IIR0 biquad, float32: (A0, A1, B1, A2, B2). A0 comes from B and C as
+    they are stored, so the gain at 0 Hz is 1 to float32's precision (a low formant's A0 is about
+    0.003, and rounding the three apart left it 1.3e-5 off)."""
+    c = _f32(-math.exp(-2 * math.pi * bw / RATE))
+    b = _f32(2 * math.exp(-math.pi * bw / RATE) * math.cos(2 * math.pi * freq / RATE))
+    return (_f32(1 - b - c), 0.0, b, 0.0, c)
+
+
+def exp_neg(x: float) -> float:
+    """exp(-x) for 0 <= x <= 0.009 (a bandwidth up to 130 Hz): 1 - x + x^2/2 - x^3/6, Horner,
+    float32. The next term is under 3e-10, below float32's step at 1."""
+    r = _f32(-1 / 6)
+    r = _f32(_f32(r * x) + 0.5)
+    r = _f32(_f32(r * x) - 1.0)
+    return _f32(_f32(r * x) + 1.0)
+
+
+COS_TERMS = tuple(_f32((-1) ** k / math.factorial(2 * k)) for k in range(9))   # cos's Taylor terms to w^16
+
+
+def cos_poly(w: float) -> float:
+    """cos(w) for 0 <= w <= 0.9 pi (a formant up to the guard), Horner in w^2, float32."""
+    u = _f32(w * w)
+    c = COS_TERMS[-1]
+    for k in COS_TERMS[-2::-1]:
+        c = _f32(_f32(c * u) + k)
+    return c
+
+
+PI_RATE = _f32(math.pi / RATE)
+TWO_PI_RATE = _f32(2 * math.pi / RATE)
+
+
+def resonator(freq: float, bw: float) -> tuple[float, float, float, float, float]:
+    """`resonator_exact` as the DSP computes it: r = exp_neg(BW pi / RATE), C = -r r,
+    B = (r + r) cos_poly(F 2 pi / RATE), A0 = (1 - B) - C."""
+    r = exp_neg(_f32(bw * PI_RATE))
+    c = _f32(-_f32(r * r))
+    b = _f32(_f32(r + r) * cos_poly(_f32(freq * TWO_PI_RATE)))
+    return (_f32(_f32(1.0 - b) - c), 0.0, b, 0.0, c)
+
+
+def cascade(position: float, shift: float = 1.0) -> list[tuple[float, ...]]:
+    freqs, bws = formants(position, shift)
+    return [resonator(f, b) for f, b in zip(freqs, bws)]
+
+
+def cascade_exact(position: float, shift: float = 1.0) -> list[tuple[float, ...]]:
+    freqs, bws = formants_exact(position, shift)
+    return [resonator_exact(f, b) for f, b in zip(freqs, bws)]
+
+
+def power_gain(biquads, n: int = 8192, tilt: float = LEVEL_TILT) -> float:
+    """The cascade's power gain for a source tilted down by a leaky integrator (pole TILT; 0 is
+    white noise): the energy of the tilted impulse response through the cascade (float64)."""
+    y, acc = [], 0.0
+    for k in range(n):
+        acc = (1.0 if k == 0 else 0.0) + tilt * acc
+        y.append(acc)
+    for a0, _, b1, _, b2 in biquads:
+        out, y1, y2 = [], 0.0, 0.0
+        for v in y:
+            o = a0 * v + b1 * y1 + b2 * y2
+            out.append(o)
+            y2, y1 = y1, o
+        y = out
+    return sum(v * v for v in y)
+
+
+_REFERENCE = None
+
+
+def level_exact(position: float, shift: float = 1.0) -> float:
+    """The gain, float32, that gives the cascade at POSITION and SHIFT the power of the dry source
+    (LEVEL_TILT's, no filter): TYPE Formant about as loud as TYPE Off, every vowel about the same.
+
+    Until formant2 the reference was the cascade at A, no shift, which is 7.83 dB above dry, and on
+    a 16-voice unison the owner heard the mix crackle (2026-10-17): its peaks were 10 to 13 dB above
+    the plain sound's (00_Resources/07_DataCapture/Formant_Modulation_Artifact_Unison_16.wav)."""
+    global _REFERENCE
+    if _REFERENCE is None:
+        _REFERENCE = power_gain([])
+    return _f32(math.sqrt(_REFERENCE / power_gain(cascade_exact(position, shift))))
+
+
+# The level as the DSP finds it: `level_exact` at positions 0, 1/8 .. 4 (33 rows) and P1 0, 16 .. 128
+# (9 columns; 128 is past the knob, for the last interval), bilinear between them. The table is
+# data, formant_levels.json (float32 bit patterns), made by `level_table`
+# (scripts/waverider_formant_levels.py).
+LEVEL_PER_POSITION = 8
+LEVEL_P1_STEP = 16
+LEVEL_ROWS, LEVEL_COLUMNS = 4 * LEVEL_PER_POSITION + 1, 128 // LEVEL_P1_STEP + 1
+LEVELS_FILE = pathlib.Path(__file__).with_name("formant_levels.json")
+_LEVELS = None
+
+
+def level_table() -> list[list[float]]:
+    """`level_exact` at the grid's points, [row: position][column: P1], float32 (about 10 s)."""
+    return [[level_exact(j / LEVEL_PER_POSITION, 2.0 ** (k * LEVEL_P1_STEP / 127)) for k in range(LEVEL_COLUMNS)]
+            for j in range(LEVEL_ROWS)]
+
+
+def levels() -> list[list[float]]:
+    global _LEVELS
+    if _LEVELS is None:
+        bits = json.loads(LEVELS_FILE.read_text(encoding="utf-8"))["levels"]
+        _LEVELS = [[struct.unpack("<f", struct.pack("<I", int(w, 16)))[0] for w in row] for row in bits]
+    return _LEVELS
+
+
+def level_at(position: float, v: int) -> float:
+    """The level at POSITION (0..4) and P1 V (0..127), bilinear on `levels`, float32 in the
+    DSP's order: along the position in two columns, then between the columns."""
+    tab = levels()
+    pj = _f32(position * LEVEL_PER_POSITION)
+    j = min(int(pj), LEVEL_ROWS - 2)
+    fp = _f32(pj - j)
+    k, fs = v // LEVEL_P1_STEP, _f32((v % LEVEL_P1_STEP) * _f32(1 / LEVEL_P1_STEP))
+    l0 = _f32(tab[j][k] + _f32(_f32(tab[j + 1][k] - tab[j][k]) * fp))
+    l1 = _f32(tab[j][k + 1] + _f32(_f32(tab[j + 1][k + 1] - tab[j][k + 1]) * fp))
+    return _f32(l0 + _f32(_f32(l1 - l0) * fs))
+
+
+# The vowel's glide: a p-lock or a fast LFO can move the position by up to 4 (A to U) between two
+# blocks. Until formant2 the position moved toward the knob's by at most 0.125 a block (A to U in
+# 32 blocks, 21 ms). The owner heard a crackle that follows AMT and P1 on formant1 (2026-10-17,
+# 00_Resources/07_DataCapture/Formant_Modulation_Artifact.wav): energy at 3 to 5 kHz, where the
+# source had none, only while the knob moved. Its cause is in `retune` below. With the states
+# rebuilt, a one-pole toward the knob (FOLLOW of the distance a block, 90 % in 18 blocks, 12 ms)
+# leaves the band at -59 dB of the total for a 1 s AMT sweep, where the 0.125 limit left -53 dB
+# (scripts/waverider_formant_crackle.py). A note on the voice takes the knob's position at once.
+FOLLOW = 0.125
+
+
+def glide(last: float | None, target: float, note_on: bool) -> float:
+    """This block's position, from LAST (None before the first block) toward TARGET:
+    last + FOLLOW (target - last), float32."""
+    if last is None or note_on:
+        return target
+    return _f32(last + _f32(FOLLOW * _f32(target - last)))
+
+
+def exp_pos(x: float) -> float:
+    """exp(x) for 0 <= x <= 0.009: 1 + x + x^2/2 + x^3/6, Horner, float32 (`exp_neg`'s twin)."""
+    r = _f32(1 / 6)
+    r = _f32(_f32(r * x) + 0.5)
+    r = _f32(_f32(r * x) + 1.0)
+    return _f32(_f32(r * x) + 1.0)
+
+
+def c_inverse(bw: float) -> float:
+    """1 / C of the resonator for BW, as the DSP keeps it: C = -r r with r = exp(-x), so
+    1 / C = 0 - exp(x)^2, x = BW pi / RATE."""
+    q = exp_pos(_f32(bw * PI_RATE))
+    return _f32(0.0 - _f32(q * q))
+
+
+def retune(states: list[list[float]], old, new, inverses) -> None:
+    """IIR0's saved states for the NEW biquads, from the two past outputs under the OLD ones.
+
+    A biquad here has A1 = A2 = 0, so IIR0 keeps s2 = C y[n] and s1 = C y[n-1] + B y[n]. Left
+    as they are, the next sample adds the old B and C to the new A0: on a strong low partial
+    that is a one-sample step, and the high resonators ring with it (the crackle). From the old
+    C's inverse: y0 = s2 / C, y1 = (s1 - B y0) / C; then s2 = C' y0, s1 = C' y1 + B' y0, as a
+    direct-form filter changes its coefficients. INVERSES are the old biquads' 1 / C."""
+    for s, (_, _, b, _, _), (_, _, b2, _, c2), ci in zip(states, old, new, inverses):
+        y0 = _f32(s[1] * ci)
+        y1 = _f32(_f32(s[0] - _f32(b * y0)) * ci)
+        s[1] = _f32(c2 * y0)
+        s[0] = _f32(_f32(c2 * y1) + _f32(b2 * y0))
+
+
+def run(x: list[float], biquads, states: list[list[float]]) -> list[float]:
+    """X (one block) through the cascade in IIR0's float order; STATES holds [s1, s2] per biquad
+    (IIR0's stored words 5 and 6) and is updated in place, as Save State keeps them."""
+    out = []
+    for v in x:
+        v = _f32(v)
+        for (a0, a1, b1, a2, b2), s in zip(biquads, states):
+            y = _f32(_f32(a0 * v) + s[0])
+            s[0] = _f32(_f32(_f32(a1 * v) + s[1]) + _f32(b1 * y))
+            s[1] = _f32(_f32(a2 * v) + _f32(b2 * y))
+            v = y
+        out.append(v)
+    return out
+
+
+# The Formant type on page 5 (owner, 2026-10-17: AMT is the vowel, so an LFO can sweep it; layout
+# A on IIR0). The knobs' frame words (0..127 << 8):
+#   AMT (slot 48): the vowel, 0..127 -> position 0..4 (A..U); the only LFO destination of the row
+#   P1  (slot 64): the shift, 0..127 -> a ratio 2^(P1 / 127), 1.0 (the table's bass voice, a new
+#                  sound's 0) to 2.0 (an octave up)
+#   P2  (slot 63): the dry part, y = (1 - d) wet + d dry, d = P2 / 127: a new sound's 0 is fully
+#                  filtered, so TYPE Formant is heard at once. This form is exact at both ends
+#                  (0: the filtered sound, 127: the dry sound, bit for bit); wet + d (dry - wet)
+#                  is not exact at 127.
+KNOB_MAX = 0x7F00
+
+
+POSITION_K = _f32(4.0 / KNOB_MAX)
+DRY_K = _f32(1.0 / KNOB_MAX)
+SHIFTS = tuple(_f32(2.0 ** (v / 127)) for v in range(128))   # P1's ratio, a table on the DSP
+
+
+def position_of(vowel_word: int) -> float:
+    """AMT's word as a position, 0..4: FLOAT x f32(4 / 0x7f00), MIN 4 (an LFO past the top)."""
+    return min(_f32((vowel_word & 0xFFFF) * POSITION_K), 4.0)
+
+
+def p1_of(shift_word: int) -> int:
+    """P1's knob value, 0..127 (P1 is no LFO destination: its word is whole steps)."""
+    return min((shift_word & 0xFFFF) >> 8, 127)
+
+
+def shift_of(shift_word: int) -> float:
+    return SHIFTS[p1_of(shift_word)]
+
+
+def dry_of(dry_word: int) -> float:
+    """P2's word as the dry part, 0..1: FLOAT x f32(1 / 0x7f00) (1.0 exactly at 127)."""
+    return min(_f32((dry_word & 0xFFFF) * DRY_K), 1.0)
+
+
+def leveled(position: float, v: int) -> list[tuple[float, ...]]:
+    """The cascade at POSITION and P1 V with `level_at` folded into the first biquad's A0, as
+    the DSP stores it: the gain costs no multiply."""
+    bq = cascade(position, SHIFTS[v])
+    a0, a1, b1, a2, b2 = bq[0]
+    bq[0] = (_f32(a0 * level_at(position, v)), a1, b1, a2, b2)
+    return bq
+
+
+class Voice:
+    """One voice's Formant: the biquads' states (Save State), the glided vowel position, P1, and
+    the biquads with their 1 / C, which a change rebuilds the states from (`retune`)."""
+
+    def __init__(self):
+        self.states = [[0.0, 0.0] for _ in range(len(VOWELS))]
+        self.position = None
+        self.v = None
+        self.biquads = None
+        self.inverses = [0.0] * len(VOWELS)        # the DSP's zeros before the first block
+
+    def filter(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int,
+               note_on: bool) -> tuple[list[float], float, float]:
+        """One block: AMT's VOWEL_WORD, P1's SHIFT_WORD, P2's DRY_WORD. -> (the cascade's output,
+        d, e = 1 - d). The voice is then e x wet + R, R the dry part d x mix with the sub and the
+        noise added (live.render_two), as formant.asm mixes IIR0's output in."""
+        pos = glide(self.position, position_of(vowel_word), note_on)
+        v = p1_of(shift_word)
+        if self.biquads is None or pos != self.position or v != self.v:   # else the same biquads
+            new = leveled(pos, v)
+            # the first block too: from 1 / C = 0 the states become 0, as they are then anyway
+            retune(self.states, self.biquads or new, new, self.inverses)
+            self.biquads = new
+            self.inverses = [c_inverse(bw) for bw in formants(pos, SHIFTS[v])[1]]
+        self.position, self.v = pos, v
+        wet = run(mix, self.biquads, self.states)
+        d = dry_of(dry_word)
+        return wet, d, _f32(1.0 - d)
+
+    def block(self, mix: list[float], vowel_word: int, shift_word: int, dry_word: int, note_on: bool) -> list[float]:
+        """`filter`, mixed: e x wet + d x mix (a voice without the sub and the noise)."""
+        wet, d, e = self.filter(mix, vowel_word, shift_word, dry_word, note_on)
+        return [_f32(_f32(e * w) + _f32(d * m)) for m, w in zip(mix, wet)]

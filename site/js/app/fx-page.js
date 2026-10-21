@@ -64,8 +64,8 @@ async function buildImage() {
   const { content, notes } = apply(state.firmware);
   await buildAndOffer(
     state.firmware,
-    new Map([[3, replacement(state.firmware, 3, content)]]),
-    { filename: state.filename, suffix: "fxmod", note: notes[0] });
+    new Map([[3, replacement(state.firmware, 3, content, "fxmod")]]),
+    { filename: state.filename, mod: "fxmod", suffix: "fxmod", note: notes[0] });
 }
 
 function open(file) {

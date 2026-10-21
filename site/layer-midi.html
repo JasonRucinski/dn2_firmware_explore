@@ -1,10 +1,11 @@
+<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Layering to MIDI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="Layer a Digitone II audio track onto MIDI tracks with TRACK WILL TRIGGER, and play external gear from it, built entirely in your browser.">
+<meta name="description" content="Layer a Digitone II audio track onto MIDI tracks with TRACK WILL TRIGGER, and play external gear from it.">
 <link rel="stylesheet" href="css/base.css">
 <style>
   .step { margin: 2.5rem 0; }
@@ -65,48 +66,56 @@
 
 <header class="top">
   <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / layering to midi</p>
-  <h1>Layering to MIDI</h1>
+  <h1><span class="glyph" data-glyph="layermidi" aria-hidden="true"></span>Layering to MIDI</h1>
   <p class="lede">
-    Layer an audio track onto MIDI tracks with TRACK WILL TRIGGER, and the MIDI
-    tracks play along over MIDI: every note, chord and release your audio track
-    plays. Pick your firmware, download a signed image.
+    Layer an audio track onto MIDI tracks with TRACK WILL TRIGGER. The MIDI tracks then
+    play along over MIDI: every note, chord and release that your audio track plays. Select
+    your firmware file. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
-  <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
+
+<section class="changes">
+  <h2>Version and changes</h2>
+  <p>This mod is at <strong><!-- dnfw:version layermidi -->v1.0.0<!-- /dnfw:version --></strong>.
+  What changed in each version, newest first.</p>
+<!-- dnfw:changes layermidi -->
+<dl class="changes">
+  <dt><span class="version">v1.0.0</span> <time datetime="2026-10-11">2026-10-11</time></dt>
+  <dd><ul><li>First numbered version.</li></ul></dd>
+</dl>
+<!-- /dnfw:changes -->
+</section>
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. Flashed together and
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell. Flashed together and
   confirmed on the instrument: this mod with the Boot screen (2026-10-02).</p>
 <!-- dnfw:matrix-row layermidi -->
 <div class="scroll">
 <table class="matrix">
-  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">Layering onto MIDI tracks <code>layermidi</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="refused by hand: they fight over one feature">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">Layering onto MIDI tracks <code>layermidi</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-no" title="refused by hand: they fight over one feature">&#10007;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines layermidi -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, A fourth LFO, New LFO waveforms, More modulation destinations, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; <strong>not</strong> with Arpeggiator on MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines layermidi -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, A fourth LFO, LFO ONE/HALF fix, New LFO waveforms, More modulation destinations, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. This mod does <strong>not</strong> combine with Arpeggiator on MIDI tracks (refused by hand: they fight over one feature). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
   <div class="step-head"><span class="step-num">1</span><h2>Your firmware</h2></div>
-  <p>A Digitone&nbsp;II OS 1.11 <code>.syx</code> from Elektron &mdash; or an image
-  another page here has already built, to combine mods (see the table above).</p>
+  <p>Use a Digitone&nbsp;II OS 1.11 <code>.syx</code> file from Elektron. To combine mods, you can
+  also use an image that a different page here built (refer to the table above).</p>
 
   <div class="drop" id="drop">
     <p><label class="filebtn" for="syx">Choose a .syx file</label>
@@ -124,21 +133,22 @@
   <div class="step-head"><span class="step-num">2</span><h2>What changes</h2></div>
   <dl class="facts">
     <dt>Set up</dt><dd>On the audio track, TRACK WILL TRIGGER: select one or more MIDI tracks</dd>
-    <dt>Playback</dt><dd>Every note the audio track plays &mdash; trigs, chords, retrigs, probability, held keys &mdash; also goes out on each layered MIDI track's channel</dd>
+    <dt>Playback</dt><dd>Every note that the audio track plays (trigs, chords, retrigs, probability, held keys) also goes out on the channel of each layered MIDI track</dd>
     <dt>Releases</dt><dd>Note-off when the layered note ends: at its length, when a held key is let go, or at stop for INF</dd>
     <dt>Combining</dt><dd>Several audio tracks can layer onto one MIDI track, and one audio track onto several</dd>
-    <dt>Mutes</dt><dd>A muted source sends nothing; a muted MIDI track sends nothing</dd>
+    <dt>Mutes</dt><dd>A muted source sends nothing. A muted MIDI track sends nothing</dd>
     <dt>Not layered</dt><dd>Every track behaves as stock</dd>
     <dt>Writes</dt><dd id="writes">&mdash;</dd>
   </dl>
 
   <div class="note">
-    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-02</strong>, recorded into
-    Ableton from an external synth on the layered MIDI track: sequenced notes, chords,
-    retrigs and probability arrive as played; INF holds until the sequencer stops; held
-    keys release cleanly; two sources into one MIDI track and one source into several
-    both work. The MIDI note arrived about 8&nbsp;ms ahead of the recorded audio &mdash;
-    the audio path's latency, not the mod's.</p>
+    <p><strong>Confirmed on a Digitone&nbsp;II, 2026-10-02.</strong> We recorded into Ableton
+    from an external synth on the layered MIDI track. Sequenced notes, chords, retrigs and
+    probability arrive as played. INF holds until the sequencer stops. Held keys release
+    cleanly. Two sources into one MIDI track work, and one source into several MIDI tracks
+    works.</p>
+    <p>The MIDI note arrived about 8&nbsp;ms before the recorded audio. That delay is the
+    latency of the audio path, not of the mod.</p>
   </div>
 </section>
 
@@ -169,8 +179,11 @@
     Part of <a href="https://github.com/angellinares/dn2_firmware_explore">dn2_firmware_explore</a>,
     AGPL-3.0-or-later. Not affiliated with or endorsed by Elektron.
   </p>
+  <p>Site build <span data-site-build>web-local</span>. Quote it when you report a problem with a build.</p>
+  <script type="module" src="js/build.js"></script>
 </footer>
 
 </div>
 
 <script type="module" src="js/app/layermidi-page.js"></script>
+<script type="module" src="js/app/glyphs-page.js"></script>

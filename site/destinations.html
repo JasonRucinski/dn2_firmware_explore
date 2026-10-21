@@ -1,10 +1,11 @@
+<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Modulation Destinations</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
-<meta name="description" content="Open 13 more Digitone II parameters to LFO modulation, entirely in your browser.">
+<meta name="description" content="Open 13 more Digitone II parameters to LFO modulation.">
 <link rel="stylesheet" href="css/base.css">
 <style>
   .step { margin: 2.5rem 0; }
@@ -82,41 +83,49 @@
 
 <header class="top">
   <p class="eyebrow"><a href="index.html">Digitone II Mods</a> / destinations</p>
-  <h1>Modulation Destinations</h1>
+  <h1><span class="glyph" data-glyph="moddest" aria-hidden="true"></span>Modulation Destinations</h1>
   <p class="lede">
     Open thirteen more Digitone&nbsp;II parameters to LFO and modulation
-    control. Pick your firmware, download a signed image.
+    control. Select your firmware file. Then download a signed image.
   </p>
 </header>
 
 <div class="note">
-  <p><strong>Everything happens in this tab.</strong> Your firmware file is never
-  uploaded — this page has no server to upload it to. It is static files on
-  GitHub Pages; you can read every line in the
-  <a href="https://github.com/angellinares/dn2_firmware_explore/tree/main/site/js">repository</a>.</p>
-  <p><strong>Prove your way back before you flash anything.</strong> The Early Start-up
-  Menu reflashes stock firmware over MIDI. Do that once, with an unmodified image,
-  <em>before</em> you flash a modified one — and back up your +Drive, which no tool
-  here can recover.</p>
+  <p><strong>Make sure that you can go back to stock before you flash a modified file.</strong>
+  The Early Start-up Menu flashes the stock firmware over MIDI. Do this one time with the stock
+  file, <em>before</em> you flash a modified file. Back up your +Drive. No tool here can recover it.</p>
 </div>
+
+<section class="changes">
+  <h2>Version and changes</h2>
+  <p>This mod is at <strong><!-- dnfw:version moddest -->v1.0.0<!-- /dnfw:version --></strong>.
+  What changed in each version, newest first.</p>
+<!-- dnfw:changes moddest -->
+<dl class="changes">
+  <dt><span class="version">v1.0.0</span> <time datetime="2026-10-11">2026-10-11</time></dt>
+  <dd><ul><li>First numbered version.</li></ul></dd>
+</dl>
+<!-- /dnfw:changes -->
+</section>
 
 <section class="combines">
   <h2>Combines with</h2>
-  <p>This mod's row of the <a href="index.html#compatibility">compatibility table</a>, generated
-  by <code>dnfw mods matrix</code>: &#10003; combines in either order; &#10003;* in one order
-  only; &#10007; cannot be combined. Hover a cell for the reason. No combined image has been
-  flashed yet.</p>
+  <p>The table below is the row of this mod in the
+  <a href="index.html#compatibility">compatibility table</a>. <code>dnfw mods matrix</code> generates it.</p>
+  <p>&#10003;: you can combine the two mods in either order. &#10003;*: you can combine them in one order
+  only. &#10007;: you cannot combine them. To see the reason, put the pointer on a cell.</p>
+  <p>Nobody has flashed a combined image with this mod yet.</p>
 <!-- dnfw:matrix-row moddest -->
 <div class="scroll">
 <table class="matrix">
-  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
+  <thead><tr><th></th><th scope="col"><code>arpmodes</code></th><th scope="col"><code>arpplocks</code></th><th scope="col"><code>arpscale</code></th><th scope="col"><code>bootscreen</code></th><th scope="col"><code>fxmod</code></th><th scope="col"><code>layermidi</code></th><th scope="col"><code>lfo4</code></th><th scope="col"><code>lfolength</code></th><th scope="col"><code>lfowaves</code></th><th scope="col"><code>midiarp</code></th><th scope="col"><code>moddest</code></th><th scope="col"><code>reloadconfirm</code></th><th scope="col"><code>songguard</code></th><th scope="col"><code>transients</code></th><th scope="col"><code>usbprobe</code></th><th scope="col"><code>waverider</code></th></tr></thead>
   <tbody>
-    <tr><th scope="row">More modulation destinations <code>moddest</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
+    <tr><th scope="row">More modulation destinations <code>moddest</code></th><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-order" title="moddest must be applied first">&#10003;*</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-self">&mdash;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td><td class="mx-yes" title="disjoint bytes; applies in either order">&#10003;</td></tr>
   </tbody>
 </table>
 </div>
 <!-- /dnfw:matrix-row -->
-  <p><!-- dnfw:combines moddest -->With Arpeggiator SHUF and RAND, Arpeggiator p-locks, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, New LFO waveforms, Arpeggiator on MIDI tracks, Song guard, FM drum transients, USB SysEx probe (diagnostic), Waverider, a sixth machine; in one order only with A fourth LFO (moddest must be applied first). See the compatibility table<!-- /dnfw:combines -->.</p>
+  <p><!-- dnfw:combines moddest -->This mod combines with Arpeggiator SHUF and RAND, Arpeggiator p-locks, Arp offsets in scale, Boot screen, LFO modulation of the FX, Layering onto MIDI tracks, LFO ONE/HALF fix, New LFO waveforms, Arpeggiator on MIDI tracks, Reload confirm, Song guard, FM drum transients, USB SysEx probe (diagnostic) and Waverider, a sixth machine. This mod combines in one order only with A fourth LFO (moddest must be applied first). See the compatibility table<!-- /dnfw:combines -->.</p>
 </section>
 
 <section class="step">
@@ -148,14 +157,12 @@
     <p><strong>Confirmed on a Digitone&nbsp;II, 2026-09-12.</strong> An image
     opening all 32 parameters the firmware marks closed was flashed. These
     thirteen appeared as LFO destinations <em>and actually modulated</em>.</p>
-    <p><strong>Nineteen others stay closed here, deliberately.</strong> Chorus and
-    Master parameters were in the same test and <em>none of them appeared</em> —
-    for those the gate is a separate enumeration, not this mask, so flipping it
-    does nothing. Offering you nineteen switches that provably have no effect
-    would be worse than not offering them.</p>
+    <p><strong>Nineteen others stay closed here, on purpose.</strong> The same test had Chorus
+    and Master parameters, and <em>none of them appeared</em>. For those parameters, a separate
+    enumeration is the gate, not this mask, so a flip of the mask does nothing. Nineteen switches
+    that have no effect, as we proved, would be worse than no switches.</p>
     <p><strong>The effects now have their own mod.</strong> That separate enumeration
-    was opened on 2026-09-23, so Chorus, Delay and Reverb are reachable after all —
-    through <a href="fx.html">FX Modulation</a>, which combines with this one. Master
+    was opened on 2026-09-23, so Chorus, Delay and Reverb are reachable after all, through <a href="fx.html">FX Modulation</a>, which combines with this one. Master
     is still out.</p>
   </div>
 </section>
@@ -183,8 +190,11 @@
     so it combines with the
     <a href="transients.html">Transient Swapper</a>, which only touches the DSP image.
   </p>
+  <p>Site build <span data-site-build>web-local</span>. Quote it when you report a problem with a build.</p>
+  <script type="module" src="js/build.js"></script>
 </footer>
 
 </div>
 
 <script type="module" src="js/app/destinations-page.js"></script>
+<script type="module" src="js/app/glyphs-page.js"></script>

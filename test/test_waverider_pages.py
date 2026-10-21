@@ -30,7 +30,7 @@ def in_chunk(va: int) -> bool:
 
 def test_the_chunk_runs_from_its_load_address():
     assert SPEC["chunk"]["load"] == pages.LOAD
-    assert len(CHUNK) < 0x4000     # clear of the platform runtime at 0x46710000
+    assert pages.LOAD + len(CHUNK) <= pages.C_END     # clear of the platform runtime at 0x46710000
 
 
 def test_every_m7_site_calls_into_the_chunk():
@@ -104,3 +104,16 @@ def test_the_renderer_sits_between_the_assembly_and_the_runtime():
 def test_the_display_data_is_in_the_chunk():
     data = bytes(v & 0xFF for table in wave.spans() for lo, hi in table for v in lo + hi)
     assert data in CHUNK
+
+
+def test_the_dest_cell_tells_the_two_oscillators_apart():
+    # a page's label is the same on both oscillators' pages (LEV, POS, TBL, RATE, MPOS, MLEV,
+    # MOVE); the DEST cell has no page, so it carries the oscillator: four characters, unique
+    same = {}
+    for rid, name in pages.LABELS.items():
+        same.setdefault(name, []).append(rid)
+    shared = {rid for ids in same.values() if len(ids) > 1 for rid in ids if rid != 232 and rid != 235}
+    assert shared == set(pages.MINI_LABELS)
+    assert all(len(name) == 4 for name in pages.MINI_LABELS.values())
+    assert len(set(pages.MINI_LABELS.values())) == len(pages.MINI_LABELS)
+    assert not set(pages.MINI_LABELS.values()) & set(pages.LABELS.values())

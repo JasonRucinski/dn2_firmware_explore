@@ -437,10 +437,9 @@ contributor. Two consequences:
 - B2 belongs on the bus, not on this fork's pre-bus Waverider edits.
 - Type 7 needs either the LOAD shim above or a bus count that allows gaps.
 
-**That needs upstream merged into this branch first.** The merge was attempted
-2026-10-21 and is waiting on the owner's go-ahead. Its only conflict is this
-file's neighbour `ideas-backlog.md`: upstream already used §35-38, so this
-fork's §35-37 become §39-41.
+**Upstream is merged into this branch** (owner's go-ahead, 2026-10-21, upstream
+`ae3c111`). In `ideas-backlog.md` upstream already used §35-38, so this fork's
+input machine, drum sampler and Bloom are now **§39, §40 and §41**.
 
 **Done so far:**
 - the m68k toolchain is installed (binutils, GCC 13.2);

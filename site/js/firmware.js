@@ -19,6 +19,7 @@ import { compress, storeRaw } from "./container/section.js";
 import * as contentChecksum from "./integrity/checksum.js";
 import * as digest from "./integrity/digest.js";
 import * as keyderive from "./integrity/keyderive.js";
+import * as modinfo from "./modinfo.js";
 import * as transport from "./syx/transport.js";
 import { profile } from "./profile.js";
 import { MAX_MATCH, WINDOW } from "./limits.js";
@@ -65,10 +66,14 @@ export async function load(raw) {
  * decision is taken from the **original section**, not from an argument,
  * because getting it backwards produces a file that passes every checksum and
  * bricks the instrument.
+ *
+ * MAIN OS (3) gets its /modinfo record filled first, with MOD in its list (modinfo.js);
+ * an image without Waverider carries none and is unchanged.
  */
-export function replacement(firmware, sectionId, content) {
+export function replacement(firmware, sectionId, content, mod = null) {
   const original = firmware.container.find(sectionId);
   if (original === null) throw new Error(`no section id=${sectionId} in this image`);
+  if (sectionId === 3) content = modinfo.fill(content, mod);
   return original.unpack() !== null
     ? compress(sectionId, original.dest, content)
     : storeRaw(sectionId, original.dest, content);
