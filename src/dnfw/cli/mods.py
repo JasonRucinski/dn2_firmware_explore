@@ -20,6 +20,7 @@ from ..mods import ModError, check_compatible
 from ..mods import arpmodes as arpmodes_mod
 from ..mods import arpplocks as arpplocks_mod
 from ..mods import arpscale as arpscale_mod
+from ..mods import bloom as bloom_mod
 from ..mods import bootscreen as bootscreen_mod
 from ..mods import fxmod as fxmod_mod
 from ..mods import history
@@ -55,7 +56,8 @@ REGISTRY = {transients_mod.ID: transients_mod,
             songguard_mod.ID: songguard_mod,
             waverider_mod.ID: waverider_mod,
             reloadconfirm_mod.ID: reloadconfirm_mod,
-            usbprobe_mod.ID: usbprobe_mod}
+            usbprobe_mod.ID: usbprobe_mod,
+            bloom_mod.ID: bloom_mod}
 
 
 def configure(parser) -> None:

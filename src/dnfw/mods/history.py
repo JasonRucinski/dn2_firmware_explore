@@ -63,6 +63,12 @@ UNPUBLISHED = _first("0.1.0", "Not published on the site yet.")
 # Newest first.
 HISTORY: dict[str, tuple[Release, ...]] = {
     "arpmodes": PUBLISHED,
+    "bloom": (
+        Release("0.1.0", "2026-10-21", (
+            "First version (milestone B2): BLOOM in MACHINE SEL, machine type 7, with WaveTone's "
+            "pages. ColdFire only, not on the instrument: a Bloom track does not yet sound like "
+            "Bloom.",)),
+    ),
     "arpplocks": UNPUBLISHED,
     "arpscale": UNPUBLISHED,
     "bootscreen": PUBLISHED,
