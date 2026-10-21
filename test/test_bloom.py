@@ -236,3 +236,46 @@ def test_cli_render_writes_a_wav(tmp_path, capsys):
         assert w.getnframes() == 2400
     assert cli.main(["bloom", "curve", "riser", "--step", "8"]) == 0
     assert "87.000 cycles" in capsys.readouterr().out
+
+
+# ---- B3a: the type-7 loop's float32 contract (dnfw.bloom.live) ------------------------------
+
+from dnfw.bloom import live  # noqa: E402
+
+
+def test_live_tables_are_pitch_steps_and_their_inverses():
+    dt, inv = live.dt_table(), live.inv_table()
+    assert len(dt) == len(inv) == live.NOTES
+    assert dt[69] == pytest.approx(440.0 / 48000, rel=1e-7)
+    assert dt[81] == pytest.approx(2 * dt[69], rel=1e-6)
+    assert all(abs(d * i - 1) < 1e-6 for d, i in zip(dt, inv))
+
+
+def test_live_interpolated_inverse_stays_close_to_the_true_one():
+    for n in (0.0, 12.5, 60.25, 99.9, 127.0):
+        d, i = live.step(n)
+        assert abs(d * i - 1) < 0.002
+
+
+def test_live_note_is_clamped_and_cleaned_as_the_loop_does():
+    assert live.note_from_frame(60.0, 0x4000) == 60.0          # TUN1 0
+    assert live.note_from_frame(60.0, 0x4c00) == 72.0          # TUN1 +12
+    assert live.note_from_frame(float("nan"), 0x4000) == 0.0
+    assert live.note_from_frame(-5.0, 0x4000) == 0.0
+    assert live.note_from_frame(120.0, 0x7c00) == 127.0
+
+
+def test_live_saw_is_bounded_and_matches_the_float64_model():
+    a = live.render(60.0, 0x4000, 20)
+    assert max(abs(x) for x in a) <= live.GAIN * 1.0001
+    o = osc.Oscillator()
+    b = [live.GAIN * o.next(osc.hz(60), 0.0, 0.5) for _ in range(len(a))]
+    assert max(abs(x - y) for x, y in zip(a, b)) < 0.005           # float32 phase drift only
+
+
+def test_live_phase_carries_across_blocks():
+    dt, inv = live.step(60.0)
+    whole, _ = live.render_block(0.0, dt, inv, 64)
+    first, p = live.render_block(0.0, dt, inv, 32)
+    second, _ = live.render_block(p, dt, inv, 32)
+    assert first + second == whole
