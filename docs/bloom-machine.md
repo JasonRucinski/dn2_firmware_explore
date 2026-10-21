@@ -313,43 +313,70 @@ stand-in two-pole filter, with FREQ mapped 20 Hz .. 20 kHz. It shows the shape
 of the motion and nothing about Elektron's filter. `--dry` writes the machine's
 own signal, which is what the DSP gate will compare.
 
-## B1: the harness (2026-10-21), waiting for a run
+## B1, run (2026-10-21): no. A record write does not move the stock filter
 
-`scripts/sharc_bloom_b1.py`. The runner itself writes FREQ into the track record
-at the PC the arm would occupy, sw `0x1c91ad`. So it measures the firmware's
-behaviour, not Bloom's code.
+`scripts/sharc_bloom_b1.py`. The image is the stock DN2 OS 1.11 zip, verified:
+- `dnfw inspect`: every checksum, and the HMAC reproduced;
+- section 7 equal to `dnfw.waverider.dsp.STOCK_SHA256`;
+- `--mod waverider` applies, so its stock-byte guards all hold.
 
-The signal is Waverider M4's type-5 voice on track 0, the filter is Multimode,
-and the tap is the buffer after the filter, at the amp's input. Four runs:
+The runner is digikit `6f812e99`. The harness family was validated on that
+revision; `1d841b64` halts every run, the control included, on a return-address
+check at the amp, `0xb8042d`. The assembler is selache `2b26d3b`. The runner
+itself wrote FREQ into track 0's record, so this measures the firmware, not
+Bloom's code.
 
-| run | what it does |
-|---|---|
-| A | FREQ open: the control |
-| B | FREQ dark in the frame from block K: the stock-LFO path, the reference |
-| C | the frame open, the record written dark at the setup from block K: **the question** |
-| D | the same write after the setup: the timing |
+| run | what changed | RMS of the buffer after the filter, blocks 4-9 | against A |
+|---|---|---|---|
+| A | nothing (the control) | 0.0394 | |
+| B | FREQ dark (`0x2000`) **in the frame**, from block 4 | 0.0608 | **differs, from block 5** |
+| C | the record's FREQ written dark at sw `0x1c91ad`, 16 times a block | 0.0394 | **bit-identical** |
+| D | the same write after the setup, at the type-5 entry | 0.0394 | bit-identical |
 
-**PASS needs all of these:**
-- the hook is reached in every block;
-- the record holds the frame's own value before the write;
-- B is clearly darker than A;
-- C follows B within 1 % RMS, in block K itself and after it.
+**Why the negative holds:**
+- **The hook was reached** in every block, 16 times: once per track.
+- **The record held the frame's own FREQ there** (`0x3f7e0000` =
+  0x7f00/32768), so the field written is the one the unpack fills.
+- **The filter does respond to FREQ:** through the frame path (B) it changes
+  clearly.
+- **The writes changed nothing:** C and D are identical to A to the last bit.
+- **[E]**, digikit's runner. Silicon is not involved.
 
-D's reading is reported. The harness imports, its names resolve against the M4
-harness, and `test/test_bloom_b1.py` checks its field and scaling.
+**What it shows:**
+- In B, the record holds the dark value from block 5, one block after the
+  frame carried it. This is upstream's "the frame copy holds the previous
+  frame" (`docs/drive-load-command.md`, upstream).
+- The filter follows the frame, and ignores a record write made after the
+  unpack. **So whatever turns FREQ into filter coefficients runs before
+  `0x1c91ad`, most likely in the unpack itself,** possibly only when it sees
+  the field change. That is unread **[O]**.
+- **The design's assumption is false as written**
+  ("The stock filter, driven per block", above).
 
-**Not run yet:** this session could not get the OS 1.11 file. Elektron's site now
-serves 1.12, its 1.11 link answers 404, and fetching it from a third-party
-archive was refused. digikit's `work/sharc-emulator` (`1d841b64`) was cloned
-beside the checkout. The M4 harness was written against `6f812e9`, so a failure
-to start under `1d841b64` is about the runner, not about B1.
+**One check was wrong and is corrected:** "B is darker, so its RMS is under
+70 % of A's". The dark setting *raised* the RMS by about 54 %, so the check is
+now "B differs from A by more than 10 %". Not verified: the write was not read
+back after the poke. The record holding the frame's value again the next block
+says only that the unpack rewrote it.
+
+**What this leaves, in order:**
+1. **Write the incoming frame, not the record.** Bloom's DSP code runs before the
+   unpack (around the per-block routine's call, sw `0x1c9fbc`) and rewrites
+   track t's FREQ word in the received page. Run B already shows the filter
+   follows that word, at one block's latency (0.67 ms). The open question is
+   only the hook point, so this is **B1b**.
+2. **Find what consumes FREQ in the unpack**, with a read watch on the record
+   and the engine's filter state. This also says whether a change detector
+   gates it.
+3. **The fallback stands:** the Bloom filter on IIR0 (B6) becomes the pulsed
+   filter.
 
 ## Milestones, one question per flash
 
 | | asks | runs on | gates |
 |---|---|---|---|
 | **B0** ✅ | the reference model: voice, PULSE, DUCK, LINK (`dnfw.bloom`, pure Python) | anywhere | unit tests: phase continuous across chord and rate changes; *land* ends on the downbeat; both directions; *step* edges on the grid; DUCK timing against a trigger mask |
-| **B1** (harness written, not yet run) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
+| **B1** ❌ answered **no** (2026-10-21) | **does a setup-arm write of FREQ move the stock filter within the block?** The same for pan and VOL | digikit's SHARC runner, on stock section 7 plus the arm | Multimode output changes in the block of the write. **Control:** no write. If it fails, B6 becomes the pulsed filter |
 | B2 | the ColdFire half: the Bloom type through the bus, names, attribute rows, page tables, the song-position writer | ColdFire emulator | MACHINE SEL shows BLOOM and YES commits it; SAVE/LOAD keeps the type; boot from reset; `emu_boot_engine` |
 | B3 | the DSP v0: a plain PolyBLEP saw, PULSE on FREQ only, the init sound | SHARC runner | bit-exact against B0; `emu_seqplay` **(upstream)**: the pulse edges against the steps |
 | **first flash** | B2 + B3: does the pulse reach the stock filter on the instrument, on the grid? | the instrument | `emu_boot_check` from reset, `emu_boot_engine`, `check_coldfire`, the SHARC gate, `dnfw inspect` 21/21 |

@@ -197,6 +197,7 @@ def main(argv=None) -> int:
             "C_vs_B_block_k": rel(blocks_of(C, k), blocks_of(B, k)),
             "C_vs_B_after_k": rel(C[after], B[after]),
             "C_vs_A_after_k": rel(C[after], A[after]),
+            "B_vs_A_after_k": rel(B[after], A[after]),
             "D_vs_A_block_k": rel(blocks_of(D, k), blocks_of(A, k)),
             "D_vs_B_block_k": rel(blocks_of(D, k), blocks_of(B, k)),
             "C_record_back_to_frame_value_next_block":
@@ -206,8 +207,10 @@ def main(argv=None) -> int:
             f"the hook at sw {FILTER_SETUP:#x} is reached in every block": all(h >= 1 for h in hits),
             "the record holds the frame's own FREQ at the hook (the field the filter reads)":
                 before == record_bits(OPEN),
-            "control: the frame path (B) is clearly darker than A from block K (RMS < 70 %)":
-                n_["rms_after_k"]["B"] < 0.7 * n_["rms_after_k"]["A"],
+            # A difference, not a direction: on 2026-10-21 the dark FREQ raised the RMS by
+            # ~54 % at this pitch, so "darker means quieter" was the wrong test.
+            "control: the frame path (B) changes the output from block K (>10 % RMS)":
+                rel(B[after], A[after]) > 0.1,
             "C differs from A from block K (the write is heard)": n_["C_vs_A_after_k"] > 0.1,
             f"C follows B in block K itself (within {MATCH_RMS:.0%} RMS)": n_["C_vs_B_block_k"] <= MATCH_RMS,
             f"C follows B from block K on (within {MATCH_RMS:.0%} RMS)": n_["C_vs_B_after_k"] <= MATCH_RMS,
